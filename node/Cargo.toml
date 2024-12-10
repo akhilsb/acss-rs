@@ -1,0 +1,29 @@
+[package]
+name = "node"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bincode = "1"
+config = { package = "config", path="../config"}
+rbc = {package = "rbc",path="../consensus/rbc"}
+ecc_rbc = {package = "ecc_rbc",path="../consensus/ecc_rbc"}
+ctrbc = {package = "ctrbc",path="../consensus/ctrbc"}
+avid = {package= "avid", path="../consensus/avid"}
+consensus = { package = "consensus", path="../consensus"}
+util = { package = "util", path="../util"}
+anyhow = "1"
+types = { package = "types", path="../types"}
+clap = {version = "2", features = ["yaml"]}
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3.8"
+log="*"
+simple_logger="*"
+fnv = "1.0.3"
+signal-hook = "0"
+
+network = { package = "network", git = "https://github.com/libdist-rs/libnet-rs.git" }
+async-trait = "0"
+futures-util = "0"
