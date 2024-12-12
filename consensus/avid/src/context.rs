@@ -55,15 +55,15 @@ pub struct Context {
     pub max_id: usize, 
 
     /// Input and output message queues for Reliable Broadcast
-    pub inp_avid: Receiver<Vec<(Replica,Vec<u8>)>>,
-    pub out_avid: Sender<(Replica,Option<Vec<u8>>)>,
+    pub inp_avid: Receiver<Vec<(Replica,Option<Vec<u8>>)>>,
+    pub out_avid: Sender<Vec<(Replica,Option<Vec<u8>>)>>,
 }
 
 impl Context {
     pub fn spawn(
         config: Node,
-        input_msgs: Receiver<Vec<(Replica,Vec<u8>)>>, 
-        output_msgs: Sender<(Replica,Option<Vec<u8>>)>, 
+        input_msgs: Receiver<Vec<(Replica,Option<Vec<u8>>)>>, 
+        output_msgs: Sender<Vec<(Replica,Option<Vec<u8>>)>>, 
         byz: bool
     ) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
@@ -195,7 +195,8 @@ impl Context {
                     let avid_inst_id = self.max_id + 1;
                     self.max_id = avid_inst_id;
                     // Craft AVID message
-                    self.start_init(sync_msg,avid_inst_id).await;
+                    let unwrapped_msg = sync_msg.into_iter().map(|x| (x.0,x.1.unwrap())).collect();
+                    self.start_init(unwrapped_msg,avid_inst_id).await;
                 },
             };
         }

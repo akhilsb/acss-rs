@@ -76,9 +76,9 @@ impl LargeFieldSSS {
     }
 
     fn mod_evaluate_at(&self, polynomial: &[LargeField], x: usize) -> LargeField {
-        let x_LargeField = BigInt::from(x);
+        let x_largefield = BigInt::from(x);
         polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
-            (&x_LargeField * sum + item) % &self.prime
+            (&x_largefield * sum + item) % &self.prime
         })
     }
 
@@ -97,21 +97,21 @@ impl LargeFieldSSS {
     fn lagrange_interpolation(&self, x: LargeField, xs: Vec<usize>, ys: Vec<LargeField>) -> LargeField {
         let len = xs.len();
         // println!("x: {}, xs: {:?}, ys: {:?}", x, xs, ys);
-        let xs_LargeField: Vec<LargeField> = xs.iter().map(|x| BigInt::from(*x as u64)).collect();
+        let xs_largefield: Vec<LargeField> = xs.iter().map(|x| BigInt::from(*x as u64)).collect();
         // println!("sx_LargeField: {:?}", xs_LargeField);
         (0..len).fold(Zero::zero(), |sum, item| {
             let numerator = (0..len).fold(One::one(), |product: LargeField, i| {
                 if i == item {
                     product
                 } else {
-                    product * (&x - &xs_LargeField[i]) % &self.prime
+                    product * (&x - &xs_largefield[i]) % &self.prime
                 }
             });
             let denominator = (0..len).fold(One::one(), |product: LargeField, i| {
                 if i == item {
                     product
                 } else {
-                    product * (&xs_LargeField[item] - &xs_LargeField[i]) % &self.prime
+                    product * (&xs_largefield[item] - &xs_largefield[i]) % &self.prime
                 }
             });
             // println!(

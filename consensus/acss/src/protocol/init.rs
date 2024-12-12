@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-
 use crypto::encrypt;
 use crypto::hash::{do_hash, HASH_SIZE};
+use network::Acknowledgement;
+use network::plaintcp::CancelHandler;
 use num_bigint_dig::RandBigInt;
 use num_bigint_dig::{BigInt, Sign};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{SeedableRng, RngCore};
+use types::WrapperMsg;
 
-use crate::{Commitment, Shares};
+use crate::{Commitment, Shares, ProtMsg};
 use crate::{context::Context, SmallField, LargeField};
 
 impl Context{
@@ -21,7 +22,7 @@ impl Context{
      * 5. Generate distributed ZK polynomial
      * 6. Encrypt shares and broadcast commitments.  
     */
-    pub async fn init_acss(self: &mut Context, secrets: Vec<SmallField>, instance_id: u64){
+    pub async fn init_acss(self: &mut Context, secrets: Vec<SmallField>, instance_id: usize){
         
         // 1. Shamir secret sharing
 
@@ -148,7 +149,7 @@ impl Context{
         // Polynomial R(x) = B(x) - \sum_{i\in 1..L} d^i F_i(x)
         // Construct $t+1$ evaluations instead of coefficients
         blinding_poly.truncate(self.num_faults+1);
-        let mut R_x = blinding_poly;
+        let mut r_x = blinding_poly;
         
         let comm_lf = BigInt::from_signed_bytes_be(&succinct_comm.clone().to_vec()) % &self.large_field_prime;
         let mut pow_comm_lf = comm_lf.clone();
@@ -156,12 +157,13 @@ impl Context{
             
             poly.truncate(self.num_faults+1);
             for index in 0..poly.len(){
-                R_x[index] = (&R_x[index] - &pow_comm_lf * BigInt::from(poly[index])) % &self.large_field_prime;
+                r_x[index] = (&r_x[index] - &pow_comm_lf * BigInt::from(poly[index])) % &self.large_field_prime;
             }
 
             pow_comm_lf = (&pow_comm_lf* &comm_lf) % &self.large_field_prime;
         }
 
+        let r_x: Vec<Vec<u8>> = r_x.into_iter().map(|x| x.to_signed_bytes_be()).collect();
         // 6. Encrypt Shares and Broadcast commitments
         for ((rep,secret_key), shares) in self.sec_key_map.clone().into_iter().zip(party_wise_shares.into_iter()){
             let enc_shares;
@@ -187,9 +189,16 @@ impl Context{
             else{
                 enc_shares = Vec::new();
             }
-        }
-        for shares in party_wise_shares.into_iter(){
-
+            let prot_msg = ProtMsg::Init(
+                enc_shares, 
+                (poly_comm.clone(),blinding_poly_comm.clone()), 
+                r_x.clone(), 
+                self.myid, 
+                instance_id
+            );
+            let wrapper_msg = WrapperMsg::new(prot_msg.clone(),self.myid,&secret_key);
+            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
+            self.add_cancel_handler(cancel_handler);
         }
     }
 

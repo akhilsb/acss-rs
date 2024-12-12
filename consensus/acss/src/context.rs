@@ -35,7 +35,6 @@ pub struct Context {
     pub num_nodes: usize,
     pub myid: usize,
     pub num_faults: usize,
-    pub inp_message: Vec<u8>,
     byz: bool,
 
     /// Primes for computation
@@ -53,7 +52,7 @@ pub struct Context {
     exit_rx: oneshot::Receiver<()>,
     
     // Each Reliable Broadcast instance is associated with a Unique Identifier. 
-    pub avid_context: HashMap<usize, AVIDState>,
+    pub avid_context: HashMap<usize, usize>,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
@@ -66,7 +65,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn spawn(config: Node, message: Vec<u8>, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+    pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -124,7 +123,7 @@ impl Context {
         let largefield_ss = LargeFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 
-            large_field_prime
+            large_field_prime.clone()
         );
         tokio::spawn(async move {
             let mut c = Context {
@@ -140,7 +139,6 @@ impl Context {
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
-                inp_message: message,
                 
                 small_field_prime: small_field_prime,
                 large_field_prime: large_field_prime,
@@ -238,14 +236,11 @@ impl Context {
                             // Start your protocol from here
                             // Write a function to broadcast a message. We demonstrate an example with a PING function
                             // Dealer sends message to everybody. <M, init>
-                            let avid_inst_id = self.max_id + 1;
-                            self.max_id = avid_inst_id;
+                            let acss_inst_id = self.max_id + 1;
+                            self.max_id = acss_inst_id;
                             // Craft AVID message
-                            let mut vec_msg = Vec::new();
-                            for rep in 0..self.num_faults+1{
-                                vec_msg.push((rep,sync_msg.value.clone()));
-                            }
-                            self.start_init(vec_msg,avid_inst_id).await;
+                            let vec_msg = Vec::new();
+                            self.init_acss(vec_msg,acss_inst_id).await;
                             // wait for messages
                         },
                         SyncState::STOP =>{

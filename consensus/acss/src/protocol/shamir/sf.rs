@@ -74,9 +74,9 @@ impl SmallFieldSSS {
     }
 
     fn mod_evaluate_at(&self, polynomial: &[SmallField], x: usize) -> SmallField {
-        let x_SmallField = x as SmallField;
+        let x_smallfield = x as SmallField;
         polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
-            (&x_SmallField * sum + item) % &self.prime
+            (&x_smallfield * sum + item) % &self.prime
         })
     }
 
@@ -95,21 +95,21 @@ impl SmallFieldSSS {
     fn lagrange_interpolation(&self, x: SmallField, xs: Vec<usize>, ys: Vec<SmallField>) -> SmallField {
         let len = xs.len();
         // println!("x: {}, xs: {:?}, ys: {:?}", x, xs, ys);
-        let xs_SmallField: Vec<SmallField> = xs.iter().map(|x| *x as SmallField).collect();
+        let xs_smallfield: Vec<SmallField> = xs.iter().map(|x| *x as SmallField).collect();
         // println!("sx_SmallField: {:?}", xs_SmallField);
         (0..len).fold(Zero::zero(), |sum, item| {
             let numerator = (0..len).fold(One::one(), |product: SmallField, i| {
                 if i == item {
                     product
                 } else {
-                    product * (&x + &self.prime - &xs_SmallField[i]) % &self.prime
+                    product * (&x + &self.prime - &xs_smallfield[i]) % &self.prime
                 }
             });
             let denominator = (0..len).fold(One::one(), |product: SmallField, i| {
                 if i == item {
                     product
                 } else {
-                    product * (&xs_SmallField[item] + &self.prime - &xs_SmallField[i]) % &self.prime
+                    product * (&xs_smallfield[item] + &self.prime - &xs_smallfield[i]) % &self.prime
                 }
             });
             // println!(

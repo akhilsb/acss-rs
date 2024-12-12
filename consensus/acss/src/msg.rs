@@ -19,14 +19,14 @@ pub type SigOpening = (usize,Hash);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shares{
-    poly_shares: Option<Vec<SmallField>>, // Shares of polynomials
-    nonce_shares: Option<(LargeFieldSer,LargeFieldSer)>, // Nonce and Blinding nonce shares
+    pub poly_shares: Option<Vec<SmallField>>, // Shares of polynomials
+    pub nonce_shares: Option<(LargeFieldSer,LargeFieldSer)>, // Nonce and Blinding nonce shares
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ProtMsg{
     Init(
-        Shares,
+        Vec<u8>, // Encrypted shares
         VSSCommitments,
         Polynomial<LargeFieldSer>, // dZK polynomial
         Replica, // Dealer

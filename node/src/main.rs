@@ -7,6 +7,7 @@ use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
+use tokio::sync::mpsc::channel;
 use std::net::{SocketAddr, SocketAddrV4};
 
 #[tokio::main]
@@ -21,7 +22,7 @@ async fn main() -> Result<()> {
     let vss_type = m
         .value_of("protocol")
         .expect("Unable to detect protocol to run");
-    let input_value = m.value_of("input").expect("Unable to read input string");
+    let _input_value = m.value_of("input").expect("Unable to read input string");
     let syncer_file = m
         .value_of("syncer")
         .expect("Unable to parse syncer ip file");
@@ -66,24 +67,27 @@ async fn main() -> Result<()> {
     // Start the Reliable Broadcast protocol
     let exit_tx;
     match vss_type {
-        "rbc" => {
+        "acss" => {
             exit_tx =
-                rbc::Context::spawn(config, input_value.as_bytes().to_vec(), node_normal)
+                acss::Context::spawn(config, node_normal)
                     .unwrap();
         }
-        "ecc_rbc" => {
-            exit_tx =
-                ecc_rbc::Context::spawn(config, input_value.as_bytes().to_vec(), node_normal)
-                    .unwrap();
-        }
+        // "ecc_rbc" => {
+            
+        //     exit_tx =
+        //         ecc_rbc::Context::spawn(config, input_value.as_bytes().to_vec(), node_normal)
+        //             .unwrap();
+        // }
         "ctrbc" => {
+            let (sender,receiver) = channel(10000);
             exit_tx =
-                ctrbc::Context::spawn(config, input_value.as_bytes().to_vec(), node_normal)
+                ctrbc::Context::spawn(config, receiver, sender, node_normal)
                     .unwrap();
         }
         "avid" => {
+            let (sender,receiver) = channel(10000);
             exit_tx =
-                avid::Context::spawn(config, input_value.as_bytes().to_vec(), node_normal)
+                avid::Context::spawn(config, receiver, sender, node_normal)
                     .unwrap();
         }
         "sync" => {
