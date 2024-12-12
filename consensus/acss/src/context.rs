@@ -20,7 +20,7 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use crate::{Handler, SyncHandler, SmallFieldSSS, LargeFieldSSS};
+use crate::{Handler, SyncHandler, SmallFieldSSS, LargeFieldSSS, ACSSState};
 
 use super::{ProtMsg};
 use crypto::aes_hash::HashState;
@@ -52,7 +52,7 @@ pub struct Context {
     exit_rx: oneshot::Receiver<()>,
     
     // Each Reliable Broadcast instance is associated with a Unique Identifier. 
-    pub avid_context: HashMap<usize, usize>,
+    pub avid_context: HashMap<usize, ACSSState>,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
@@ -112,8 +112,8 @@ impl Context {
         let rbc_start_id = threshold*config.id;
 
         let small_field_prime:u64 = 4294967291;
-        let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-
+        //let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
+        let large_field_prime: BigInt = BigInt::parse_bytes(b"101", 10).unwrap();
         let smallfield_ss = SmallFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 
@@ -238,8 +238,11 @@ impl Context {
                             // Dealer sends message to everybody. <M, init>
                             let acss_inst_id = self.max_id + 1;
                             self.max_id = acss_inst_id;
-                            // Craft AVID message
-                            let vec_msg = Vec::new();
+                            // Craft ACSS message
+                            let mut vec_msg = Vec::new();
+                            for i in 1u64..10u64{
+                                vec_msg.push(i);
+                            }
                             self.init_acss(vec_msg,acss_inst_id).await;
                             // wait for messages
                         },

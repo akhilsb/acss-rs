@@ -52,6 +52,9 @@ impl LargeFieldSSS {
             for (coefficient,point) in coefficients.into_iter().zip(values.clone().into_iter()){
                 sum = (sum + (coefficient*point))% &self.prime;
             }
+            if sum < BigInt::from(0){
+                sum += &self.prime;
+            }
             all_values.push(sum);
         }
         values.extend(all_values);

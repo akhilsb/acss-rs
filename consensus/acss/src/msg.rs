@@ -27,6 +27,7 @@ pub struct Shares{
 pub enum ProtMsg{
     Init(
         Vec<u8>, // Encrypted shares
+        usize, // Number of secrets
         VSSCommitments,
         Polynomial<LargeFieldSer>, // dZK polynomial
         Replica, // Dealer

@@ -15,6 +15,9 @@ bincode = "1"
 rand = "0.8.5"
 aes = "0.8.3"
 aes-gcm = "0.10.3"
+rand_chacha = "0.3.1"
+num-bigint-dig = "0.4"
+num-bigint = {version = "0.2.6", features = ["rand"]}
 
 [dev-dependencies]
 quickcheck = "1"

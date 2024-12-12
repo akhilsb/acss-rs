@@ -33,6 +33,11 @@ impl Context {
         // Verify the message's authenticity before proceeding
         if self.check_proposal(msg) {
             match wrapper_msg.clone().protmsg {
+                ProtMsg::Init(enc_shares, num_secrets, comm, polynomial, dealer, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
+                    self.process_acss_init(enc_shares,num_secrets,comm,polynomial, dealer, instance_id).await;
+                },
                 _ => {}
                 // ProtMsg::Echo(main_msg, instance_id) => {
                 //     // RBC initialized
@@ -44,11 +49,7 @@ impl Context {
                 //     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
                 //     self.handle_ready(main_msg, wrapper_msg.sender,instance_id).await;
                 // }
-                // ProtMsg::Init(main_msg, instance_id) => {
-                //     // RBC initialized
-                //     log::debug!("Received Init for instance id {} from node : {}", instance_id, main_msg.origin);
-                //     self.handle_init(main_msg,instance_id).await;
-                // },
+                
                 // ProtMsg::Deliver(avid_shard, origin, instance_id) => {
                     
                 //     log::debug!("Received Deliver for instance id {} from node : {}", instance_id, origin);
