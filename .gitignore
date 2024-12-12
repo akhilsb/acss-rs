@@ -26,3 +26,5 @@ Cargo.lock
 
 testdata/
 nodes-*.json
+
+*.log
