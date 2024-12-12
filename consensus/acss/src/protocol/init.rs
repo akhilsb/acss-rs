@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crypto::encrypt;
 use crypto::hash::{do_hash, HASH_SIZE};
 use num_bigint_dig::RandBigInt;
 use num_bigint_dig::{BigInt, Sign};
@@ -179,13 +180,15 @@ impl Context{
                 else{
                     let ser_msg = status.unwrap();
                     // Encrypt messages
+                    let encrypted_msg = encrypt(secret_key.as_slice(), ser_msg);
+                    enc_shares = encrypted_msg;
                 }
             }
             else{
-
+                enc_shares = Vec::new();
             }
         }
-        for shares in party_wise_shares{
+        for shares in party_wise_shares.into_iter(){
 
         }
     }
