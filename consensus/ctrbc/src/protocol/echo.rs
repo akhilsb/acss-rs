@@ -1,11 +1,12 @@
 use consensus::reconstruct_data;
+use types::Replica;
 
 use super::init::construct_merkle_tree;
-use crate::{CTRBCMsg, Context};
+use crate::{CTRBCMsg, Context, RBCState};
 use crate::{ProtMsg};
 
 impl Context {
-    pub async fn handle_echo(self: &mut Context, msg: CTRBCMsg, instance_id: usize) {
+    pub async fn handle_echo(self: &mut Context, msg: CTRBCMsg, echo_sender: Replica, instance_id: usize) {
         /*
         1. mp verify
         2. wait until receiving n - t echos of the same root
@@ -14,7 +15,12 @@ impl Context {
         5. if all pass, send ready <fi, pi>
          */
 
-        let rbc_context = self.rbc_context.entry(instance_id).or_default();
+        if !self.rbc_context.contains_key(&instance_id){
+            let rbc_state = RBCState::new(msg.origin);
+            self.rbc_context.insert(instance_id, rbc_state);
+        }
+
+        let rbc_context = self.rbc_context.get_mut(&instance_id).unwrap();
 
         if rbc_context.terminated{
             // RBC Already terminated, skip processing this message
@@ -24,7 +30,7 @@ impl Context {
         if !msg.verify_mr_proof(&self.hash_context) {
             log::error!(
                 "Invalid Merkle Proof sent by node {}, abandoning RBC",
-                msg.origin
+                echo_sender
             );
             return;
         }
@@ -32,11 +38,11 @@ impl Context {
         let root = msg.mp.root();
         let echo_senders = rbc_context.echos.entry(root).or_default();
 
-        if echo_senders.contains_key(&msg.origin){
+        if echo_senders.contains_key(&echo_sender){
             return;
         }
 
-        echo_senders.insert(msg.origin, msg.shard);
+        echo_senders.insert(echo_sender, msg.shard);
         
         let size = echo_senders.len().clone();
         if size == self.num_nodes - self.num_faults{
@@ -85,10 +91,10 @@ impl Context {
                 let ctrbc_msg = CTRBCMsg{
                     shard: my_share,
                     mp: merkle_tree.gen_proof(self.myid),
-                    origin: self.myid,
+                    origin: msg.origin,
                 };
                 
-                self.handle_ready(ctrbc_msg.clone(),instance_id).await;
+                self.handle_ready(ctrbc_msg.clone(),msg.origin,instance_id).await;
                 let ready_msg = ProtMsg::Ready(ctrbc_msg, instance_id);
                 self.broadcast(ready_msg).await;
             }
@@ -108,7 +114,7 @@ impl Context {
                 let ctrbc_msg = CTRBCMsg{
                     shard: fragment.0,
                     mp: fragment.1, 
-                    origin: self.myid,
+                    origin: msg.origin,
                 };
 
                 let message = rbc_context.message.clone().unwrap();
@@ -116,7 +122,7 @@ impl Context {
                 let ready_msg = ProtMsg::Ready(ctrbc_msg, instance_id);
                 
                 self.broadcast(ready_msg).await;
-                self.terminate(message).await;
+                self.terminate(msg.origin, message).await;
             }
 
         }

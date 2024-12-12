@@ -4,7 +4,7 @@ pub use context::*;
 mod process;
 
 mod msg;
-use msg::*;
+pub use msg::*;
 
 mod handlers;
 pub use handlers::*;

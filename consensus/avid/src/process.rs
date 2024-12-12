@@ -4,7 +4,7 @@ use super::{ProtMsg};
 use crate::{context::Context, msg::AVIDMsg};
 use crypto::hash::verf_mac;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use types::{SyncMsg, SyncState, WrapperMsg, RBCSyncMsg};
+use types::{WrapperMsg};
 
 impl Context {
     // This function verifies the Message Authentication Code (MAC) of a sent message
@@ -84,20 +84,5 @@ impl Context {
                 }
             }
         }
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::COMPLETED,
-                    value: bincode::serialize(&RBCSyncMsg{
-                        id: instance_id,
-                        msg: "Completed AVID instance".to_string(),
-                    }).unwrap(),
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
     }
 }

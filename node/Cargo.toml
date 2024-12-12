@@ -9,8 +9,8 @@ edition = "2021"
 bincode = "1"
 config = { package = "config", path="../config"}
 rbc = {package = "rbc",path="../consensus/rbc"}
-ecc_rbc = {package = "ecc_rbc",path="../consensus/ecc_rbc"}
 ctrbc = {package = "ctrbc",path="../consensus/ctrbc"}
+acss = {package = "acss", path="../consensus/acss"}
 avid = {package= "avid", path="../consensus/avid"}
 consensus = { package = "consensus", path="../consensus"}
 util = { package = "util", path="../util"}

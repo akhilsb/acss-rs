@@ -1,16 +1,22 @@
 use consensus::reconstruct_data;
+use types::Replica;
 
 use crate::protocol::init::construct_merkle_tree;
 
-use crate::{CTRBCMsg, ProtMsg};
+use crate::{CTRBCMsg, ProtMsg, RBCState};
 
 use crate::Context;
 impl Context {
     // TODO: handle ready
-    pub async fn handle_ready(self: &mut Context, msg: CTRBCMsg, instance_id:usize){
+    pub async fn handle_ready(self: &mut Context, msg: CTRBCMsg, ready_sender: Replica, instance_id:usize){
         log::trace!("Received {:?} as ready", msg);
 
-        let rbc_context = self.rbc_context.entry(instance_id).or_default();
+        if !self.rbc_context.contains_key(&instance_id){
+            let rbc_state = RBCState::new(msg.origin);
+            self.rbc_context.insert(instance_id, rbc_state);
+        }
+
+        let rbc_context = self.rbc_context.get_mut(&instance_id).unwrap();
 
         if rbc_context.terminated{
             return;
@@ -20,7 +26,7 @@ impl Context {
         if !msg.verify_mr_proof(&self.hash_context) {
             log::error!(
                 "Invalid Merkle Proof sent by node {}, abandoning RBC",
-                msg.origin
+                ready_sender
             );
             return;
         }
@@ -28,11 +34,11 @@ impl Context {
         let root = msg.mp.root();
         let ready_senders = rbc_context.readys.entry(root).or_default();
 
-        if ready_senders.contains_key(&msg.origin){
+        if ready_senders.contains_key(&ready_sender){
             return;
         }
 
-        ready_senders.insert(msg.origin, msg.shard);
+        ready_senders.insert(ready_sender, msg.shard);
 
         let size = ready_senders.len().clone();
 
@@ -94,7 +100,7 @@ impl Context {
                 let ctrbc_msg = CTRBCMsg{
                     shard: my_share,
                     mp: merkle_tree.gen_proof(self.myid),
-                    origin: self.myid,
+                    origin: msg.origin,
                 };
                 
                 let ready_msg = ProtMsg::Ready(ctrbc_msg.clone(), instance_id);
@@ -107,7 +113,7 @@ impl Context {
             // Terminate protocol
             rbc_context.terminated = true;
             let term_msg = rbc_context.message.clone().unwrap();
-            self.terminate(term_msg).await;
+            self.terminate(msg.origin,term_msg).await;
         }
     }
 }

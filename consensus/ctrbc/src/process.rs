@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::{ProtMsg};
 use crate::context::Context;
 use crypto::hash::verf_mac;
-use types::{SyncMsg, SyncState, WrapperMsg};
+use types::{WrapperMsg, Replica};
 
 impl Context {
     // This function verifies the Message Authentication Code (MAC) of a sent message
@@ -35,12 +35,12 @@ impl Context {
                 ProtMsg::Echo(main_msg, instance_id) => {
                     // RBC initialized
                     log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
-                    self.handle_echo(main_msg,instance_id).await;
+                    self.handle_echo(main_msg,wrapper_msg.sender,instance_id).await;
                 }
                 ProtMsg::Ready(main_msg, instance_id) => {
                     // RBC initialized
                     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
-                    self.handle_ready(main_msg,instance_id).await;
+                    self.handle_ready(main_msg,wrapper_msg.sender,instance_id).await;
                 }
                 ProtMsg::Init(main_msg, instance_id) => {
                     // RBC initialized
@@ -57,18 +57,11 @@ impl Context {
     }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data: Vec<u8>) {
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::COMPLETED,
-                    value: data,
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
+    pub async fn terminate(&mut self, origin: Replica, data: Vec<u8>) {
+        log::info!("Terminated RBC, sending message back to the channel");
+        let status = self.out_rbc.send((origin,data)).await;
+        if status.is_err(){
+            log::error!("Error sending message back to the channel: {}",status.unwrap_err());
+        }
     }
 }

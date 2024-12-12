@@ -1,5 +1,5 @@
 use consensus::reconstruct_data;
-use types::{Replica, RBCSyncMsg};
+use types::{Replica};
 
 use crate::{Context, msg::{AVIDShard}, AVIDState};
 
@@ -52,14 +52,20 @@ impl Context{
                     message.extend(shards.get(i).clone().unwrap());
                 }
                 avid_context.message = Some(message.clone());
-                let rbc_msg: RBCSyncMsg = bincode::deserialize(&message).expect("Unable to deserialize message received from node");
-                log::info!("Delivered message {:?} through AVID from sender {} for instance ID {}",rbc_msg.msg,avid_context.sender,instance_id);
+                log::info!("Delivered message through AVID from sender {} for instance ID {}",avid_context.sender,instance_id);
+                let status = self.out_avid.send((avid_context.sender,Some(message))).await;
+                if status.is_err(){
+                    log::error!("Error sending message to parent channel {:?}", status.unwrap_err());
+                }
             }
             else{
                 // Do something else
                 log::error!("Message's merkle root does not match broadcasted root for instance ID {}. Exiting",instance_id);
+                let status = self.out_avid.send((avid_context.sender,None)).await;
+                if status.is_err(){
+                    log::error!("Error sending message to parent channel {:?}", status.unwrap_err());
+                }
             }
         }
-        
     }
 }

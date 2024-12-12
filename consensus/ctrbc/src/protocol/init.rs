@@ -59,11 +59,11 @@ impl Context {
         let ctrbc_msg = CTRBCMsg {
             shard: msg.shard,
             mp: msg.mp,
-            origin: self.myid,
+            origin: msg.origin,
         };
 
         // Start echo
-        self.handle_echo(ctrbc_msg.clone(),instance_id).await;
+        self.handle_echo(ctrbc_msg.clone(), self.myid,instance_id).await;
         let protocol_msg = ProtMsg::Echo(ctrbc_msg, instance_id);
 
         self.broadcast(protocol_msg).await;
