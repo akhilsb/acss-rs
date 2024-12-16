@@ -112,8 +112,10 @@ impl Context {
         let rbc_start_id = threshold*config.id;
 
         let small_field_prime:u64 = 4294967291;
-        //let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        let large_field_prime: BigInt = BigInt::parse_bytes(b"101", 10).unwrap();
+        // let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
+        let large_field_prime: BigInt = BigInt::parse_bytes(b"115792088158918333131516597762172392628570465465856793992332884130307292657121",10).unwrap();
+        //let small_field_prime = 37;
+        //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
         let smallfield_ss = SmallFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 

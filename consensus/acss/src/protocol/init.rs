@@ -1,4 +1,4 @@
-use crypto::{encrypt, pseudorandom_sf, pseudorandom_lf, LargeField, SmallField, decrypt};
+use crypto::{encrypt, pseudorandom_lf, LargeField, SmallField, decrypt};
 use crypto::hash::{do_hash};
 use network::Acknowledgement;
 use network::plaintcp::CancelHandler;
@@ -20,12 +20,17 @@ impl Context{
      * 5. Generate distributed ZK polynomial
      * 6. Encrypt shares and broadcast commitments.  
     */
+    // For now, do all interpolation in large fields. 
+    // We convert large field to small field using ring reduction process. 
     pub async fn init_acss(self: &mut Context, secrets: Vec<SmallField>, instance_id: usize){
         
         let num_secrets = secrets.len();
         // 1. Shamir secret sharing
 
-        let mut shares: Vec<Vec<SmallField>> = Vec::new();
+        let zero = BigInt::from(0);
+        //let one = BigInt::from(1);
+
+        let mut shares: Vec<Vec<LargeField>> = Vec::new();
         
         for _i in 0..self.num_nodes{
             shares.push(Vec::new());
@@ -36,7 +41,8 @@ impl Context{
         for secret in secrets.into_iter(){
             
             let mut poly = Vec::new();
-            poly.push(secret);
+            //poly.push(secret%self.small_field_prime);
+            poly.push(BigInt::from(secret));
             polynomial_evaluations.push(poly);
             
         }
@@ -46,7 +52,6 @@ impl Context{
         let mut blinding_poly = Vec::new();
         let mut blinding_nonce_poly = Vec::new();
 
-        let zero = BigInt::from(0u64);
         let rand1 = rand::thread_rng().gen_bigint_range(&zero, &self.large_field_prime.clone());
         let rand2 = rand::thread_rng().gen_bigint_range(&zero, &self.large_field_prime.clone());
         let rand3 = rand::thread_rng().gen_bigint_range(&zero, &self.large_field_prime.clone());
@@ -60,9 +65,14 @@ impl Context{
             let mut secret_key = self.sec_key_map.get(&rep).clone().unwrap().clone();
             // Create a new seed from the secret key and the instance id
             secret_key.extend(instance_id.to_be_bytes());
-            let rand_eval = pseudorandom_sf(secret_key.as_slice(), polynomial_evaluations.len());
+            let rand_eval = pseudorandom_lf(secret_key.as_slice(), polynomial_evaluations.len());
             let mut index = 0;
-            for share in rand_eval.into_iter(){
+            for mut share in rand_eval.into_iter(){
+                // Ensure all shares are greater than zero. TODO: Maybe use BigUInt? 
+                share = &share%&self.large_field_prime;
+                if share < zero{
+                    share += &self.large_field_prime;
+                }
                 polynomial_evaluations.get_mut(index).unwrap().push(share);
                 index = index + 1;
             }
@@ -73,7 +83,7 @@ impl Context{
             let mut index = 0;
             for mut elem in rand_eval.into_iter(){
                 // Ensure all shares are greater than 0 for positive modulus
-                if elem < BigInt::from(0){
+                if elem < zero{
                     elem += &self.large_field_prime;
                 }
                 if index == 0{
@@ -92,12 +102,12 @@ impl Context{
             }
         }
         for poly in polynomial_evaluations.iter_mut(){
-            self.small_field_sss.fill_evaluation_at_all_points(poly);
+            self.large_field_sss.fill_evaluation_at_all_points(poly);
         }
         self.large_field_sss.fill_evaluation_at_all_points(&mut nonce_poly);
         self.large_field_sss.fill_evaluation_at_all_points(&mut blinding_poly);
         self.large_field_sss.fill_evaluation_at_all_points(&mut blinding_nonce_poly);
-
+        
         // Is it degree t? 
         // let mut recon_shares = Vec::new();
         // for rep in 2*self.num_faults..self.num_nodes{
@@ -119,8 +129,8 @@ impl Context{
             let mut appended_share: Vec<u8> = Vec::new();
             // Adding 1 to index because the first element is the secret
             for evaluation in polynomial_evaluations.iter(){
-                party_shares.push(*evaluation.get(party+1).unwrap());
-                appended_share.extend(evaluation.get(party+1).unwrap().to_be_bytes());
+                party_shares.push(evaluation.get(party+1).unwrap().clone());
+                appended_share.extend(evaluation.get(party+1).unwrap().to_signed_bytes_be());
             }
             party_wise_shares.push(party_shares);
             
@@ -152,49 +162,48 @@ impl Context{
         // 5. Compute distributed Zero-Knowledge Polynomial
         // Polynomial R(x) = B(x) - \sum_{i\in 1..L} d^i F_i(x)
         // Construct $t+1$ evaluations instead of coefficients
-        log::error!("Blinding poly: {:?}",blinding_poly);
-        //blinding_poly.truncate(self.num_faults+1);
-        let mut r_x = blinding_poly;
+        blinding_poly.truncate(self.num_faults+1);
+        let mut r_x = blinding_poly.clone();
         let comm_lf = BigInt::from_signed_bytes_be(&succinct_comm.clone().to_vec()) % &self.large_field_prime;
-        log::error!("Succinct comm: {:?}",comm_lf);
         let mut pow_comm_lf = comm_lf.clone();
         let mut share_contributions: Vec<BigInt> = Vec::new();
-        for _ in 0..r_x.len(){
-            share_contributions.push(BigInt::from(0));
+        for _ in 0..blinding_poly.len(){
+            share_contributions.push(zero.clone());
         }
         for poly in polynomial_evaluations.into_iter(){
             
             //poly.truncate(self.num_faults+1);
-            for index in 0..poly.len(){
-                if index == 6{
-                    log::error!("Iter val: {:?}", (&pow_comm_lf * BigInt::from(poly[index]))%&self.large_field_prime);
+            for index in 0..blinding_poly.len(){
+                share_contributions[index] = (&share_contributions[index] + (&pow_comm_lf * &poly[index]) % &self.large_field_prime)% &self.large_field_prime;
+                if share_contributions[index] < zero.clone(){
+                    share_contributions[index] += &self.large_field_prime;
                 }
-                share_contributions[index] = (&share_contributions[index] + (&pow_comm_lf * BigInt::from(poly[index]))) % &self.large_field_prime;
             }
-            pow_comm_lf = (pow_comm_lf* &comm_lf) % &self.large_field_prime;
-            log::error!("Succinct comm iter: {:?}",pow_comm_lf);
+            pow_comm_lf = (&pow_comm_lf* &comm_lf) % &self.large_field_prime;
         }
-        let mut sc_2 = share_contributions.clone();
-        self.large_field_sss.fill_evaluation_at_all_points(&mut sc_2);
-        log::error!("Share contributions: {:?}",sc_2);
         for index in 0..share_contributions.len(){
             r_x[index] = (&r_x[index] - &share_contributions[index])% &self.large_field_prime;
             if r_x[index] < BigInt::from(0){
                 r_x[index] += &self.large_field_prime;
             }
         }
-        let mut r_2_x = r_x.clone();
-        self.large_field_sss.fill_evaluation_at_all_points(&mut r_2_x);
-        log::error!("R_x polynomial: {:?}",r_2_x);
-        let r_x: Vec<Vec<u8>> = r_x.into_iter().map(|x| x.to_signed_bytes_be()).collect();
+        //assert!(self.large_field_sss.verify_degree(&mut r_x));
+
+
+        // Truncate polynomial to t+1 points
+        let mut r_x: Vec<Vec<u8>> = r_x.into_iter().map(|x| x.to_signed_bytes_be()).collect();
+        r_x.truncate(self.num_faults+1);
+
+
         // 6. Encrypt Shares and Broadcast commitments
         for (rep,shares) in (0..self.num_nodes).into_iter().zip(party_wise_shares.into_iter()){
             let secret_key = self.sec_key_map.get(&rep).clone().unwrap().clone();
             let enc_shares;
             if rep > self.num_faults-1{
 
+                let shares_ser = shares.into_iter().map(|x| x.to_signed_bytes_be()).collect();
                 let shares = Shares{
-                    poly_shares: Some(shares),
+                    poly_shares: Some(shares_ser),
                     nonce_shares: Some((nonce_poly.get(rep+1).unwrap().to_signed_bytes_be().to_vec(),blinding_nonce_poly.get(rep+1).unwrap().to_signed_bytes_be().to_vec()))
                 };
 
@@ -246,7 +255,7 @@ impl Context{
                 return;
             }
             let all_shares = des_shares.unwrap();
-            shares = all_shares.poly_shares.unwrap();
+            shares = all_shares.poly_shares.unwrap().into_iter().map(|x| BigInt::from_signed_bytes_be(x.as_slice())).collect();
             let (nonce_share_vec, blinding_nonce_share_vec) = all_shares.nonce_shares.unwrap();
 
             nonce_share = BigInt::from_signed_bytes_be(nonce_share_vec.as_slice());
@@ -257,7 +266,7 @@ impl Context{
             let mut secret_key = self.sec_key_map.get(&sender).clone().unwrap().clone();
             secret_key.extend(instance_id.to_be_bytes());
 
-            shares = pseudorandom_sf(secret_key.as_slice(), num_secrets);
+            shares = pseudorandom_lf(secret_key.as_slice(), num_secrets);
 
             secret_key.extend(instance_id.to_be_bytes());
             let nonces = pseudorandom_lf(secret_key.as_slice(), 3);
@@ -269,7 +278,7 @@ impl Context{
         // 2. Match commitments
         let mut appended_shares = Vec::new();
         for share in shares.iter(){
-            appended_shares.extend(share.to_be_bytes());
+            appended_shares.extend(share.to_signed_bytes_be());
         }
         appended_shares.extend(nonce_share.to_signed_bytes_be());
 
@@ -292,8 +301,9 @@ impl Context{
         // Interpolate dZK polynomial
         let mut r_x: Vec<BigInt> = dzk_poly.into_iter().map(|x| BigInt::from_signed_bytes_be(x.as_slice())).collect();
         self.large_field_sss.fill_evaluation_at_all_points(&mut r_x);
-        log::error!("R_x filled poly: {:?}",r_x);
+        
         let mut dzk_eval = r_x.get(self.myid+1).unwrap().clone();
+        // Powers of the succinct commitment d
         let mut iter_comm_lf = comm_lf.clone();
         let mut share_contribution = BigInt::from(0);
         for share in shares.clone().into_iter(){

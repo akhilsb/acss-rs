@@ -1,7 +1,8 @@
+use crypto::{SmallField, LargeField};
 use ctrbc::RBCState;
 use types::Replica;
 
-use crate::{SmallField, LargeField, VSSCommitments};
+use crate::{VSSCommitments};
 
 pub struct ACSSState{
     pub origin: Replica,

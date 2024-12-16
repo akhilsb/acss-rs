@@ -8,7 +8,7 @@ use num_bigint_dig::RandBigInt;
 use num_traits::{One, Zero};
 use rand::{self};
 
-use crate::LargeField;
+use crypto::LargeField;
 
 /// The `ShamirSecretSharing` stores threshold, share_amount and the prime of finite field.
 #[derive(Clone, Debug)]
@@ -58,6 +58,18 @@ impl LargeFieldSSS {
             all_values.push(sum);
         }
         values.extend(all_values);
+    }
+
+    pub fn verify_degree(&self, values: &mut Vec<LargeField>) -> bool{
+        let mut shares_interp = Vec::new();
+        
+        for rep in self.share_amount - self.threshold .. self.share_amount{
+            shares_interp.push((rep+1,values[rep+1].clone()));
+        }
+        
+        let secret = self.recover(&shares_interp);
+        println!("Degree verification : {:?} {:?}",secret,values[0].clone());
+        secret == values[0].clone()%&self.prime
     }
 
     fn sample_polynomial(&self, secret: LargeField) -> Vec<LargeField> {

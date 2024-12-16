@@ -1,13 +1,7 @@
-use crypto::{hash::Hash};
+use crypto::{hash::Hash, LargeFieldSer};
 use ctrbc::CTRBCMsg;
-use num_bigint_dig::BigInt;
 use serde::{Serialize, Deserialize};
 use types::Replica;
-
-
-pub type SmallField = u64;
-pub type LargeFieldSer = Vec<u8>;
-pub type LargeField = BigInt;
 
 pub type Polynomial<T> = Vec<T>;
 
@@ -19,7 +13,7 @@ pub type SigOpening = (usize,Hash);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Shares{
-    pub poly_shares: Option<Vec<SmallField>>, // Shares of polynomials
+    pub poly_shares: Option<Vec<LargeFieldSer>>, // Shares of polynomials
     pub nonce_shares: Option<(LargeFieldSer,LargeFieldSer)>, // Nonce and Blinding nonce shares
 }
 
