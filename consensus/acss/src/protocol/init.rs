@@ -1,7 +1,7 @@
 use crypto::{encrypt, pseudorandom_lf, LargeField, SmallField, decrypt};
 use crypto::hash::{do_hash};
-use network::Acknowledgement;
-use network::plaintcp::CancelHandler;
+// use network::Acknowledgement;
+// use network::plaintcp::CancelHandler;
 use num_bigint_dig::RandBigInt;
 use num_bigint_dig::{BigInt};
 use types::{WrapperMsg, Replica};
@@ -222,17 +222,17 @@ impl Context{
             else{
                 enc_shares = Vec::new();
             }
-            let prot_msg = ProtMsg::Init(
-                enc_shares, 
-                num_secrets,
-                (poly_comm.clone(),blinding_poly_comm.clone()), 
-                r_x.clone(), 
-                self.myid, 
-                instance_id
-            );
-            let wrapper_msg = WrapperMsg::new(prot_msg.clone(),self.myid,&secret_key);
-            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
-            self.add_cancel_handler(cancel_handler);
+            // let prot_msg = ProtMsg::Init(
+            //     enc_shares, 
+            //     num_secrets,
+            //     (poly_comm.clone(),blinding_poly_comm.clone()), 
+            //     r_x.clone(), 
+            //     self.myid, 
+            //     instance_id
+            // );
+            // let _wrapper_msg = WrapperMsg::new(prot_msg.clone(),self.myid,&secret_key);
+            //let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
+            //self.add_cancel_handler(cancel_handler);
         }
     }
 

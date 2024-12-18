@@ -1,4 +1,4 @@
-use crypto::{hash::Hash, LargeFieldSer};
+use crypto::{hash::Hash, LargeFieldSer, aes_hash::Proof};
 use ctrbc::CTRBCMsg;
 use serde::{Serialize, Deserialize};
 use types::Replica;
@@ -17,22 +17,59 @@ pub struct Shares{
     pub nonce_shares: Option<(LargeFieldSer,LargeFieldSer)>, // Nonce and Blinding nonce shares
 }
 
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub enum ProtMsg{
+//     Init(
+//         Vec<u8>, // Encrypted shares
+//         usize, // Number of secrets
+//         VSSCommitments,
+//         Polynomial<LargeFieldSer>, // dZK polynomial
+//         Replica, // Dealer
+//         usize // ACSS Instance ID (For PRF and share generation)
+//     ),
+//     Echo(
+//         CTRBCMsg,
+//         usize // ACSS Instance ID 
+//     ),
+//     Ready(
+//         CTRBCMsg,
+//         usize // ACSS Instance ID
+//     )
+// }
+
+// Verifiable Abort
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VACommitment{
+    pub roots: Vec<Hash>,
+    pub polys: Vec<Vec<LargeFieldSer>>
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VAShare{
+    pub row_poly: Vec<LargeFieldSer>,
+    pub column_poly: Vec<LargeFieldSer>,
+    pub g_0_x: Vec<LargeFieldSer>,
+    pub g_1_x: Vec<LargeFieldSer>,
+    pub mps: Vec<Proof>,
+    pub rep: Replica
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ProtMsg{
     Init(
         Vec<u8>, // Encrypted shares
-        usize, // Number of secrets
-        VSSCommitments,
-        Polynomial<LargeFieldSer>, // dZK polynomial
+        VACommitment, // dZK polynomial
         Replica, // Dealer
         usize // ACSS Instance ID (For PRF and share generation)
     ),
     Echo(
         CTRBCMsg,
+        Vec<u8>, // Encrypted shares on row and column
         usize // ACSS Instance ID 
     ),
     Ready(
         CTRBCMsg,
+        Vec<u8>, // Encrypted shares on row and column
         usize // ACSS Instance ID
     )
 }

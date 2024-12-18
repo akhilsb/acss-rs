@@ -66,6 +66,8 @@ pub struct Context {
     pub large_field_bv_sss: LargeFieldSSS,
     pub large_field_uv_sss: LargeFieldSSS,
 
+    /// Distributed Zero-Knowledge related variables
+    pub end_degree: usize,
     pub dzk_ss: Vec<LargeFieldSSS>
 }
 
@@ -195,6 +197,7 @@ impl Context {
                 large_field_bv_sss: lf_bv_sss,
                 large_field_uv_sss: lf_uv_sss,
 
+                end_degree: end_degree,
                 dzk_ss: ss_contexts
             };
 
