@@ -61,7 +61,12 @@ pub struct Context {
 
     /// Shamir secret sharing states
     pub small_field_sss: SmallFieldSSS,
-    pub large_field_sss: LargeFieldSSS
+    pub large_field_sss: LargeFieldSSS,
+
+    pub large_field_bv_sss: LargeFieldSSS,
+    pub large_field_uv_sss: LargeFieldSSS,
+
+    pub dzk_ss: Vec<LargeFieldSSS>
 }
 
 impl Context {
@@ -112,8 +117,10 @@ impl Context {
         let rbc_start_id = threshold*config.id;
 
         let small_field_prime:u64 = 4294967291;
-        // let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
         let large_field_prime: BigInt = BigInt::parse_bytes(b"115792088158918333131516597762172392628570465465856793992332884130307292657121",10).unwrap();
+        
+        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
+        
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
         let smallfield_ss = SmallFieldSSS::new(
@@ -127,6 +134,38 @@ impl Context {
             config.num_nodes, 
             large_field_prime.clone()
         );
+
+        let lf_bv_sss = LargeFieldSSS::new(
+            2*config.num_faults +1, 
+            config.num_nodes,
+            large_field_prime_bv.clone()
+        );
+
+        let lf_uv_sss = LargeFieldSSS::new(
+            config.num_faults +1,
+            config.num_nodes,
+            large_field_prime_bv.clone()
+        );
+
+        // Prepare dZK context for halving degrees
+        let mut start_degree = config.num_faults+1;
+        let end_degree = 2 as usize;
+        let mut ss_contexts = Vec::new();
+        while start_degree >= end_degree {
+            let lf_dzk_sss = LargeFieldSSS::new(
+                start_degree,
+                config.num_nodes,
+                large_field_prime_bv.clone()
+            );
+            ss_contexts.push(lf_dzk_sss);
+            if start_degree % 2 == 0{
+                start_degree = start_degree/2;
+            }
+            else{
+                start_degree = (start_degree+1)/2;
+            }
+        }
+
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -151,7 +190,12 @@ impl Context {
                 max_id: rbc_start_id, 
 
                 small_field_sss: smallfield_ss,
-                large_field_sss: largefield_ss
+                large_field_sss: largefield_ss,
+
+                large_field_bv_sss: lf_bv_sss,
+                large_field_uv_sss: lf_uv_sss,
+
+                dzk_ss: ss_contexts
             };
 
             // Populate secret keys from config
@@ -245,7 +289,8 @@ impl Context {
                             for i in 1u64..10u64{
                                 vec_msg.push(i);
                             }
-                            self.init_acss(vec_msg,acss_inst_id).await;
+                            //self.init_acss(vec_msg,acss_inst_id).await;
+                            self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
                             // wait for messages
                         },
                         SyncState::STOP =>{

@@ -19,7 +19,7 @@ pub struct LargeFieldSSS {
     pub share_amount: usize,
     /// the characteristic of finite field.
     pub prime: LargeField,
-    /// Lagrange coefficients for points 1 through f
+    /// Lagrange coefficients for points 1 through 2f
     pub lag_coeffs: Vec<Vec<LargeField>> 
 }
 
@@ -68,7 +68,7 @@ impl LargeFieldSSS {
         }
         
         let secret = self.recover(&shares_interp);
-        println!("Degree verification : {:?} {:?}",secret,values[0].clone());
+        //println!("Degree verification : {:?} {:?}",secret,values[0].clone());
         secret == values[0].clone()%&self.prime
     }
 
@@ -90,11 +90,16 @@ impl LargeFieldSSS {
             .collect()
     }
 
-    fn mod_evaluate_at(&self, polynomial: &[LargeField], x: usize) -> LargeField {
+    // Use Horner's method to evaluate polynomial points
+    pub fn mod_evaluate_at(&self, polynomial: &[LargeField], x: usize) -> LargeField {
         let x_largefield = BigInt::from(x);
-        polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
+        let mut eval_point = polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
             (&x_largefield * sum + item) % &self.prime
-        })
+        });
+        if eval_point < BigInt::from(0){
+            eval_point += &self.prime; 
+        }
+        eval_point
     }
 
     /// Recover the secret by the shares.
@@ -231,5 +236,106 @@ impl LargeFieldSSS {
             quotients.push(poly_quo);
         }
         quotients
+    }
+
+    // Code from ChatGPT on Gaussian Elimination. Needed to interpolate coefficients from polynomial evaluations
+
+    /// Modular arithmetic helper functions for BigInt
+    fn mod_sub(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+        ((a % p - b % p) % p + p) % p
+    }
+
+    fn mod_mul(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+        ((a % p) * (b % p) % p + p) % p
+    }
+
+    /// Computes modular inverse using Fermat's Little Theorem: a^(p-2) % p
+    fn mod_inv(a: &BigInt, p: &BigInt) -> BigInt {
+        Self::mod_pow(a, &(p - BigInt::from(2)), p)
+    }
+
+    /// Computes (base^exp) % p using binary exponentiation
+    fn mod_pow(base: &BigInt, exp: &BigInt, p: &BigInt) -> BigInt {
+        let mut result = BigInt::one();
+        let mut base = base.clone() % p;
+        let mut exp = exp.clone();
+
+        while !exp.is_zero() {
+            if &exp % 2 == BigInt::one() {
+                result = Self::mod_mul(&result, &base, p);
+            }
+            base = Self::mod_mul(&base, &base, p);
+            exp /= 2;
+        }
+
+        result
+    }
+
+    /// Solves for polynomial coefficients in a prime field using Gaussian elimination.
+    /// Points are provided as a vector of (i, x_i).
+    pub fn polynomial_coefficients(&self, points: &Vec<(BigInt, BigInt)>) -> Vec<BigInt> {
+        let prime = &self.prime;
+        let n = points.len(); // n = t + 1, degree of polynomial is t
+        assert!(
+            n > 0,
+            "Need at least one point to determine the coefficients."
+        );
+
+        let mut matrix = vec![vec![BigInt::zero(); n + 1]; n];
+
+        // Construct the augmented matrix for Vandermonde system
+        for (row, (i, x_i)) in points.iter().enumerate() {
+            let mut value = BigInt::one();
+            for col in 0..n {
+                matrix[row][col] = value.clone(); // i^col (mod prime)
+                value = Self::mod_mul(&value, i, prime); // Compute next power of i
+            }
+            matrix[row][n] = x_i.clone() % prime; // Right-hand side: x_i
+        }
+
+        // Perform Gaussian elimination
+        for col in 0..n {
+            // Find the pivot row
+            let mut pivot = col;
+            for row in col + 1..n {
+                if matrix[row][col] > matrix[pivot][col] {
+                    pivot = row;
+                }
+            }
+            matrix.swap(col, pivot);
+
+            // Normalize pivot row
+            let inv = Self::mod_inv(&matrix[col][col], prime);
+            for k in col..=n {
+                matrix[col][k] = Self::mod_mul(&matrix[col][k], &inv, prime);
+            }
+
+            // Eliminate below pivot
+            for row in col + 1..n {
+                let factor = matrix[row][col].clone();
+                for k in col..=n {
+                    matrix[row][k] = Self::mod_sub(
+                        &matrix[row][k],
+                        &Self::mod_mul(&factor, &matrix[col][k], prime),
+                        prime,
+                    );
+                }
+            }
+        }
+
+        // Back-substitution to find solution
+        let mut coefficients = vec![BigInt::zero(); n];
+        for row in (0..n).rev() {
+            coefficients[row] = matrix[row][n].clone();
+            for col in row + 1..n {
+                coefficients[row] = Self::mod_sub(
+                    &coefficients[row],
+                    &Self::mod_mul(&matrix[row][col], &coefficients[col], prime),
+                    prime,
+                );
+            }
+        }
+
+        coefficients
     }
 }

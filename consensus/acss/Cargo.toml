@@ -30,7 +30,6 @@ num-traits = "0.2.19"
 
 # Local randomness
 rand = "0.6"
-rand_chacha = "0.3.1"
 rand_core = "0.6.4"
 
 # Big Integers for field operations
