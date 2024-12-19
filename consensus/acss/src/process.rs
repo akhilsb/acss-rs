@@ -38,6 +38,11 @@ impl Context {
                 //     log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
                 //     self.process_acss_init(enc_shares,num_secrets,comm,polynomial, dealer, instance_id).await;
                 // },
+                ProtMsg::Init(enc_shares, comm, dealer, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
+                    self.process_acss_init_vf(enc_shares,comm,dealer,instance_id).await;
+                },
                 _ => {}
                 // ProtMsg::Echo(main_msg, instance_id) => {
                 //     // RBC initialized

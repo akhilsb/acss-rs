@@ -40,7 +40,7 @@ pub struct Shares{
 // Verifiable Abort
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{
-    pub roots: Vec<Hash>,
+    pub roots: Vec<Vec<Hash>>,
     pub polys: Vec<Vec<LargeFieldSer>>
 }
 

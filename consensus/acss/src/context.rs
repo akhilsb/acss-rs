@@ -150,12 +150,12 @@ impl Context {
         );
 
         // Prepare dZK context for halving degrees
-        let mut start_degree = config.num_faults+1;
+        let mut start_degree = config.num_faults;
         let end_degree = 2 as usize;
         let mut ss_contexts = HashMap::default();
         while start_degree >= end_degree {
             let lf_dzk_sss = LargeFieldSSS::new(
-                start_degree,
+                start_degree+1,
                 config.num_nodes,
                 large_field_prime_bv.clone()
             );
