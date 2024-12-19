@@ -45,12 +45,19 @@ pub struct VACommitment{
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct VAShare{
-    pub row_poly: Vec<LargeFieldSer>,
-    pub column_poly: Vec<LargeFieldSer>,
+pub struct DZKProof{
     pub g_0_x: Vec<LargeFieldSer>,
     pub g_1_x: Vec<LargeFieldSer>,
-    pub mps: Vec<Proof>,
+    pub proof: Vec<Proof>
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VAShare{
+    // Share and Nonce
+    pub row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)>,
+    // Share and Nonce
+    pub column_poly: Vec<(LargeFieldSer,LargeFieldSer)>,
+    pub dzk_iters: Vec<DZKProof>,
     pub rep: Replica
 }
 

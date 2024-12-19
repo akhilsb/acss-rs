@@ -68,7 +68,7 @@ pub struct Context {
 
     /// Distributed Zero-Knowledge related variables
     pub end_degree: usize,
-    pub dzk_ss: Vec<LargeFieldSSS>
+    pub dzk_ss: HashMap<usize, LargeFieldSSS>
 }
 
 impl Context {
@@ -152,14 +152,14 @@ impl Context {
         // Prepare dZK context for halving degrees
         let mut start_degree = config.num_faults+1;
         let end_degree = 2 as usize;
-        let mut ss_contexts = Vec::new();
+        let mut ss_contexts = HashMap::default();
         while start_degree >= end_degree {
             let lf_dzk_sss = LargeFieldSSS::new(
                 start_degree,
                 config.num_nodes,
                 large_field_prime_bv.clone()
             );
-            ss_contexts.push(lf_dzk_sss);
+            ss_contexts.insert(start_degree,lf_dzk_sss);
             if start_degree % 2 == 0{
                 start_degree = start_degree/2;
             }
@@ -167,6 +167,12 @@ impl Context {
                 start_degree = (start_degree+1)/2;
             }
         }
+        let lf_dzk_sss = LargeFieldSSS::new(
+            start_degree,
+            config.num_nodes,
+            large_field_prime_bv.clone()
+        );
+        ss_contexts.insert(start_degree, lf_dzk_sss);
 
         tokio::spawn(async move {
             let mut c = Context {

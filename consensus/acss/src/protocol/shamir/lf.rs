@@ -255,7 +255,7 @@ impl LargeFieldSSS {
     }
 
     /// Computes (base^exp) % p using binary exponentiation
-    fn mod_pow(base: &BigInt, exp: &BigInt, p: &BigInt) -> BigInt {
+    pub fn mod_pow(base: &BigInt, exp: &BigInt, p: &BigInt) -> BigInt {
         let mut result = BigInt::one();
         let mut base = base.clone() % p;
         let mut exp = exp.clone();
