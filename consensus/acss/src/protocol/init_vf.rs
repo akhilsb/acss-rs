@@ -49,7 +49,7 @@ impl Context{
             let share = secret_poly_y_deg_t[rep+1].clone();
             let mut poly_x_deg_2t = Vec::new();
             poly_x_deg_2t.push(share.clone());
-            if rep <= self.num_faults{
+            if rep <= self.num_faults-1{
                 poly_x_deg_2t.extend(self.large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
             }
             polys_x_deg_2t.push(poly_x_deg_2t);
@@ -107,7 +107,8 @@ impl Context{
             
             // Coefficients
             let bpoly_eval_pts:Vec<(BigInt,BigInt)> = (0..self.num_faults+1).into_iter().map(|x| BigInt::from(x)).zip(bpoly_y_deg_t.clone().into_iter()).collect();
-            blinding_coeffs_y_deg_t.push(self.large_field_uv_sss.polynomial_coefficients(&bpoly_eval_pts));
+            let bpoly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&bpoly_eval_pts);
+            blinding_coeffs_y_deg_t.push(bpoly_coeffs.clone());
             
             blinding_y_deg_t.push(bpoly_y_deg_t);
         }
@@ -200,27 +201,45 @@ impl Context{
                 return self.hash_context.hash_two(mt.root(), bmt.root());
             }
         ).collect();
-
         // 4. Generate Distributed Zero Knowledge Proofs
         let mut hashes = Vec::new();
         let mut dzk_broadcast_polys = Vec::new();
+
+        let mut dzk_share_polynomials = Vec::new();
+        // 4.a. Create DZK Share polynomials
+        let mut rep = 0;
+        for ((coefficient_vec, blinding_coefficient_vec), column_mr) in (coefficients_y_deg_t.into_iter().zip(blinding_coeffs_y_deg_t.into_iter())).zip(column_wise_roots.clone().into_iter()){
+            let column_root_bint = BigInt::from_signed_bytes_be(column_mr.clone().as_slice());
+            
+            let dzk_poly: Vec<BigInt> = coefficient_vec.into_iter().zip(blinding_coefficient_vec.into_iter()).map(
+                |(f_i,b_i)| {
+                    let mut added_coeff = (b_i + &column_root_bint*f_i)%&field_prime;
+                    if added_coeff < zero{
+                        added_coeff += &field_prime;
+                    }
+                    return added_coeff;
+                }
+            ).collect();
+            dzk_share_polynomials.push(dzk_poly.clone());
+            let mut vec_pts = Vec::new();
+            for i in 1..self.num_nodes+1{
+                let pt = self.large_field_uv_sss.mod_evaluate_at(&dzk_poly, i);
+                assert!(polys_x_deg_2t[i-1][rep+1] == polys_y_deg_t[rep][i]);
+                let mut sub_eval = (blinding_y_deg_t[rep][i].clone() + &column_root_bint*polys_x_deg_2t[i-1][rep+1].clone())%&field_prime;
+                if sub_eval < zero{
+                    sub_eval += &field_prime;
+                }
+                assert!(pt == sub_eval);
+                vec_pts.push((i,pt));
+            }
+            rep +=1;
+        }
         // (Replica, (g_0 values), (g_1 values), (Vector of Merkle Proofs for each g_0,g_1 value))
         let mut shares_proofs_dzk: Vec<(Replica, Vec<DZKProof>)> = Vec::new();
         for rep in 0..self.num_nodes{
             shares_proofs_dzk.push((rep, Vec::new()));
         }
-        for (rep,(coefficient_vec, blinding_coefficient_vec)) in (0..self.num_nodes).into_iter().zip(coefficients_y_deg_t.into_iter().zip(blinding_coeffs_y_deg_t.into_iter())){
-            let first_root = column_wise_roots[rep].clone();
-            let first_root_bint = BigInt::from_signed_bytes_be(first_root.clone().as_slice());
-            let dzk_poly: Vec<BigInt> = coefficient_vec.into_iter().zip(blinding_coefficient_vec.into_iter()).map(
-                |(f_i,b_i)| {
-                    let mut added_coeff = (f_i + &first_root_bint*b_i)%&field_prime;
-                    if added_coeff < zero{
-                        added_coeff += &field_prime;
-                    } 
-                    return added_coeff;
-                }
-            ).collect();
+        for (dzk_poly,column_root) in dzk_share_polynomials.into_iter().zip(column_wise_roots.into_iter()){
             
             let mut merkle_roots = Vec::new();
             let mut eval_points = Vec::new();
@@ -231,7 +250,7 @@ impl Context{
             let coefficients = dzk_poly.clone();
             
             let iteration = 1;
-            let root = first_root;
+            let root = column_root;
             //merkle_roots.push(root.clone());
 
             // Reliably broadcast these coefficients
@@ -260,8 +279,6 @@ impl Context{
                     dzk_proofs_all_nodes.get_mut(rep).unwrap().proof.push(mt.gen_proof(rep));
                 }
             }
-            log::info!("G_0pts {:?}, G_1pts: {:?} iteration: {} rep: {}", dzk_proofs_all_nodes[rep].g_0_x.clone(),dzk_proofs_all_nodes[rep].g_1_x.clone(),iteration,rep);
-
 
             for (rep,proof) in (0..self.num_nodes).into_iter().zip(dzk_proofs_all_nodes.into_iter()){
                 shares_proofs_dzk[rep].1.push(proof);
@@ -283,16 +300,15 @@ impl Context{
             // Craft VAShare message
             // polys_x_deg_2t[rep].pop(..0);
             // nonce_polys[rep].drain(..0);
-            polys_x_deg_2t[rep] = polys_x_deg_2t[rep].split_off(1);
+            //polys_x_deg_2t[rep] = polys_x_deg_2t[rep].split_off(1);
             polys_y_deg_t[rep].truncate(self.num_faults+1);
             //blinding_y_deg_t[rep].truncate(self.num_faults+1);
 
-            let row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().zip(polys_x_deg_2t[rep].iter()).map(
-                |(index, x)| 
-                    (x.to_signed_bytes_be(),
+            let row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().map(|index| {
+                (polys_x_deg_2t[rep][index+1].to_signed_bytes_be(),
                     nonce_polys[index][rep+1].clone().to_signed_bytes_be(),
                     mts[index].gen_proof(rep))
-            ).collect();
+            }).collect();
             let column_poly: Vec<(LargeFieldSer,LargeFieldSer)> = polys_y_deg_t[rep].iter().zip(nonce_polys[rep].iter()).map(|(share,nonce)| 
                 (share.to_signed_bytes_be(),nonce.to_signed_bytes_be())
             ).collect();
@@ -360,7 +376,6 @@ impl Context{
             split_point = (degree+1)/2;
         }
         let second_half_coeff = first_half_coeff.split_off(split_point);
-        log::info!("Degrees of first half and second half: {} {} in iteration {} and shamir degree: {}", first_half_coeff.len(),second_half_coeff.len(),iteration, self.large_field_uv_sss.threshold);
         
         // 3. Calculate evaluation points on both split polynomials
         let g_vals: Vec<(LargeField,LargeField)> = (1..self.num_nodes+1).into_iter().map(|rep| 
@@ -383,7 +398,6 @@ impl Context{
                 poly_folded[index] += &self.large_field_uv_sss.prime;
             }
         }
-        //log::info!("Aggregated Root Hash: {:?}, g: {:?}, poly_folded: {:?} iteration {}", root, g_vals, poly_folded, iteration);
         
 
         // Fifth and Finally, recurse until degree reaches a constant
@@ -444,11 +458,15 @@ impl Context{
         let zero = BigInt::from(0);
 
         // Verify Row Commitments
-        // let _row_shares:Vec<(BigInt, BigInt)>  = share.row_poly.iter().map(
-        //     |x| 
-        //     (BigInt::from_signed_bytes_be(x.0.clone().as_slice()),
-        //     BigInt::from_signed_bytes_be(x.1.clone().as_slice())) 
-        // ).collect();
+        let row_shares:Vec<BigInt>  = share.row_poly.iter().map(
+            |x| 
+            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
+        ).collect();
+
+        let blinding_row_shares: Vec<BigInt> = share.blinding_row_poly.iter().map(
+            |x|
+            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
+        ).collect();
 
         if !self.verify_row_commitments(share.blinding_row_poly, comm.blinding_column_roots.clone())
         || !self.verify_row_commitments(share.row_poly, comm.column_roots.clone()) 
@@ -495,7 +513,19 @@ impl Context{
         let mut rev_agg_roots: Vec<Vec<Hash>> = Vec::new();
         let mut rev_roots: Vec<Vec<Hash>> = Vec::new();
 
-        for (ind_roots,first_root) in roots.into_iter().zip(column_combined_roots.into_iter()){
+        let mut dzk_shares = Vec::new();
+        for ((ind_roots,first_root),(share,blinding)) in 
+                (roots.into_iter().zip(column_combined_roots.into_iter())).zip(
+                    row_shares.into_iter().zip(blinding_row_shares.into_iter())
+            ){
+            let root_bint = BigInt::from_signed_bytes_be(first_root.as_slice());
+            let mut dzk_share = (blinding + root_bint*share) % &self.large_field_uv_sss.prime;
+            
+            if dzk_share < BigInt::from(0){
+                dzk_share += &self.large_field_uv_sss.prime;
+            }
+            
+            dzk_shares.push(dzk_share);
             // First root comes from the share and blinding polynomials
             let mut agg_root = first_root;
             let mut aggregated_roots = Vec::new();
@@ -507,7 +537,10 @@ impl Context{
             rev_roots.push(ind_roots.into_iter().rev().collect());
         }
         let mut _rep = 0;
-        for ((dzk_proof, first_poly),(rev_agg_root_vec,rev_root_vec)) in (share.dzk_iters.into_iter().zip(comm.polys.into_iter())).zip(rev_agg_roots.into_iter().zip(rev_roots.into_iter())){
+        for ((dzk_proof, first_poly),((rev_agg_root_vec,rev_root_vec),dzk_share)) in 
+                    (share.dzk_iters.into_iter().zip(comm.polys.into_iter())).zip(
+                        (rev_agg_roots.into_iter().zip(rev_roots.into_iter())).zip(dzk_shares.into_iter())
+                    ){
             // These are the coefficients of the polynomial
             //log::info!("DZK verification Hashes {:?} for rep {}", rev_agg_root_vec, rep);
             let first_poly: Vec<BigInt> = first_poly.into_iter().map(|x| BigInt::from_signed_bytes_be(x.as_slice())).collect();
@@ -561,7 +594,11 @@ impl Context{
                     return false; 
                 }
             }
-
+            // Verify final point's equality with the original accumulated point
+            if point != dzk_share{
+                log::error!("DZK Point does not match the first level point {:?} {:?} for {}'s column", point, dzk_share, _rep);
+                return false;
+            }
             _rep+=1;
         }
         true
