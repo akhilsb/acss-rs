@@ -29,44 +29,29 @@ impl Context{
         // degree-2t row polynomial and degree-t column polynomial
 
         // Sample degree-t polynomial
-        let mut secret_poly_y_deg_t = Vec::new();
+        let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
         secret_poly_y_deg_t.push(secret.clone());
-        
-        for _rep in 0..self.num_faults{
-            let share = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
-            // let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
-            // // Add ID to seed
-            // secret_key.extend(instance_id.to_be_bytes());
-            // // Sample random value
-            // let field_elem = pseudorandom_lf(secret_key.as_slice(), 1);
-            // let share = field_elem[0]%&field_prime;
-            // if share < zero{
-            //     share += &field_prime;
-            // }
-            secret_poly_y_deg_t.push(share);
-        }
-        // Extend polynomial to all n values
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut secret_poly_y_deg_t);
+        secret_poly_y_deg_t.extend(self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
         assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
+
+
         // Fill polynomial on x-axis as well
         let mut secret_poly_x_deg_2t = Vec::new();
-        secret_poly_x_deg_2t.push(secret);
-        
-        for _rep in 0..2*self.num_faults{
-            // Sample random values
-            let rand_bint = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
-            secret_poly_x_deg_2t.push(rand_bint);
-        }
-
-        self.large_field_bv_sss.fill_evaluation_at_all_points(&mut secret_poly_x_deg_2t);
+        secret_poly_x_deg_2t.push(secret.clone());
+        secret_poly_x_deg_2t.extend(self.large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
         assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
+
+
         // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
         // Sample t degree-2t bivariate polynomials
         let mut polys_x_deg_2t = Vec::new();
         for rep in 0..self.num_nodes{
             let share = secret_poly_y_deg_t[rep+1].clone();
             let mut poly_x_deg_2t = Vec::new();
-            poly_x_deg_2t.push(share);
+            poly_x_deg_2t.push(share.clone());
+            if rep <= self.num_faults{
+                poly_x_deg_2t.extend(self.large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
+            }
             polys_x_deg_2t.push(poly_x_deg_2t);
         }
 
@@ -80,11 +65,6 @@ impl Context{
         }
 
         for rep in 0..self.num_faults{
-            // Sample 2t points then
-            for _ in 0..2*self.num_faults{
-                polys_x_deg_2t[rep].push(rand::thread_rng().gen_bigint_range(&zero, &field_prime));
-            }
-            self.large_field_bv_sss.fill_evaluation_at_all_points(&mut polys_x_deg_2t[rep]);
             assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
             for index in 0..self.num_nodes{
                 polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
@@ -95,9 +75,12 @@ impl Context{
         // Generate Coefficients of these polynomials
         let mut coefficients_y_deg_t = Vec::new();
         for rep in 0..self.num_nodes{
+            // Coefficients
             let poly_eval_pts:Vec<(BigInt,BigInt)> = (0..self.num_faults+1).into_iter().map(|x| BigInt::from(x)).zip(polys_y_deg_t[rep].clone().into_iter()).collect();
             let coeffs = self.large_field_uv_sss.polynomial_coefficients(&poly_eval_pts);
             coefficients_y_deg_t.push(coeffs.clone());
+            
+            // Evaluations
             self.large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
             assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
         }
@@ -110,37 +93,113 @@ impl Context{
             assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
         }
 
-        // 2. Generate commitments: Sample Nonce Polynomials
+        // 2. Generate blinding polynomials
+        let mut blinding_y_deg_t = Vec::new();
+        let mut blinding_coeffs_y_deg_t = Vec::new();
+        for _rep in 0..self.num_nodes{
+            let mut bpoly_y_deg_t = Vec::new();
+            let secret = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
+            bpoly_y_deg_t.push(secret.clone());
+            
+            // Shares
+            let shares: Vec<BigInt> = self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1).collect();
+            bpoly_y_deg_t.extend(shares);
+            
+            // Coefficients
+            let bpoly_eval_pts:Vec<(BigInt,BigInt)> = (0..self.num_faults+1).into_iter().map(|x| BigInt::from(x)).zip(bpoly_y_deg_t.clone().into_iter()).collect();
+            blinding_coeffs_y_deg_t.push(self.large_field_uv_sss.polynomial_coefficients(&bpoly_eval_pts));
+            
+            blinding_y_deg_t.push(bpoly_y_deg_t);
+        }
+
+        // 3.a. Generate commitments: Sample Nonce Polynomials
         let mut nonce_polys = Vec::new();
+        let mut blinding_nonce_polys = Vec::new();
         for _ in 0..self.num_nodes{
             let mut nonce_poly_y_deg_t  = Vec::new();
+            let mut bnonce_poly_y_deg_t = Vec::new();
+
+            // Secret sampling
             let secret = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
-            let shares:Vec<BigInt> = self.large_field_uv_sss.split(secret.clone()).into_iter().map(|x| x.1).collect();
+            let bsecret = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
+            
+            // Share filling
+            let shares:Vec<BigInt> = self.large_field_uv_sss.split(secret.clone()).into_iter().map(
+                |x|
+                {
+                    if x.1 < zero{
+                        return x.1 + &field_prime;
+                    } 
+                    x.1
+                }
+            )
+            .collect();
+            let bshares: Vec<BigInt> = self.large_field_uv_sss.split(bsecret.clone()).into_iter().map(
+                |x| 
+                {
+                    if x.1 < zero{
+                        return x.1 + &field_prime;
+                    } 
+                    x.1
+                }
+            ).collect();
+            
+            // Polynomial filling
             nonce_poly_y_deg_t.push(secret);
             nonce_poly_y_deg_t.extend(shares);
+            bnonce_poly_y_deg_t.push(bsecret);
+            bnonce_poly_y_deg_t.extend(bshares);
+
+
             assert!(self.large_field_uv_sss.verify_degree(&mut nonce_poly_y_deg_t));
+            assert!(self.large_field_uv_sss.verify_degree(&mut bnonce_poly_y_deg_t));
+            
             nonce_polys.push(nonce_poly_y_deg_t);
+            blinding_nonce_polys.push(bnonce_poly_y_deg_t);
         }
-        // Generate commitments
+
+
+        // 3.b. Generate commitments
         let mut commitments = Vec::new();
-        for (share_y_deg_t,nonce_y_deg_t) in polys_y_deg_t.iter().zip(nonce_polys.iter()){
+        let mut blinding_commitments = Vec::new();
+        for ((share_y_deg_t,nonce_y_deg_t),(blinding_y_deg_t, bnonce_y_deg_t)) in 
+                    (polys_y_deg_t.iter().zip(nonce_polys.iter())).zip(blinding_y_deg_t.iter().zip(blinding_nonce_polys.iter())){
+            
             let mut comm_y_deg_t = Vec::new();
+            let mut bcomm_y_deg_t = Vec::new();
             for rep in 0..self.num_nodes{
                 let mut appended = Vec::new();
                 appended.extend(share_y_deg_t[rep+1].clone().to_signed_bytes_be());
                 appended.extend(nonce_y_deg_t[rep+1].clone().to_signed_bytes_be());
                 comm_y_deg_t.push(do_hash(appended.as_slice()));
+
+                let mut appended = Vec::new();
+                appended.extend(blinding_y_deg_t[rep+1].clone().to_signed_bytes_be());
+                appended.extend(bnonce_y_deg_t[rep+1].clone().to_signed_bytes_be());
+                bcomm_y_deg_t.push(do_hash(appended.as_slice()));
             }
             commitments.push(comm_y_deg_t);
+            blinding_commitments.push(bcomm_y_deg_t);
         }
-        // Generate Merkle Trees
-        let mut mts = Vec::new();
-        for comm_vector in commitments.clone().into_iter(){
-            mts.push(MerkleTree::new(comm_vector, &self.hash_context));
-        }
-        // A vector of n Merkle Trees
 
-        // 3. Generate Blinding Polynomials
+
+        // 3.c. Generate Merkle Trees over commitments
+        let mut mts = Vec::new();
+        let mut blinding_mts = Vec::new();
+        for (comm_vector,bcomm_vector) in commitments.clone().into_iter().zip(blinding_commitments.clone().into_iter()){
+            mts.push(MerkleTree::new(comm_vector, &self.hash_context));
+            blinding_mts.push(MerkleTree::new(bcomm_vector, &self.hash_context));
+        }
+
+        let mut column_share_roots = Vec::new();
+        let mut column_blinding_roots = Vec::new();
+        let column_wise_roots: Vec<Hash> = mts.iter().zip(blinding_mts.iter()).map(
+            |(mt,bmt)|{
+                column_share_roots.push(mt.root());
+                column_blinding_roots.push(bmt.root());
+                return self.hash_context.hash_two(mt.root(), bmt.root());
+            }
+        ).collect();
 
         // 4. Generate Distributed Zero Knowledge Proofs
         let mut hashes = Vec::new();
@@ -150,17 +209,29 @@ impl Context{
         for rep in 0..self.num_nodes{
             shares_proofs_dzk.push((rep, Vec::new()));
         }
-        for (rep,coefficient_vec) in (0..self.num_nodes).into_iter().zip(coefficients_y_deg_t.into_iter()){
+        for (rep,(coefficient_vec, blinding_coefficient_vec)) in (0..self.num_nodes).into_iter().zip(coefficients_y_deg_t.into_iter().zip(blinding_coeffs_y_deg_t.into_iter())){
+            let first_root = column_wise_roots[rep].clone();
+            let first_root_bint = BigInt::from_signed_bytes_be(first_root.clone().as_slice());
+            let dzk_poly: Vec<BigInt> = coefficient_vec.into_iter().zip(blinding_coefficient_vec.into_iter()).map(
+                |(f_i,b_i)| {
+                    let mut added_coeff = (f_i + &first_root_bint*b_i)%&field_prime;
+                    if added_coeff < zero{
+                        added_coeff += &field_prime;
+                    } 
+                    return added_coeff;
+                }
+            ).collect();
+            
             let mut merkle_roots = Vec::new();
             let mut eval_points = Vec::new();
             
             let mut trees: Vec<MerkleTree> = Vec::new();
-            trees.push(mts[rep].clone());
+            //trees.push(mts[rep].clone());
             
-            let coefficients = coefficient_vec.clone();
+            let coefficients = dzk_poly.clone();
             
             let iteration = 1;
-            let root = mts[rep].root();
+            let root = first_root;
             //merkle_roots.push(root.clone());
 
             // Reliably broadcast these coefficients
@@ -198,8 +269,10 @@ impl Context{
             hashes.push(merkle_roots);
         }
         
-        let va_comm: VACommitment = VACommitment { 
-            roots: hashes, 
+        let va_comm: VACommitment = VACommitment {
+            column_roots: column_share_roots,
+            blinding_column_roots: column_blinding_roots,
+            dzk_roots: hashes, 
             polys: dzk_broadcast_polys 
         };
         
@@ -212,21 +285,39 @@ impl Context{
             // nonce_polys[rep].drain(..0);
             polys_x_deg_2t[rep] = polys_x_deg_2t[rep].split_off(1);
             polys_y_deg_t[rep].truncate(self.num_faults+1);
+            //blinding_y_deg_t[rep].truncate(self.num_faults+1);
 
-            let row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().zip(polys_x_deg_2t[rep].iter()).map(|(index, x)| 
-                (x.to_signed_bytes_be(),
-                nonce_polys[index][rep+1].clone().to_signed_bytes_be(),
-                mts[index].gen_proof(rep))
+            let row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().zip(polys_x_deg_2t[rep].iter()).map(
+                |(index, x)| 
+                    (x.to_signed_bytes_be(),
+                    nonce_polys[index][rep+1].clone().to_signed_bytes_be(),
+                    mts[index].gen_proof(rep))
             ).collect();
             let column_poly: Vec<(LargeFieldSer,LargeFieldSer)> = polys_y_deg_t[rep].iter().zip(nonce_polys[rep].iter()).map(|(share,nonce)| 
                 (share.to_signed_bytes_be(),nonce.to_signed_bytes_be())
             ).collect();
+            
+            let blinding_row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().map(
+                |index| 
+                (blinding_y_deg_t[index][rep+1].clone().to_signed_bytes_be(),
+                    blinding_nonce_polys[index][rep+1].clone().to_signed_bytes_be(),
+                    blinding_mts[index].gen_proof(rep))
+            ).collect();
+            let blinding_column_poly: Vec<(LargeFieldSer,LargeFieldSer)> = blinding_y_deg_t[rep].iter().zip(blinding_nonce_polys[rep].iter()).map(
+                |(share,nonce)|
+                (share.to_signed_bytes_be(),nonce.to_signed_bytes_be())
+            ).collect();
+
+
             let msg = VAShare{
                 row_poly: row_poly,
                 column_poly: column_poly,
                 dzk_iters: dzk_proofs,
                 rep: rep,
+                blinding_row_poly: blinding_row_poly,
+                blinding_column_poly: blinding_column_poly,
             };
+
             // Encrypt and send message
             let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
             let ser_msg = bincode::serialize(&msg).unwrap();
@@ -247,55 +338,53 @@ impl Context{
 
     // Distributed Zero Knowledge Proofs follow a recursive structure. 
     pub fn gen_dzk_proof(&self, eval_points: &mut Vec<Vec<(BigInt,BigInt)>>, trees: &mut Vec<MerkleTree>, coefficients: Vec<BigInt>, iteration: usize, root: Hash) -> Vec<LargeField>{
-        
-        let mut root_bint = BigInt::from_signed_bytes_be(root.as_slice()) % &self.large_field_uv_sss.prime;
-        if root_bint < BigInt::from(0){
-            root_bint += &self.large_field_uv_sss.prime;
+        if coefficients.len()-1 <= self.end_degree{
+            return coefficients;
         }
+        // 1. Create a Merkle Tree if the polynomial is big enough
+        let evaluations: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|x| self.large_field_uv_sss.mod_evaluate_at(&coefficients, x)).collect();
+        let hashes: Vec<Hash> = evaluations.iter().map(|x| do_hash(x.to_signed_bytes_be().as_slice())).collect();
+        let merkle_tree = MerkleTree::new(hashes, &self.hash_context);
+        let next_root = merkle_tree.root();
+        let aggregated_root_hash = self.hash_context.hash_two(root, merkle_tree.root().clone());
+        trees.push(merkle_tree);
 
-        // Second, split polynomial in half
+        // 2. Split polynomial in half
         let mut first_half_coeff = coefficients.clone();
         let degree = coefficients.len()-1;
         let split_point;
-        let next_degree;
         if degree % 2 == 0{
             split_point = degree/2;
-            next_degree = split_point;
         }
         else{
             split_point = (degree+1)/2;
-            next_degree = split_point - 1;
         }
         let second_half_coeff = first_half_coeff.split_off(split_point);
-        let shamir_context = self.dzk_ss.get(&next_degree).unwrap();
-        log::info!("Degrees of first half and second half: {} {} in iteration {} and shamir degree: {}", first_half_coeff.len(),second_half_coeff.len(),iteration, shamir_context.threshold);
+        log::info!("Degrees of first half and second half: {} {} in iteration {} and shamir degree: {}", first_half_coeff.len(),second_half_coeff.len(),iteration, self.large_field_uv_sss.threshold);
         
-        // Third, calculate evaluation points on both split polynomials
+        // 3. Calculate evaluation points on both split polynomials
         let g_vals: Vec<(LargeField,LargeField)> = (1..self.num_nodes+1).into_iter().map(|rep| 
-            (shamir_context.mod_evaluate_at(&first_half_coeff, rep),
-            shamir_context.mod_evaluate_at(&second_half_coeff, rep))
+            (self.large_field_uv_sss.mod_evaluate_at(&first_half_coeff, rep),
+            self.large_field_uv_sss.mod_evaluate_at(&second_half_coeff, rep))
         ).collect();
         eval_points.push(g_vals.clone());
         
-        // Fourth, compute coefficients for next iteration
-        let mut poly_folded:Vec<BigInt> = second_half_coeff.into_iter().map(|coeff| (coeff*&root_bint)%&shamir_context.prime).collect();
+        // 4. Compute coefficients for next iteration
+        
+        // 4.a. Compute updated Merkle root
+        let next_root = self.hash_context.hash_two(root, next_root);
+        let root_bint = BigInt::from_signed_bytes_be(next_root.as_slice()) % &self.large_field_uv_sss.prime;
+        
+        let mut poly_folded:Vec<BigInt> = second_half_coeff.into_iter().map(|coeff| (coeff*&root_bint)%&self.large_field_uv_sss.prime).collect();
         for (index, coeff) in (0..first_half_coeff.len()).into_iter().zip(first_half_coeff.into_iter()){
             poly_folded[index] += coeff;
-            poly_folded[index] = &poly_folded[index] % &shamir_context.prime;
+            poly_folded[index] = &poly_folded[index] % &self.large_field_uv_sss.prime;
             if poly_folded[index] < BigInt::from(0){
-                poly_folded[index] += &shamir_context.prime;
+                poly_folded[index] += &self.large_field_uv_sss.prime;
             }
         }
         //log::info!("Aggregated Root Hash: {:?}, g: {:?}, poly_folded: {:?} iteration {}", root, g_vals, poly_folded, iteration);
-        if poly_folded.len()-1 <= self.end_degree{
-            return poly_folded;
-        }
-        // Only create a Merkle Tree if the polynomial is big enough
-        let evaluations: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|x| self.large_field_uv_sss.mod_evaluate_at(&poly_folded, x)).collect();
-        let hashes: Vec<Hash> = evaluations.iter().map(|x| do_hash(x.to_signed_bytes_be().as_slice())).collect();
-        let merkle_tree = MerkleTree::new(hashes, &self.hash_context);
-        let aggregated_root_hash = self.hash_context.hash_two(root, merkle_tree.root().clone());
-        trees.push(merkle_tree);
+        
 
         // Fifth and Finally, recurse until degree reaches a constant
         return self.gen_dzk_proof(eval_points, trees, poly_folded, iteration+1, aggregated_root_hash);
@@ -313,13 +402,8 @@ impl Context{
         }
     }
 
-    pub fn verify_dzk_proof(&self, share: VAShare, comm: VACommitment)-> bool{
-        
-        let zero = BigInt::from(0);
-
-        // Verify Row Commitments
-        let mut row_shares = Vec::new();
-        for (rep, (share, nonce, proof)) in (0..self.num_nodes).into_iter().zip(share.row_poly.clone().into_iter()){
+    fn verify_row_commitments(self: &Context,shares: Vec<(LargeFieldSer, LargeFieldSer, Proof)>, roots: Vec<Hash>) -> bool{
+        for ((share, nonce, proof), root) in shares.into_iter().zip(roots.into_iter()){
             let mut app_val = Vec::new();
             app_val.extend(share.clone());
             app_val.extend(nonce);
@@ -327,62 +411,109 @@ impl Context{
             let commitment = do_hash(app_val.as_slice());
             if !proof.validate(&self.hash_context) || 
                 proof.item() != commitment || 
-                proof.root() != comm.roots[rep][0]{
+                proof.root() != root{
                 log::error!("Commitment verification failed");
+                log::error!("Proof validation: {}", proof.validate(&self.hash_context));
+                log::error!("Proof item and commitment: {:?} {:?}", proof.item(), commitment);
+                log::error!("Root and proof root: {:?} {:?}",root, proof.root());
                 return false;
             }
-            let share_val = BigInt::from_signed_bytes_be(share.as_slice());
-            row_shares.push(share_val);
+        }
+        true
+    }
+
+    fn verify_column_commitments(self: &Context, shares: Vec<BigInt>, nonces: Vec<BigInt>, root: Hash)-> bool{
+        let mut commitments = Vec::new();
+        for rep in 0..self.num_nodes{
+            let mut app_share = Vec::new();
+            app_share.extend(shares[rep+1].clone().to_signed_bytes_be());
+            app_share.extend(nonces[rep+1].clone().to_signed_bytes_be());
+            commitments.push(do_hash(app_share.as_slice()));
+        }
+        // Construct Merkle Tree
+        let mt = MerkleTree::new(commitments, &self.hash_context);
+        if mt.root() != root{
+            log::error!("Error verifying column polynomial root");
+            return false;
+        }
+        true
+    }
+
+    pub fn verify_dzk_proof(&self, share: VAShare, comm: VACommitment)-> bool{
+        
+        let zero = BigInt::from(0);
+
+        // Verify Row Commitments
+        // let _row_shares:Vec<(BigInt, BigInt)>  = share.row_poly.iter().map(
+        //     |x| 
+        //     (BigInt::from_signed_bytes_be(x.0.clone().as_slice()),
+        //     BigInt::from_signed_bytes_be(x.1.clone().as_slice())) 
+        // ).collect();
+
+        if !self.verify_row_commitments(share.blinding_row_poly, comm.blinding_column_roots.clone())
+        || !self.verify_row_commitments(share.row_poly, comm.column_roots.clone()) 
+        
+        {
+            log::error!("Row Commitment verification failed");
+            return false;
         }
 
         // Verify Column commitments next
         let mut column_shares = Vec::new();
         let mut column_nonces = Vec::new();
-        for (share, nonce) in share.column_poly.into_iter(){
+
+        let mut blinding_shares = Vec::new();
+        let mut blinding_nonces = Vec::new();
+        for ((share,nonce), (bshare,bnonce)) in share.column_poly.into_iter().zip(share.blinding_column_poly.into_iter()){
             column_shares.push(BigInt::from_signed_bytes_be(share.as_slice()));
             column_nonces.push(BigInt::from_signed_bytes_be(nonce.as_slice()));
+
+            blinding_shares.push(BigInt::from_signed_bytes_be(bshare.as_slice()));
+            blinding_nonces.push(BigInt::from_signed_bytes_be(bnonce.as_slice()));
         }
+
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_shares);
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_nonces);
-        let mut commitments = Vec::new();
-        for rep in 0..self.num_nodes{
-            let mut app_share = Vec::new();
-            app_share.extend(column_shares[rep+1].clone().to_signed_bytes_be());
-            app_share.extend(column_nonces[rep+1].clone().to_signed_bytes_be());
-            commitments.push(do_hash(app_share.as_slice()));
-        }
-        // Construct Merkle Tree
-        let mt = MerkleTree::new(commitments, &self.hash_context);
-        if mt.root() != comm.roots[self.myid][0]{
-            log::error!("Error verifying column polynomial root");
+
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_shares);
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_nonces);
+
+        if !self.verify_column_commitments(column_shares, column_nonces, comm.column_roots[self.myid]) || 
+        !self.verify_column_commitments(blinding_shares, blinding_nonces, comm.blinding_column_roots[self.myid]){
+            log::error!("Row Commitment verification failed");
             return false;
         }
 
+        let column_combined_roots: Vec<Hash> = comm.column_roots.into_iter().zip(comm.blinding_column_roots.into_iter()).map(
+            |(root1,root2)|
+            self.hash_context.hash_two(root1, root2)
+        ).collect();
         // Verify dzk proof finally
         // Start from the lowest level
-        let roots = comm.roots.clone();
+        let roots = comm.dzk_roots.clone();
+        // Calculate aggregated roots first
         let mut rev_agg_roots: Vec<Vec<Hash>> = Vec::new();
         let mut rev_roots: Vec<Vec<Hash>> = Vec::new();
-        for ind_roots in roots.into_iter(){
-            let mut agg_root = ind_roots[0];
+
+        for (ind_roots,first_root) in roots.into_iter().zip(column_combined_roots.into_iter()){
+            // First root comes from the share and blinding polynomials
+            let mut agg_root = first_root;
             let mut aggregated_roots = Vec::new();
-            aggregated_roots.push(agg_root.clone());
-            for index in 1..ind_roots.len(){
+            for index in 0..ind_roots.len(){
                 agg_root = self.hash_context.hash_two(agg_root , ind_roots[index]);
                 aggregated_roots.push(agg_root.clone());
             }
             rev_agg_roots.push(aggregated_roots.into_iter().rev().collect());
             rev_roots.push(ind_roots.into_iter().rev().collect());
         }
-        let mut rep = 0;
+        let mut _rep = 0;
         for ((dzk_proof, first_poly),(rev_agg_root_vec,rev_root_vec)) in (share.dzk_iters.into_iter().zip(comm.polys.into_iter())).zip(rev_agg_roots.into_iter().zip(rev_roots.into_iter())){
             // These are the coefficients of the polynomial
-            log::info!("DZK verification Hashes {:?} for rep {}", rev_agg_root_vec, rep);
+            //log::info!("DZK verification Hashes {:?} for rep {}", rev_agg_root_vec, rep);
             let first_poly: Vec<BigInt> = first_poly.into_iter().map(|x| BigInt::from_signed_bytes_be(x.as_slice())).collect();
-            let degree_poly = first_poly.len()-1;
-            let shamir_ss = self.dzk_ss.get(&degree_poly).unwrap();
+            let mut degree_poly = first_poly.len()-1;
             // Evaluate points according to this polynomial
-            let mut point = shamir_ss.mod_evaluate_at(first_poly.as_slice(), self.myid+1);
+            let mut point = self.large_field_uv_sss.mod_evaluate_at(first_poly.as_slice(), self.myid+1);
 
             let g_0_pts: Vec<BigInt> = dzk_proof.g_0_x.into_iter().rev().map(|x | BigInt::from_signed_bytes_be(x.as_slice())).collect();
             let g_1_pts: Vec<BigInt> = dzk_proof.g_1_x.into_iter().rev().map(|x| BigInt::from_signed_bytes_be(x.as_slice())).collect();
@@ -390,13 +521,14 @@ impl Context{
             
             for (index, (g_0, g_1)) in (0..g_0_pts.len()).into_iter().zip(g_0_pts.into_iter().zip(g_1_pts.into_iter())){
                 
-                // First, Compute Fiat-Shamir Heuristic point
-                log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
-                let root = BigInt::from_signed_bytes_be(rev_agg_root_vec[index].as_slice())% &shamir_ss.prime;
                 
-                let mut fiat_shamir_hs_point = (&g_0 + &root*&g_1)%&shamir_ss.prime;
+                // First, Compute Fiat-Shamir Heuristic point
+                // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
+                let root = BigInt::from_signed_bytes_be(rev_agg_root_vec[index].as_slice())% &self.large_field_uv_sss.prime;
+                
+                let mut fiat_shamir_hs_point = (&g_0 + &root*&g_1)%&self.large_field_uv_sss.prime;
                 if fiat_shamir_hs_point < zero{
-                    fiat_shamir_hs_point += &shamir_ss.prime;
+                    fiat_shamir_hs_point += &self.large_field_uv_sss.prime;
                 }
                 if point != fiat_shamir_hs_point{
                     log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
@@ -404,20 +536,24 @@ impl Context{
                 }
 
                 // Second, modify point to reflect the value before folding
+                // Where was the polynomial split?
+                let split_point = *self.poly_length_split_points_map.get(&(degree_poly as isize)).unwrap() as usize;
 
                 let pt_bigint = BigInt::from(self.myid+1);
-                let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&BigInt::from(degree_poly+1), &shamir_ss.prime);
-                let mut agg_point = (&g_0 + &pow_bigint*&g_1)%&shamir_ss.prime;
+                let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&BigInt::from(split_point), &self.large_field_uv_sss.prime);
+                let mut agg_point = (&g_0 + &pow_bigint*&g_1)%&self.large_field_uv_sss.prime;
                 if agg_point < zero{
-                    agg_point += &shamir_ss.prime;
+                    agg_point += &self.large_field_uv_sss.prime;
                 }
                 point = agg_point;
+                // update degree of the current polynomial
+                degree_poly = degree_poly + split_point;
+
                 // Third, check Merkle Proof of point
-                
                 let merkle_proof = &proofs[index];
                 if !merkle_proof.validate(
                     &self.hash_context) || 
-                        point.to_signed_bytes_be().as_slice() != share.row_poly[rep].0 || 
+                        do_hash(point.to_signed_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                         rev_root_vec[index] != merkle_proof.root(){
                     log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                     log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_root_vec[index].clone(),merkle_proof.root());
@@ -425,7 +561,8 @@ impl Context{
                     return false; 
                 }
             }
-            rep+=1;
+
+            _rep+=1;
         }
         true
     }

@@ -40,7 +40,9 @@ pub struct Shares{
 // Verifiable Abort
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{
-    pub roots: Vec<Vec<Hash>>,
+    pub column_roots: Vec<Hash>,
+    pub blinding_column_roots: Vec<Hash>,
+    pub dzk_roots: Vec<Vec<Hash>>,
     pub polys: Vec<Vec<LargeFieldSer>>
 }
 
@@ -55,8 +57,10 @@ pub struct DZKProof{
 pub struct VAShare{
     // Share and Nonce
     pub row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)>,
+    pub blinding_row_poly: Vec<(LargeFieldSer, LargeFieldSer, Proof)>,
     // Share and Nonce
     pub column_poly: Vec<(LargeFieldSer,LargeFieldSer)>,
+    pub blinding_column_poly: Vec<(LargeFieldSer, LargeFieldSer)>,
     pub dzk_iters: Vec<DZKProof>,
     pub rep: Replica
 }

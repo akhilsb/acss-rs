@@ -68,7 +68,7 @@ pub struct Context {
 
     /// Distributed Zero-Knowledge related variables
     pub end_degree: usize,
-    pub dzk_ss: HashMap<usize, LargeFieldSSS>
+    pub poly_length_split_points_map: HashMap<isize, isize>
 }
 
 impl Context {
@@ -150,29 +150,21 @@ impl Context {
         );
 
         // Prepare dZK context for halving degrees
-        let mut start_degree = config.num_faults;
+        let mut start_degree = config.num_faults as isize;
         let end_degree = 2 as usize;
         let mut ss_contexts = HashMap::default();
-        while start_degree >= end_degree {
-            let lf_dzk_sss = LargeFieldSSS::new(
-                start_degree+1,
-                config.num_nodes,
-                large_field_prime_bv.clone()
-            );
-            ss_contexts.insert(start_degree,lf_dzk_sss);
+        while start_degree > 0 {
+            let split_point;
             if start_degree % 2 == 0{
-                start_degree = start_degree/2;
+                split_point = start_degree/2;
             }
             else{
-                start_degree = (start_degree+1)/2;
+                split_point = (start_degree+1)/2;
             }
+            start_degree = start_degree - split_point;
+            ss_contexts.insert(start_degree,split_point);
         }
-        let lf_dzk_sss = LargeFieldSSS::new(
-            start_degree,
-            config.num_nodes,
-            large_field_prime_bv.clone()
-        );
-        ss_contexts.insert(start_degree, lf_dzk_sss);
+        //ss_contexts.insert(start_degree, lf_dzk_sss);
 
         tokio::spawn(async move {
             let mut c = Context {
@@ -204,7 +196,7 @@ impl Context {
                 large_field_uv_sss: lf_uv_sss,
 
                 end_degree: end_degree,
-                dzk_ss: ss_contexts
+                poly_length_split_points_map: ss_contexts
             };
 
             // Populate secret keys from config
