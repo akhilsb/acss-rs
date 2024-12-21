@@ -1,7 +1,7 @@
 use crypto::{aes_hash::{MerkleTree, Proof}, LargeField, hash::{Hash, do_hash}};
 use num_bigint_dig::BigInt;
 
-use crate::{Context, VAShare, VACommitment, LargeFieldSSS};
+use crate::{Context, VACommitment, LargeFieldSSS, DZKProof};
 
 
 impl Context{
@@ -57,59 +57,10 @@ impl Context{
         return self.gen_dzk_proof(eval_points, trees, poly_folded, iteration+1, aggregated_root_hash);
     }
 
-    pub fn verify_dzk_proof(&self, share: VAShare, comm: VACommitment)-> bool{
+    pub fn verify_dzk_proof(&self, dzk_proofs: Vec<DZKProof>, comm: VACommitment, column_roots: Vec<Hash>, row_shares: Vec<BigInt>, blinding_row_shares: Vec<BigInt>)-> bool{
         
         let zero = BigInt::from(0);
 
-        // Verify Row Commitments
-        let row_shares:Vec<BigInt>  = share.row_poly.iter().map(
-            |x| 
-            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
-        ).collect();
-
-        let blinding_row_shares: Vec<BigInt> = share.blinding_row_poly.iter().map(
-            |x|
-            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
-        ).collect();
-
-        if !self.verify_row_commitments(share.blinding_row_poly, comm.blinding_column_roots.clone())
-        || !self.verify_row_commitments(share.row_poly, comm.column_roots.clone()) 
-        
-        {
-            log::error!("Row Commitment verification failed");
-            return false;
-        }
-
-        // Verify Column commitments next
-        let mut column_shares = Vec::new();
-        let mut column_nonces = Vec::new();
-
-        let mut blinding_shares = Vec::new();
-        let mut blinding_nonces = Vec::new();
-        for ((share,nonce), (bshare,bnonce)) in share.column_poly.into_iter().zip(share.blinding_column_poly.into_iter()){
-            column_shares.push(BigInt::from_signed_bytes_be(share.as_slice()));
-            column_nonces.push(BigInt::from_signed_bytes_be(nonce.as_slice()));
-
-            blinding_shares.push(BigInt::from_signed_bytes_be(bshare.as_slice()));
-            blinding_nonces.push(BigInt::from_signed_bytes_be(bnonce.as_slice()));
-        }
-
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_shares);
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_nonces);
-
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_shares);
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_nonces);
-
-        if !self.verify_column_commitments(column_shares, column_nonces, comm.column_roots[self.myid]) || 
-        !self.verify_column_commitments(blinding_shares, blinding_nonces, comm.blinding_column_roots[self.myid]){
-            log::error!("Row Commitment verification failed");
-            return false;
-        }
-
-        let column_combined_roots: Vec<Hash> = comm.column_roots.into_iter().zip(comm.blinding_column_roots.into_iter()).map(
-            |(root1,root2)|
-            self.hash_context.hash_two(root1, root2)
-        ).collect();
         // Verify dzk proof finally
         // Start from the lowest level
         let roots = comm.dzk_roots.clone();
@@ -119,7 +70,7 @@ impl Context{
 
         let mut dzk_shares = Vec::new();
         for ((ind_roots,first_root),(share,blinding)) in 
-                (roots.into_iter().zip(column_combined_roots.into_iter())).zip(
+                (roots.into_iter().zip(column_roots.into_iter())).zip(
                     row_shares.into_iter().zip(blinding_row_shares.into_iter())
             ){
             let root_bint = BigInt::from_signed_bytes_be(first_root.as_slice());
@@ -142,7 +93,7 @@ impl Context{
         }
         let mut _rep = 0;
         for ((dzk_proof, first_poly),((rev_agg_root_vec,rev_root_vec),dzk_share)) in 
-                    (share.dzk_iters.into_iter().zip(comm.polys.into_iter())).zip(
+                    (dzk_proofs.into_iter().zip(comm.polys.into_iter())).zip(
                         (rev_agg_roots.into_iter().zip(rev_roots.into_iter())).zip(dzk_shares.into_iter())
                     ){
             // These are the coefficients of the polynomial

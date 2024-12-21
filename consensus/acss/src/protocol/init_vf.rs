@@ -7,7 +7,7 @@ use num_bigint_dig::RandBigInt;
 use num_bigint_dig::BigInt;
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, VAShare, VACommitment, ProtMsg, DZKProof, LargeFieldSSS};
+use crate::{Context, VAShare, VACommitment, ProtMsg, DZKProof};
 
 impl Context{
     /**
@@ -353,12 +353,64 @@ impl Context{
     }
 
     pub async fn process_acss_init_vf(self: &mut Context, enc_shares: Vec<u8>, comm: VACommitment, dealer: Replica, instance_id: usize){
+        // Decrypt message first
         let secret_key = self.sec_key_map.get(&dealer).unwrap();
         
         let dec_shares = decrypt(secret_key.as_slice(), enc_shares);
         let shares: VAShare = bincode::deserialize(&dec_shares).unwrap();
 
-        let verf_check = self.verify_dzk_proof(shares, comm);
+        // Verify Row Commitments
+        let row_shares:Vec<BigInt>  = shares.row_poly.iter().map(
+            |x| 
+            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
+        ).collect();
+
+        let blinding_row_shares: Vec<BigInt> = shares.blinding_row_poly.iter().map(
+            |x|
+            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
+        ).collect();
+
+        // Verify commitments
+        if !self.verify_row_commitments(shares.blinding_row_poly, comm.blinding_column_roots.clone())
+        || !self.verify_row_commitments(shares.row_poly, comm.column_roots.clone()) 
+        
+        {
+            log::error!("Row Commitment verification failed for instance id: {}, abandoning ACSS", instance_id);
+            return;
+        }
+
+        // Verify Column commitments next
+        let mut column_shares = Vec::new();
+        let mut column_nonces = Vec::new();
+
+        let mut blinding_shares = Vec::new();
+        let mut blinding_nonces = Vec::new();
+        for ((share,nonce), (bshare,bnonce)) in shares.column_poly.into_iter().zip(shares.blinding_column_poly.into_iter()){
+            column_shares.push(BigInt::from_signed_bytes_be(share.as_slice()));
+            column_nonces.push(BigInt::from_signed_bytes_be(nonce.as_slice()));
+
+            blinding_shares.push(BigInt::from_signed_bytes_be(bshare.as_slice()));
+            blinding_nonces.push(BigInt::from_signed_bytes_be(bnonce.as_slice()));
+        }
+
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_shares);
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_nonces);
+
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_shares);
+        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_nonces);
+
+        if !self.verify_column_commitments(column_shares, column_nonces, comm.column_roots[self.myid]) || 
+        !self.verify_column_commitments(blinding_shares, blinding_nonces, comm.blinding_column_roots[self.myid]){
+            log::error!("Column Commitment verification failed");
+            return ;
+        }
+
+        let column_combined_roots: Vec<Hash> = comm.column_roots.clone().into_iter().zip(comm.blinding_column_roots.clone().into_iter()).map(
+            |(root1,root2)|
+            self.hash_context.hash_two(root1, root2)
+        ).collect();
+
+        let verf_check = self.verify_dzk_proof(shares.dzk_iters, comm, column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
         if verf_check{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
         }
