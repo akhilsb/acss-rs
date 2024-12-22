@@ -24,7 +24,7 @@ impl Context{
         true
     }
 
-    pub fn verify_column_commitments(self: &Context, shares: Vec<BigInt>, nonces: Vec<BigInt>, root: Hash)-> bool{
+    pub fn verify_column_commitments(self: &Context, shares: &Vec<BigInt>, nonces: &Vec<BigInt>, root: Hash)-> bool{
         let mut commitments = Vec::new();
         for rep in 0..self.num_nodes{
             let mut app_share = Vec::new();

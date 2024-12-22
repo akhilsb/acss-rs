@@ -20,7 +20,7 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use crate::{Handler, SyncHandler, SmallFieldSSS, LargeFieldSSS, ACSSState};
+use crate::{Handler, SyncHandler, SmallFieldSSS, LargeFieldSSS, ACSSState, ACSSVAState};
 
 use super::{ProtMsg};
 use crypto::aes_hash::HashState;
@@ -68,7 +68,10 @@ pub struct Context {
 
     /// Distributed Zero-Knowledge related variables
     pub end_degree: usize,
-    pub poly_length_split_points_map: HashMap<isize, isize>
+    pub poly_length_split_points_map: HashMap<isize, isize>,
+
+    /// ACSS State
+    pub acss_state: HashMap<usize, ACSSVAState>,
 }
 
 impl Context {
@@ -196,7 +199,9 @@ impl Context {
                 large_field_uv_sss: lf_uv_sss,
 
                 end_degree: end_degree,
-                poly_length_split_points_map: ss_contexts
+                poly_length_split_points_map: ss_contexts,
+
+                acss_state: HashMap::default()
             };
 
             // Populate secret keys from config

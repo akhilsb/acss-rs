@@ -1,13 +1,15 @@
+use consensus::get_shards;
 use crypto::aes_hash::{MerkleTree, Proof};
 use crypto::hash::{do_hash, Hash};
 use crypto::{LargeField, LargeFieldSer, encrypt, decrypt};
+use ctrbc::CTRBCMsg;
 use network::Acknowledgement;
 use network::plaintcp::CancelHandler;
 use num_bigint_dig::RandBigInt;
 use num_bigint_dig::BigInt;
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, VAShare, VACommitment, ProtMsg, DZKProof};
+use crate::{Context, VAShare, VACommitment, ProtMsg, DZKProof, ACSSVAState, PointBV};
 
 impl Context{
     /**
@@ -353,6 +355,7 @@ impl Context{
     }
 
     pub async fn process_acss_init_vf(self: &mut Context, enc_shares: Vec<u8>, comm: VACommitment, dealer: Replica, instance_id: usize){
+        
         // Decrypt message first
         let secret_key = self.sec_key_map.get(&dealer).unwrap();
         
@@ -371,8 +374,8 @@ impl Context{
         ).collect();
 
         // Verify commitments
-        if !self.verify_row_commitments(shares.blinding_row_poly, comm.blinding_column_roots.clone())
-        || !self.verify_row_commitments(shares.row_poly, comm.column_roots.clone()) 
+        if !self.verify_row_commitments(shares.blinding_row_poly.clone(), comm.blinding_column_roots.clone())
+        || !self.verify_row_commitments(shares.row_poly.clone(), comm.column_roots.clone()) 
         
         {
             log::error!("Row Commitment verification failed for instance id: {}, abandoning ACSS", instance_id);
@@ -399,8 +402,8 @@ impl Context{
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_shares);
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_nonces);
 
-        if !self.verify_column_commitments(column_shares, column_nonces, comm.column_roots[self.myid]) || 
-        !self.verify_column_commitments(blinding_shares, blinding_nonces, comm.blinding_column_roots[self.myid]){
+        if !self.verify_column_commitments(&column_shares, &column_nonces, comm.column_roots[self.myid]) || 
+        !self.verify_column_commitments(&blinding_shares, &blinding_nonces, comm.blinding_column_roots[self.myid]){
             log::error!("Column Commitment verification failed");
             return ;
         }
@@ -410,9 +413,66 @@ impl Context{
             self.hash_context.hash_two(root1, root2)
         ).collect();
 
-        let verf_check = self.verify_dzk_proof(shares.dzk_iters, comm, column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
+        let verf_check = self.verify_dzk_proof(shares.dzk_iters, comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
         if verf_check{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
+        }
+        else {
+            log::info!("Failed to verify dzk proofs of ACSS instance ID {}", instance_id);
+            return;
+        }
+        // Instantiate ACSS state
+        if !self.acss_state.contains_key(&instance_id){
+            let acss_va_state = ACSSVAState::new(
+                dealer,
+            );
+            self.acss_state.insert(instance_id, acss_va_state);
+        }
+
+        let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap(); 
+        
+        acss_va_state.row_shares.extend(row_shares.clone());
+        acss_va_state.blinding_row_shares.extend(blinding_row_shares.clone());
+
+        for (rep,((share,bshare),(nonce,bnonce))) in (0..self.num_nodes+1).into_iter().zip(
+            (column_shares.into_iter().zip(blinding_shares.into_iter())).zip(column_nonces.into_iter().zip(blinding_nonces.into_iter()))){
+            acss_va_state.column_shares.insert(rep, (share,nonce));
+            acss_va_state.bcolumn_shares.insert(rep, (bshare,bnonce));
+        }
+
+        acss_va_state.column_roots.extend(comm.column_roots.clone());
+        acss_va_state.blinding_column_roots.extend(comm.blinding_column_roots.clone());
+        acss_va_state.dzk_polynomial_roots.extend(comm.dzk_roots.clone());
+        acss_va_state.dzk_polynomials.extend(comm.polys.clone());
+
+        // Initiate ECHO process
+        // Serialize commitment
+        let comm_ser = bincode::serialize(&comm).unwrap();
+        // Use erasure codes to split tree
+
+        let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults+1);
+        let shard_hashes: Vec<Hash> = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
+        let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
+
+        
+        for (rep,((row_share,brow_share),shard)) in (0..self.num_nodes).into_iter().zip(
+            (shares.row_poly.into_iter().zip(shares.blinding_row_poly.into_iter())).zip(shards.into_iter())
+        ){
+            let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
+            let point_bv: PointBV = (row_share, brow_share);
+            
+            let point_bv_ser = bincode::serialize(&point_bv).unwrap();
+            let encrypted_shares = encrypt(secret_key.as_slice(), point_bv_ser.clone());
+            
+            let rbc_msg = CTRBCMsg{
+                shard: shard,
+                mp: merkle_tree.gen_proof(rep),
+                origin: dealer
+            };
+            let echo_msg = ProtMsg::Echo(rbc_msg, encrypted_shares, instance_id);
+            let wrapper_msg = WrapperMsg::new(echo_msg, self.myid, &secret_key);
+            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
+            self.add_cancel_handler(cancel_handler);
         }
     }
 }

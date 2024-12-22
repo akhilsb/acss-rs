@@ -38,6 +38,9 @@ pub struct Shares{
 // }
 
 // Verifiable Abort
+
+pub type PointBV = ((LargeFieldSer, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof));
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{
     pub column_roots: Vec<Hash>,
