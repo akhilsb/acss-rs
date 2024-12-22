@@ -39,7 +39,7 @@ pub struct Shares{
 
 // Verifiable Abort
 
-pub type PointBV = ((LargeFieldSer, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof));
+pub type PointBV = ((LargeFieldSer, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof), DZKProof);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{

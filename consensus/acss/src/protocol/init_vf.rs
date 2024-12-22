@@ -357,7 +357,7 @@ impl Context{
     pub async fn process_acss_init_vf(self: &mut Context, enc_shares: Vec<u8>, comm: VACommitment, dealer: Replica, instance_id: usize){
         
         // Decrypt message first
-        let secret_key = self.sec_key_map.get(&dealer).unwrap();
+        let secret_key = self.sec_key_map.get(&dealer).unwrap().clone();
         
         let dec_shares = decrypt(secret_key.as_slice(), enc_shares);
         let shares: VAShare = bincode::deserialize(&dec_shares).unwrap();
@@ -413,7 +413,7 @@ impl Context{
             self.hash_context.hash_two(root1, root2)
         ).collect();
 
-        let verf_check = self.verify_dzk_proof(shares.dzk_iters, comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
+        let verf_check = self.verify_dzk_proof_batch(shares.dzk_iters.clone(), comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
         if verf_check{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
         }
@@ -448,28 +448,38 @@ impl Context{
         // Initiate ECHO process
         // Serialize commitment
         let comm_ser = bincode::serialize(&comm).unwrap();
+
+
         // Use erasure codes to split tree
 
-        let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults+1);
+        let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
         let shard_hashes: Vec<Hash> = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
         let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
 
-        
-        for (rep,((row_share,brow_share),shard)) in (0..self.num_nodes).into_iter().zip(
-            (shares.row_poly.into_iter().zip(shares.blinding_row_poly.into_iter())).zip(shards.into_iter())
-        ){
+        let mut encrypted_share_vec = Vec::new();
+        for (rep, (row_share, (brow_share, dzk_iter))) in 
+        (0..self.num_nodes).into_iter().zip(
+            shares.row_poly.into_iter().zip(
+                shares.blinding_row_poly.into_iter().zip(
+                    shares.dzk_iters.into_iter())))
+        {
             let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
-            let point_bv: PointBV = (row_share, brow_share);
+            let point_bv: PointBV = (row_share, brow_share, dzk_iter);
             
             let point_bv_ser = bincode::serialize(&point_bv).unwrap();
             let encrypted_shares = encrypt(secret_key.as_slice(), point_bv_ser.clone());
-            
+
+            encrypted_share_vec.push((rep,encrypted_shares));
+        }
+
+        acss_va_state.encrypted_shares.extend(encrypted_share_vec.clone());
+        for ((rep,enc_share), shard) in encrypted_share_vec.into_iter().zip(shards.into_iter()){
             let rbc_msg = CTRBCMsg{
                 shard: shard,
                 mp: merkle_tree.gen_proof(rep),
                 origin: dealer
             };
-            let echo_msg = ProtMsg::Echo(rbc_msg, encrypted_shares, instance_id);
+            let echo_msg = ProtMsg::Echo(rbc_msg, enc_share, instance_id);
             let wrapper_msg = WrapperMsg::new(echo_msg, self.myid, &secret_key);
             let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
             self.add_cancel_handler(cancel_handler);

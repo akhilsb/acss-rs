@@ -4,6 +4,8 @@ use crypto::{LargeField, hash::Hash, LargeFieldSer};
 use ctrbc::RBCState;
 use types::Replica;
 
+use crate::PointBV;
+
 pub struct ACSSVAState{
     pub origin: Replica,
 
@@ -18,8 +20,15 @@ pub struct ACSSVAState{
     pub blinding_column_roots: Vec<Hash>,
     pub dzk_polynomial_roots: Vec<Vec<Hash>>,
     pub dzk_polynomials: Vec<Vec<LargeFieldSer>>,
+
+    pub verified_hash: Option<Hash>,
+
+    // Cached values for speedy computation/preventing code repetition
+    pub bv_echo_points: HashMap<Replica, PointBV>,
+    pub encrypted_shares: Vec<(Replica, Vec<u8>)>,
     
-    pub rbc_state: RBCState
+    pub rbc_state: RBCState,
+    pub terminated: bool,
 }
 
 impl ACSSVAState{
@@ -38,7 +47,15 @@ impl ACSSVAState{
             dzk_polynomial_roots: Vec::new(),
             dzk_polynomials: Vec::new(),
 
-            rbc_state: RBCState::new(origin)
+            bv_echo_points: HashMap::default(),
+            encrypted_shares: Vec::new(),
+
+            verified_hash: None,
+
+
+            rbc_state: RBCState::new(origin),
+
+            terminated: false,
         }
     }
 }
