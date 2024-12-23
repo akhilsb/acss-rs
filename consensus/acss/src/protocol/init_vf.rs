@@ -413,7 +413,7 @@ impl Context{
             self.hash_context.hash_two(root1, root2)
         ).collect();
 
-        let verf_check = self.verify_dzk_proof_batch(shares.dzk_iters.clone(), comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
+        let verf_check = self.verify_dzk_proof_row(shares.dzk_iters.clone(), comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
         if verf_check{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
         }
@@ -430,9 +430,10 @@ impl Context{
         }
 
         let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap(); 
-        
+
         acss_va_state.row_shares.extend(row_shares.clone());
         acss_va_state.blinding_row_shares.extend(blinding_row_shares.clone());
+        let secret_share = column_shares[0].clone();
 
         for (rep,((share,bshare),(nonce,bnonce))) in (0..self.num_nodes+1).into_iter().zip(
             (column_shares.into_iter().zip(blinding_shares.into_iter())).zip(column_nonces.into_iter().zip(blinding_nonces.into_iter()))){
@@ -445,16 +446,19 @@ impl Context{
         acss_va_state.dzk_polynomial_roots.extend(comm.dzk_roots.clone());
         acss_va_state.dzk_polynomials.extend(comm.polys.clone());
 
+        acss_va_state.secret = Some(secret_share);
         // Initiate ECHO process
         // Serialize commitment
         let comm_ser = bincode::serialize(&comm).unwrap();
-
 
         // Use erasure codes to split tree
 
         let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
         let shard_hashes: Vec<Hash> = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
         let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
+
+        // Track the root hash to ensure speedy termination and redundant ECHO checks
+        acss_va_state.verified_hash = Some(merkle_tree.root());
 
         let mut encrypted_share_vec = Vec::new();
         for (rep, (row_share, (brow_share, dzk_iter))) in 
@@ -473,14 +477,15 @@ impl Context{
         }
 
         acss_va_state.encrypted_shares.extend(encrypted_share_vec.clone());
-        for ((rep,enc_share), shard) in encrypted_share_vec.into_iter().zip(shards.into_iter()){
+        for (rep,enc_share) in encrypted_share_vec.into_iter(){
+            let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
             let rbc_msg = CTRBCMsg{
-                shard: shard,
-                mp: merkle_tree.gen_proof(rep),
+                shard: shards[self.myid].clone(),
+                mp: merkle_tree.gen_proof(self.myid),
                 origin: dealer
             };
             let echo_msg = ProtMsg::Echo(rbc_msg, enc_share, instance_id);
-            let wrapper_msg = WrapperMsg::new(echo_msg, self.myid, &secret_key);
+            let wrapper_msg = WrapperMsg::new(echo_msg, self.myid, secret_key.as_slice());
             let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
             self.add_cancel_handler(cancel_handler);
         }

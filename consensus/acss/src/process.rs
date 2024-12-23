@@ -43,23 +43,22 @@ impl Context {
                     log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
                     self.process_acss_init_vf(enc_shares,comm,dealer,instance_id).await;
                 },
-                _ => {}
-                // ProtMsg::Echo(main_msg, instance_id) => {
-                //     // RBC initialized
-                //     log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
-                //     self.handle_echo(main_msg, wrapper_msg.sender,instance_id).await;
-                // }
-                // ProtMsg::Ready(main_msg, instance_id) => {
-                //     // RBC initialized
-                //     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
-                //     self.handle_ready(main_msg, wrapper_msg.sender,instance_id).await;
-                // }
-                
+                ProtMsg::Echo(main_msg, encrypted_share, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
+                    self.process_echo(main_msg, encrypted_share, wrapper_msg.sender,instance_id).await;
+                },
+                ProtMsg::Ready(main_msg, encrypted_share, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
+                    self.process_ready_vf(main_msg,encrypted_share, wrapper_msg.sender,instance_id).await;
+                },
                 // ProtMsg::Deliver(avid_shard, origin, instance_id) => {
                     
                 //     log::debug!("Received Deliver for instance id {} from node : {}", instance_id, origin);
                 //     self.handle_deliver(avid_shard, origin, wrapper_msg.sender, instance_id).await;
                 // }
+                //_ => {}
             }
         } else {
             log::warn!(

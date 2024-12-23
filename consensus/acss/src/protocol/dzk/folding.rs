@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use crypto::{aes_hash::{MerkleTree, Proof}, LargeField, hash::{Hash, do_hash}, LargeFieldSer};
 use num_bigint_dig::BigInt;
 use types::Replica;
 
-use crate::{Context, VACommitment, LargeFieldSSS, DZKProof};
+use crate::{Context, VACommitment, LargeFieldSSS, DZKProof, PointBV};
 
 
 impl Context{
@@ -58,7 +60,72 @@ impl Context{
         return self.gen_dzk_proof(eval_points, trees, poly_folded, iteration+1, aggregated_root_hash);
     }
 
-    pub fn verify_dzk_proof(&self, 
+    pub fn verify_dzk_proofs_column(self: &Context, 
+        dzk_roots: Vec<Hash>, 
+        dzk_poly: Vec<LargeFieldSer>, 
+        bv_ready_points: HashMap<Replica,PointBV>,
+        instance_id: usize
+    )-> Option<(Vec<BigInt>, Vec<BigInt>, Vec<BigInt>, Vec<BigInt>)>{
+        let mut column_evaluation_points = Vec::new();
+        let mut nonce_evaluation_points = Vec::new();
+
+        let mut blinding_evaluation_points = Vec::new();
+        let mut blinding_nonce_points = Vec::new();
+
+        //let bv_echo_points = acss_va_state.bv_echo_points.clone();
+        //let dzk_roots = comm.dzk_roots[self.myid].clone();
+        //let dzk_poly = comm.polys[self.myid].clone();
+        for rep in 0..self.num_nodes{
+            if bv_ready_points.contains_key(&rep){
+                let (column_share,bcolumn_share, dzk_iter) = bv_ready_points.get(&rep).unwrap();
+                // Combine column and blinding column roots
+                let combined_root = self.hash_context.hash_two(column_share.2.root(), bcolumn_share.2.root());
+                
+                let point = BigInt::from_signed_bytes_be(column_share.0.as_slice());
+                let nonce = BigInt::from_signed_bytes_be(column_share.1.as_slice());
+
+                let blinding_point = BigInt::from_signed_bytes_be(bcolumn_share.0.as_slice()); 
+                let blinding_nonce = BigInt::from_signed_bytes_be(bcolumn_share.1.as_slice());
+
+                if self.verify_dzk_proof(dzk_iter.clone() , 
+                                        dzk_roots.clone(), 
+                                        dzk_poly.clone(), 
+                                        combined_root, 
+                                        point.clone(), 
+                                        blinding_point.clone(), 
+                                        rep){
+                    column_evaluation_points.push((BigInt::from(rep+1), point.clone()));
+                    nonce_evaluation_points.push((BigInt::from(rep+1), nonce));
+
+                    blinding_evaluation_points.push((BigInt::from(rep+1), blinding_point.clone()));
+                    blinding_nonce_points.push((BigInt::from(rep+1), blinding_nonce));
+                }
+                
+                if column_evaluation_points.len() == self.num_faults + 1{
+                    break;
+                }
+            }
+        }
+
+        if column_evaluation_points.len() < self.num_faults +1 {
+            log::error!("Did not receive enough valid points from other parties, abandoning ACSS {}", instance_id);
+            return None;
+        }
+        log::info!("Successfully verified commitments and dZK proofs for column polynomial of ACSS instance {}",instance_id);
+        // Re borrow here
+        //let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
+
+        // Interpolate column
+        let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&column_evaluation_points);
+        let nonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_evaluation_points);
+
+        let bpoly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_evaluation_points);
+        let bnonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_nonce_points);
+
+        return Some((poly_coeffs,nonce_coeffs,bpoly_coeffs,bnonce_coeffs));
+    }
+
+    fn verify_dzk_proof(&self, 
         dzk_proof: DZKProof, 
         dzk_roots: Vec<Hash>, 
         dzk_poly: Vec<LargeFieldSer>, 
@@ -153,7 +220,12 @@ impl Context{
         true
     }
 
-    pub fn verify_dzk_proof_batch(&self, dzk_proofs: Vec<DZKProof>, comm: VACommitment, column_roots: Vec<Hash>, row_shares: Vec<BigInt>, blinding_row_shares: Vec<BigInt>)-> bool{
+    pub fn verify_dzk_proof_row(&self, 
+                        dzk_proofs: Vec<DZKProof>, 
+                        comm: VACommitment, 
+                        column_roots: Vec<Hash>, 
+                        row_shares: Vec<BigInt>, 
+                        blinding_row_shares: Vec<BigInt>)-> bool{
         
         let zero = BigInt::from(0);
 

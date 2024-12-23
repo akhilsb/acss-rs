@@ -1,14 +1,14 @@
 use consensus::reconstruct_data;
-use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree};
+use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree, decrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use num_bigint_dig::BigInt;
+
 use types::{Replica, WrapperMsg};
 
 use crate::{Context, PointBV, ACSSVAState, VACommitment, ProtMsg};
 
 impl Context{
-    pub async fn process_echo(self: &mut Context, ctrbcmsg: CTRBCMsg, point: PointBV, echo_sender: Replica, instance_id: usize){
+    pub async fn process_echo(self: &mut Context, ctrbcmsg: CTRBCMsg, encrypted_share: Vec<u8>, echo_sender: Replica, instance_id: usize){
         
         if !self.acss_state.contains_key(&instance_id){
             let acss_va_state = ACSSVAState::new(ctrbcmsg.origin);
@@ -31,6 +31,9 @@ impl Context{
             );
             return;
         }
+        let secret_key_echo_sender = self.sec_key_map.get(&echo_sender).clone().unwrap();
+        let decrypted_message = decrypt(&secret_key_echo_sender, encrypted_share);
+        let point: PointBV = bincode::deserialize(decrypted_message.as_slice()).unwrap();
 
         let root = ctrbcmsg.mp.root();
         let echo_senders = acss_va_state.rbc_state.echos.entry(root).or_default();
@@ -42,8 +45,9 @@ impl Context{
         echo_senders.insert(echo_sender, ctrbcmsg.shard);
         acss_va_state.bv_echo_points.insert(echo_sender, point);
         let size = echo_senders.len().clone();
+
         if size == self.num_nodes - self.num_faults {
-            log::info!("Received n-f ECHO messages for ACSS Instance ID {}, sending READY message",instance_id);
+            log::info!("Received n-f ECHO messages for ACSS Instance ID {}, verifying root validity",instance_id);
             let senders = echo_senders.clone();
 
             // Reconstruct the entire Merkle tree
@@ -65,40 +69,45 @@ impl Context{
                 log::error!("FATAL: Error in Lagrange interpolation {}",status.err().unwrap());
                 return;
             }
-
             let shards:Vec<Vec<u8>> = shards.into_iter().map(| opt | opt.unwrap()).collect();
-            
-            let mut message = Vec::new();
-            for i in 0..self.num_faults+1{
-                message.extend(shards.get(i).clone().unwrap());
-            }
-
-            let my_share:Vec<u8> = shards[self.myid].clone();
 
             // Reconstruct Merkle Root
-            let shard_hashes: Vec<Hash> = shards.into_iter().map(|v| do_hash(v.as_slice())).collect();
+            let shard_hashes: Vec<Hash> = shards.clone().into_iter().map(|v| do_hash(v.as_slice())).collect();
             let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
 
             //let mut send_ready = false;
             if merkle_tree.root() == root{
+            
+                let mut message = Vec::new();
+                for i in 0..self.num_faults+1{
+                    message.extend(shards.get(i).clone().unwrap());
+                }
+
+                let my_share:Vec<u8> = shards[self.myid].clone();
+
+                log::info!("Successfully verified commitment for ACSS instance {}",instance_id);
                 // ECHO phase is completed. Save our share and the root for later purposes and quick access. 
                 acss_va_state.rbc_state.echo_root = Some(root);
                 acss_va_state.rbc_state.fragment = Some((my_share.clone(),merkle_tree.gen_proof(self.myid)));
                 acss_va_state.rbc_state.message = Some(message.clone());
 
                 // Deserialize commitments
-                let comm_hash = do_hash(message.as_slice());
                 let comm: VACommitment = bincode::deserialize(message.as_slice()).unwrap();
+                
                 if acss_va_state.verified_hash.is_some(){
+
                     // Verify the equality of all Merkle roots
-                    if acss_va_state.verified_hash.clone().unwrap() == comm_hash{
+                    if acss_va_state.verified_hash.clone().unwrap() == root{
                         // Successfully the reconstructed commitment. Send READY messages now. 
+                        // Code repetition exists. Mainly because of Rust's mutable borrow restrictions
                         let rbc_msg = CTRBCMsg{
                             shard: my_share.clone(),
                             mp: merkle_tree.gen_proof(self.myid),
                             origin: origin
                         };
                         //self.handle_ready(ctrbc_msg.clone(),msg.origin,instance_id).await;
+                        log::info!("Sending Ready message");
+
                         let attach_enc_shares = true;
                         let encrypted_shares = acss_va_state.encrypted_shares.clone();
                         for rep in 0..self.num_nodes{
@@ -117,64 +126,24 @@ impl Context{
                 }
                 else{
                     // Verify DZK proofs first
-                    let mut column_evaluation_points = Vec::new();
-                    let mut nonce_evaluation_points = Vec::new();
-
-                    let mut blinding_evaluation_points = Vec::new();
-                    let mut blinding_nonce_points = Vec::new();
-
                     let bv_echo_points = acss_va_state.bv_echo_points.clone();
-                    for (rep,dzk_poly) in (0..self.num_nodes).into_iter().zip(comm.polys){
-                        
-                        if bv_echo_points.contains_key(&rep){
-                            
-                            let (column_share,bcolumn_share, dzk_iter) = bv_echo_points.get(&rep).unwrap();
-                            // Combine column and blinding column roots
-                            let combined_root = self.hash_context.hash_two(column_share.2.root(), bcolumn_share.2.root());
-                            let point = BigInt::from_signed_bytes_be(column_share.0.as_slice());
-                            let nonce = BigInt::from_signed_bytes_be(column_share.1.as_slice());
-
-                            let blinding_point = BigInt::from_signed_bytes_be(bcolumn_share.0.as_slice()); 
-                            let blinding_nonce = BigInt::from_signed_bytes_be(bcolumn_share.1.as_slice());
-
-                            if self.verify_dzk_proof(dzk_iter.clone() , 
-                                        comm.dzk_roots[rep].clone(), 
-                                                    dzk_poly, 
-                                                    combined_root, 
-                                                    point.clone(), 
-                                                    blinding_point.clone(), 
-                                                    rep){
-                                column_evaluation_points.push((BigInt::from(rep+1), point.clone()));
-                                nonce_evaluation_points.push((BigInt::from(rep+1), nonce));
-
-                                blinding_evaluation_points.push((BigInt::from(rep+1), blinding_point.clone()));
-                                blinding_nonce_points.push((BigInt::from(rep+1), blinding_nonce));
-                            }
-
-                            // acss_va_state.column_shares.insert(rep , (point, BigInt::from_signed_bytes_be(column_share.1.as_slice())));
-                            // acss_va_state.bcolumn_shares.insert(rep, (blinding_point, BigInt::from_signed_bytes_be(bcolumn_share.1.as_slice())));
-                            
-                            if column_evaluation_points.len() == self.num_faults + 1{
-                                break;
-                            }
-                        }
-                    }
-                    if column_evaluation_points.len() < self.num_faults +1 {
-                        log::error!("Did not receive enough valid points from other parties, abandoning ACSS {}", instance_id);
+                    let proof_status = self.verify_dzk_proofs_column(
+                        comm.dzk_roots[self.myid].clone(), 
+                            comm.polys[self.myid].clone(), 
+                            bv_echo_points,
+                            instance_id
+                        );
+                    if proof_status.is_none(){
+                        log::error!("Error verifying distributed ZK proofs for points on column of {} in ACSS instance {}", self.myid, instance_id);
                         return;
                     }
-                    // Re borrow here
-                    let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
-                    // Interpolate column
-                    let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&column_evaluation_points);
-                    let nonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_evaluation_points);
-
-                    let bpoly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_evaluation_points);
-                    let bnonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_nonce_points);
-                    
+                    let (poly_coeffs,nonce_coeffs, bpoly_coeffs,bnonce_coeffs) = proof_status.unwrap();
                     // Used for error correction
+                    let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
                     let secret_share = poly_coeffs[0].clone();
                     
+                    acss_va_state.verified_hash = Some(root);
+                    acss_va_state.secret = Some(secret_share);
                     // Fill up column shares
                     for rep in 0..self.num_nodes{
                         if !acss_va_state.column_shares.contains_key(&rep){
@@ -186,16 +155,18 @@ impl Context{
                             self.large_field_uv_sss.mod_evaluate_at(&bnonce_coeffs, rep+1)));
                         }
                     }
+                    log::info!("Sending Ready message");
                     let rbc_msg = CTRBCMsg{
                         shard: my_share.clone(),
                         mp: merkle_tree.gen_proof(self.myid),
                         origin: origin
                     };
                     //self.handle_ready(ctrbc_msg.clone(),msg.origin,instance_id).await;
-                    let attach_enc_shares = true;
+                    let attach_enc_shares = acss_va_state.encrypted_shares.len() > 0;
                     let encrypted_shares = acss_va_state.encrypted_shares.clone();
                     for rep in 0..self.num_nodes{
                         let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
+                        
                         // Fetch previously encrypted shares
                         let mut enc_share = Vec::new();
                         if attach_enc_shares{
@@ -208,10 +179,13 @@ impl Context{
                     }
                 }
             }
+            else {
+                log::error!("Root verification failed, abandoning ACSS instance {}", instance_id);
+            }
         }
         // Go for optimistic termination if all n shares have appeared
         else if size == self.num_nodes{
-            log::info!("Received n ECHO messages for ACSS Instance ID {}, terminating",instance_id);
+            // log::info!("Received n ECHO messages for ACSS Instance ID {}, terminating",instance_id);
             // Do not reconstruct the entire root again. Just send the merkle proof
             
             let echo_root = acss_va_state.verified_hash.clone();

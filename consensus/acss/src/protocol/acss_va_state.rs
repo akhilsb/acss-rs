@@ -21,10 +21,15 @@ pub struct ACSSVAState{
     pub dzk_polynomial_roots: Vec<Vec<Hash>>,
     pub dzk_polynomials: Vec<Vec<LargeFieldSer>>,
 
+    pub secret: Option<LargeField>,
+
     pub verified_hash: Option<Hash>,
 
-    // Cached values for speedy computation/preventing code repetition
+    // Points received during ECHO phase from other nodes
     pub bv_echo_points: HashMap<Replica, PointBV>,
+    pub bv_ready_points: HashMap<Replica, PointBV>,
+
+    // Encrypted row polynomial shares
     pub encrypted_shares: Vec<(Replica, Vec<u8>)>,
     
     pub rbc_state: RBCState,
@@ -48,10 +53,12 @@ impl ACSSVAState{
             dzk_polynomials: Vec::new(),
 
             bv_echo_points: HashMap::default(),
+            bv_ready_points: HashMap::default(),
+
             encrypted_shares: Vec::new(),
 
+            secret: None,
             verified_hash: None,
-
 
             rbc_state: RBCState::new(origin),
 
