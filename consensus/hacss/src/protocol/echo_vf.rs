@@ -5,7 +5,8 @@ use network::{plaintcp::CancelHandler, Acknowledgement};
 
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, PointBV, ACSSVAState, VACommitment, ProtMsg};
+use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
+use consensus::PointBV;
 
 impl Context{
     pub async fn process_echo(self: &mut Context, ctrbcmsg: CTRBCMsg, encrypted_share: Vec<u8>, echo_sender: Replica, instance_id: usize){
@@ -43,7 +44,8 @@ impl Context{
         }
 
         echo_senders.insert(echo_sender, ctrbcmsg.shard);
-        acss_va_state.bv_echo_points.insert(echo_sender, point);
+        // echo_sender+1 because we use point i+1 as replica i's input point
+        acss_va_state.bv_echo_points.insert(echo_sender+1, point);
         let size = echo_senders.len().clone();
 
         if size == self.num_nodes - self.num_faults {
@@ -127,7 +129,7 @@ impl Context{
                 else{
                     // Verify DZK proofs first
                     let bv_echo_points = acss_va_state.bv_echo_points.clone();
-                    let proof_status = self.verify_dzk_proofs_column(
+                    let proof_status = self.folding_dzk_context.verify_dzk_proofs_column(
                         comm.dzk_roots[self.myid].clone(), 
                             comm.polys[self.myid].clone(), 
                             bv_echo_points,
@@ -166,7 +168,6 @@ impl Context{
                     let encrypted_shares = acss_va_state.encrypted_shares.clone();
                     for rep in 0..self.num_nodes{
                         let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
-                        
                         // Fetch previously encrypted shares
                         let mut enc_share = Vec::new();
                         if attach_enc_shares{
@@ -185,12 +186,12 @@ impl Context{
         }
         // Go for optimistic termination if all n shares have appeared
         else if size == self.num_nodes{
-            // log::info!("Received n ECHO messages for ACSS Instance ID {}, terminating",instance_id);
             // Do not reconstruct the entire root again. Just send the merkle proof
             
             let echo_root = acss_va_state.verified_hash.clone();
 
             if echo_root.is_some() && !acss_va_state.terminated{
+                log::info!("Received n ECHO messages for ACSS Instance ID {}, terminating",instance_id);
                 acss_va_state.terminated = true;
                 // Send Ready and terminate
 

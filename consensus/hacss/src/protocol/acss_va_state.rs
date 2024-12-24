@@ -4,7 +4,7 @@ use crypto::{LargeField, hash::Hash, LargeFieldSer};
 use ctrbc::RBCState;
 use types::Replica;
 
-use crate::PointBV;
+use consensus::PointBV;
 
 pub struct ACSSVAState{
     pub origin: Replica,

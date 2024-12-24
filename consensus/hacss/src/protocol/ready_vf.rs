@@ -4,7 +4,8 @@ use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, ACSSVAState, PointBV, VACommitment, ProtMsg};
+use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
+use consensus::{PointBV};
 
 impl Context{
     pub async fn process_ready_vf(self: &mut Context, ctrbc_msg: CTRBCMsg, enc_share: Vec<u8>, ready_sender: Replica, instance_id: usize){
@@ -44,7 +45,7 @@ impl Context{
         let dec_msg = decrypt(&secret_key_ready_sender, enc_share);
 
         let deser_share: PointBV = bincode::deserialize(dec_msg.as_slice()).unwrap();
-        acss_va_context.bv_ready_points.insert(ready_sender, deser_share);
+        acss_va_context.bv_ready_points.insert(ready_sender+1, deser_share);
 
         if ready_senders.len() == self.num_faults + 1{
 
@@ -94,7 +95,7 @@ impl Context{
                     let comm: VACommitment = bincode::deserialize(message.as_slice()).unwrap();
                     let bv_ready_points = acss_va_context.bv_ready_points.clone();
 
-                    let proof_status = self.verify_dzk_proofs_column(
+                    let proof_status = self.folding_dzk_context.verify_dzk_proofs_column(
                         comm.dzk_roots[self.myid].clone(), 
                         comm.polys[self.myid].clone(), 
                         bv_ready_points, 

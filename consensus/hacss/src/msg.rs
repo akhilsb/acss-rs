@@ -1,3 +1,4 @@
+use consensus::DZKProof;
 use crypto::{hash::Hash, LargeFieldSer, aes_hash::Proof};
 use ctrbc::CTRBCMsg;
 use serde::{Serialize, Deserialize};
@@ -37,9 +38,6 @@ pub struct Shares{
 //     )
 // }
 
-// Verifiable Abort
-
-pub type PointBV = ((LargeFieldSer, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof), DZKProof);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{
@@ -47,13 +45,6 @@ pub struct VACommitment{
     pub blinding_column_roots: Vec<Hash>,
     pub dzk_roots: Vec<Vec<Hash>>,
     pub polys: Vec<Vec<LargeFieldSer>>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DZKProof{
-    pub g_0_x: Vec<LargeFieldSer>,
-    pub g_1_x: Vec<LargeFieldSer>,
-    pub proof: Vec<Proof>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

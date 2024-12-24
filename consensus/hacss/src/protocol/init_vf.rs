@@ -9,7 +9,8 @@ use num_bigint_dig::RandBigInt;
 use num_bigint_dig::BigInt;
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, VAShare, VACommitment, ProtMsg, DZKProof, ACSSVAState, PointBV};
+use crate::{Context, VAShare, VACommitment, ProtMsg, ACSSVAState};
+use consensus::{DZKProof, PointBV};
 
 impl Context{
     /**
@@ -256,7 +257,13 @@ impl Context{
             //merkle_roots.push(root.clone());
 
             // Reliably broadcast these coefficients
-            let coeffs_const_size: Vec<Vec<u8>> = self.gen_dzk_proof(&mut eval_points, &mut trees, coefficients, iteration, root).into_iter().map(|x| x.to_signed_bytes_be()).collect();
+            let coeffs_const_size: Vec<Vec<u8>> = self.folding_dzk_context.gen_dzk_proof(
+                &mut eval_points, 
+                &mut trees, 
+                coefficients, 
+                iteration, 
+                root
+            ).into_iter().map(|x| x.to_signed_bytes_be()).collect();
             
             for tree in trees.iter(){
                 merkle_roots.push(tree.root());
@@ -413,7 +420,15 @@ impl Context{
             self.hash_context.hash_two(root1, root2)
         ).collect();
 
-        let verf_check = self.verify_dzk_proof_row(shares.dzk_iters.clone(), comm.clone(), column_combined_roots, row_shares.clone(), blinding_row_shares.clone());
+        let verf_check = self.folding_dzk_context.verify_dzk_proof_row(
+            shares.dzk_iters.clone(), 
+            comm.dzk_roots.clone(),
+            comm.polys.clone(), 
+            column_combined_roots, 
+            row_shares.clone(), 
+            blinding_row_shares.clone(),
+            self.myid+1
+        );
         if verf_check{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
         }
