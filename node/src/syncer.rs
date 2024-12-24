@@ -124,7 +124,7 @@ impl Syncer{
                             log::debug!("Node {} started the protocol",msg.sender);
                         },
                         SyncState::COMPLETED=>{
-                            log::debug!("Got COMPLETED message from node {}",msg.sender);
+                            log::info!("Got COMPLETED message from node {}",msg.sender);
                             
                             // deserialize message
                             let rbc_msg: RBCSyncMsg = bincode::deserialize(&msg.value).expect("Unable to deserialize message received from node");
@@ -155,8 +155,8 @@ impl Syncer{
                                 else{
                                     log::info!("All n nodes completed the protocol for ID: {} with latency {:?} and value {:?}",rbc_msg.id,vec_times,value_set);
                                 }
-                                if self.rbc_id >= self.broadcast_msgs.len(){
-                                    self.broadcast(SyncMsg { sender: self.num_nodes, state: SyncState::STOP, value:"".to_string().into_bytes()}).await;
+                                if self.rbc_id > self.broadcast_msgs.len(){
+                                    self.broadcast(SyncMsg { sender: self.num_nodes, state: SyncState::STOP, value:"Terminate".to_string().into_bytes()}).await;
                                 }
                             }
                         }

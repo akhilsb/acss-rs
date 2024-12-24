@@ -110,7 +110,7 @@ impl Context{
                         //self.handle_ready(ctrbc_msg.clone(),msg.origin,instance_id).await;
                         log::info!("Sending Ready message");
 
-                        let attach_enc_shares = true;
+                        let attach_enc_shares = acss_va_state.encrypted_shares.len() > 0;
                         let encrypted_shares = acss_va_state.encrypted_shares.clone();
                         for rep in 0..self.num_nodes{
                             let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
@@ -217,7 +217,7 @@ impl Context{
                     let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
                     self.add_cancel_handler(cancel_handler);
                 }
-                //self.terminate(msg.origin, message).await;
+                self.terminate("Terminated".to_string(), instance_id).await;
             }
         } 
     }

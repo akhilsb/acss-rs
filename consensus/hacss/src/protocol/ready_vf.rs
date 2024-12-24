@@ -2,7 +2,7 @@ use consensus::reconstruct_data;
 use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use types::{Replica, WrapperMsg};
+use types::{Replica, WrapperMsg, SyncMsg, SyncState, RBCSyncMsg};
 
 use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
 use consensus::{PointBV};
@@ -156,8 +156,29 @@ impl Context{
             log::info!("Received n-f READY messages for ACSS Instance ID {}, terminating",instance_id);
             // Terminate protocol
             acss_va_context.terminated = true;
-            let _term_msg = acss_va_context.secret.clone().unwrap();
-            //self.terminate(msg.origin,term_msg).await;
+            let _term_msg = "Terminated";
+            self.terminate(_term_msg.to_string(), instance_id).await;
         }
+    }
+
+    // Invoke this function once you terminate the protocol
+    pub async fn terminate(&mut self, data: String, instance_id: usize) {
+        let rbc_sync_msg = RBCSyncMsg{
+            id: instance_id,
+            msg: data
+        };
+        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
+        let cancel_handler = self
+            .sync_send
+            .send(
+                0,
+                SyncMsg {
+                    sender: self.myid,
+                    state: SyncState::COMPLETED,
+                    value: ser_msg,
+                },
+            )
+            .await;
+        self.add_cancel_handler(cancel_handler);
     }
 }

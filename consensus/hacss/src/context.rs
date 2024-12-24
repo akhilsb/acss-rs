@@ -305,7 +305,7 @@ impl Context {
                                 vec_msg.push(i);
                             }
                             //self.init_acss(vec_msg,acss_inst_id).await;
-                            self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
+                            self.init_verifiable_abort(BigInt::from(0), acss_inst_id, self.num_nodes).await;
                             // wait for messages
                         },
                         SyncState::STOP =>{
