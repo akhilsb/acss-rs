@@ -22,7 +22,6 @@ fnv = "1"
 reed-solomon-erasure = "4.0"
 num-traits = "0.2.19"
 
-
 # Local randomness
 rand = "0.6"
 rand_core = "0.6.4"
@@ -30,3 +29,7 @@ rand_core = "0.6.4"
 # Big Integers for field operations
 num-bigint-dig = "0.4"
 num-bigint = {version = "0.2.6", features = ["rand"]}
+
+network = { package = "network", git = "https://github.com/libdist-rs/libnet-rs.git" }
+async-trait = "0"
+futures-util = "0"

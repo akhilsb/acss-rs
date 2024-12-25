@@ -20,8 +20,8 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use crate::{Handler, SyncHandler, ACSSState, ACSSVAState};
-use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext};
+use crate::{Handler, ACSSState, ACSSVAState};
+use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext, SyncHandler};
 
 use super::{ProtMsg};
 use crypto::aes_hash::HashState;

@@ -102,6 +102,18 @@ impl LargeFieldSSS {
         eval_point
     }
 
+    // Use Horner's method to evaluate polynomial points
+    pub fn mod_evaluate_at_lf(&self, polynomial: &[LargeField], x: LargeField) -> LargeField {
+        let x_largefield = BigInt::from(x);
+        let mut eval_point = polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
+            (&x_largefield * sum + item) % &self.prime
+        });
+        if eval_point < BigInt::from(0){
+            eval_point += &self.prime; 
+        }
+        eval_point
+    }
+
     /// Recover the secret by the shares.
     pub fn recover(&self, shares: &[(usize, LargeField)]) -> LargeField {
         assert!(shares.len() == self.threshold, "wrong shares number");

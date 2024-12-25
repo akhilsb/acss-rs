@@ -39,4 +39,3 @@ num-bigint = {version = "0.2.6", features = ["rand"]}
 network = { package = "network", git = "https://github.com/libdist-rs/libnet-rs.git" }
 async-trait = "0"
 futures-util = "0"
-reed_solomon_rs = "0.1.2"

@@ -6,3 +6,6 @@ pub use dzk::*;
 
 mod shamir;
 pub use shamir::*;
+
+mod handlers;
+pub use handlers::*;

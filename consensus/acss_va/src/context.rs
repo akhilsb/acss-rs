@@ -20,10 +20,12 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use crate::{Handler, SyncHandler, SmallFieldSSS, LargeFieldSSS, ACSSState, ACSSVAState};
+use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 
-use super::{ProtMsg};
+use consensus::SyncHandler;
 use crypto::aes_hash::HashState;
+
+use crate::{msg::ProtMsg, handlers::Handler};
 
 pub struct Context {
     /// Networking context
@@ -52,12 +54,12 @@ pub struct Context {
     exit_rx: oneshot::Receiver<()>,
     
     // Each Reliable Broadcast instance is associated with a Unique Identifier. 
-    pub avid_context: HashMap<usize, ACSSState>,
+    // pub avid_context: HashMap<usize, ACSSState>,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
 
-    pub max_id: usize, 
+    pub max_id: usize,
 
     /// Shamir secret sharing states
     pub small_field_sss: SmallFieldSSS,
@@ -66,12 +68,14 @@ pub struct Context {
     pub large_field_bv_sss: LargeFieldSSS,
     pub large_field_uv_sss: LargeFieldSSS,
 
-    /// Distributed Zero-Knowledge related variables
-    pub end_degree: usize,
-    pub poly_length_split_points_map: HashMap<isize, isize>,
+    /// DZK Proof context
+    pub folding_dzk_context: FoldingDZKContext,
 
     /// ACSS State
-    pub acss_state: HashMap<usize, ACSSVAState>,
+    pub acss_state: HashMap<usize, usize>,
+
+    /// Constants for PRF seeding
+    pub nonce_seed: usize,
 }
 
 impl Context {
@@ -117,6 +121,7 @@ impl Context {
         let key1 = [29u8; 16];
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
+        let hashstate2 = HashState::new(key0, key1, key2);
 
         let threshold:usize = 10000;
         let rbc_start_id = threshold*config.id;
@@ -169,6 +174,16 @@ impl Context {
         }
         //ss_contexts.insert(start_degree, lf_dzk_sss);
 
+        // Folding context
+        let folding_context = FoldingDZKContext{
+            large_field_uv_sss: lf_uv_sss.clone(),
+            hash_context: hashstate2,
+            poly_split_evaluation_map: ss_contexts,
+            evaluation_points: (1..config.num_nodes+1).into_iter().collect(),
+            recon_threshold: config.num_faults+1,
+            end_degree_threshold: end_degree,
+        };
+
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -187,7 +202,7 @@ impl Context {
                 small_field_prime: small_field_prime,
                 large_field_prime: large_field_prime,
 
-                avid_context:HashMap::default(),
+                //avid_context:HashMap::default(),
                 threshold: 10000,
 
                 max_id: rbc_start_id, 
@@ -198,10 +213,10 @@ impl Context {
                 large_field_bv_sss: lf_bv_sss,
                 large_field_uv_sss: lf_uv_sss,
 
-                end_degree: end_degree,
-                poly_length_split_points_map: ss_contexts,
+                folding_dzk_context:folding_context,
 
-                acss_state: HashMap::default()
+                acss_state: HashMap::default(),
+                nonce_seed: 1
             };
 
             // Populate secret keys from config
@@ -296,7 +311,7 @@ impl Context {
                                 vec_msg.push(i);
                             }
                             //self.init_acss(vec_msg,acss_inst_id).await;
-                            self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
+                            //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
                             // wait for messages
                         },
                         SyncState::STOP =>{

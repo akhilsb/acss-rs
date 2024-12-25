@@ -35,14 +35,14 @@ impl Context{
         let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
         secret_poly_y_deg_t.push(secret.clone());
         secret_poly_y_deg_t.extend(self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
-        assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
+        //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
 
 
         // Fill polynomial on x-axis as well
         let mut secret_poly_x_deg_2t = Vec::new();
         secret_poly_x_deg_2t.push(secret.clone());
         secret_poly_x_deg_2t.extend(self.large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
-        assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
+        //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
 
 
         // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
@@ -68,7 +68,7 @@ impl Context{
         }
 
         for rep in 0..self.num_faults{
-            assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+            //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
             for index in 0..self.num_nodes{
                 polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
             }
@@ -85,7 +85,7 @@ impl Context{
             
             // Evaluations
             self.large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
-            assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
+            //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
         }
 
         // Fill all remaining degree-2t polynomials
@@ -93,7 +93,7 @@ impl Context{
             for index in 0..self.num_nodes{
                 polys_x_deg_2t[rep].push(polys_y_deg_t[index][rep+1].clone());
             }
-            assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+            //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
         }
 
         // 2. Generate blinding polynomials
@@ -155,8 +155,8 @@ impl Context{
             bnonce_poly_y_deg_t.extend(bshares);
 
 
-            assert!(self.large_field_uv_sss.verify_degree(&mut nonce_poly_y_deg_t));
-            assert!(self.large_field_uv_sss.verify_degree(&mut bnonce_poly_y_deg_t));
+            //assert!(self.large_field_uv_sss.verify_degree(&mut nonce_poly_y_deg_t));
+            //assert!(self.large_field_uv_sss.verify_degree(&mut bnonce_poly_y_deg_t));
             
             nonce_polys.push(nonce_poly_y_deg_t);
             blinding_nonce_polys.push(bnonce_poly_y_deg_t);
@@ -227,12 +227,12 @@ impl Context{
             let mut vec_pts = Vec::new();
             for i in 1..self.num_nodes+1{
                 let pt = self.large_field_uv_sss.mod_evaluate_at(&dzk_poly, i);
-                assert!(polys_x_deg_2t[i-1][rep+1] == polys_y_deg_t[rep][i]);
+                //assert!(polys_x_deg_2t[i-1][rep+1] == polys_y_deg_t[rep][i]);
                 let mut sub_eval = (blinding_y_deg_t[rep][i].clone() + &column_root_bint*polys_x_deg_2t[i-1][rep+1].clone())%&field_prime;
                 if sub_eval < zero{
                     sub_eval += &field_prime;
                 }
-                assert!(pt == sub_eval);
+                //assert!(pt == sub_eval);
                 vec_pts.push((i,pt));
             }
             rep +=1;

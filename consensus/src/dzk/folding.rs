@@ -5,6 +5,7 @@ use types::Replica;
 
 use crate::{LargeFieldSSS, DZKProof, PointBV};
 
+
 pub struct FoldingDZKContext{
     pub large_field_uv_sss: LargeFieldSSS,
     pub hash_context: HashState,
