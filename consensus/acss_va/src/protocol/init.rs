@@ -4,7 +4,7 @@ use crypto::{LargeField, hash::{Hash, do_hash}, aes_hash::{MerkleTree}, encrypt,
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use num_bigint_dig::RandBigInt;
 use types::{WrapperMsg, Replica};
-use crate::{Context, msg::{RowPolynomialsBatch, Commitment, RowPolynomialsBatchSer, ProtMsg}};
+use crate::{Context, msg::{RowPolynomialsBatch, Commitment, RowPolynomialsBatchSer, ProtMsg, PointsBV}, protocol::BatchACSSState};
 
 impl Context{
     pub async fn init_batch_acss_va(self: &mut Context, secrets: Vec<LargeField>, instance_id: usize){
@@ -260,7 +260,14 @@ impl Context{
     }
 
     pub async fn process_batch_acss_init(&mut self, enc_msg: Vec<u8>, commitment: Commitment, sender: Replica, instance_id: usize){
-        
+        if !self.acss_state.contains_key(&instance_id){
+            let new_state = BatchACSSState::new(sender);
+            self.acss_state.insert(instance_id, new_state);
+        }
+
+        let acss_state = self.acss_state.get_mut(&instance_id).unwrap();
+
+
         let secret_key = self.sec_key_map.get(&sender).clone().unwrap().clone();
         // Decrypt message first
         let dec_msg = decrypt(&secret_key, enc_msg);
@@ -269,6 +276,10 @@ impl Context{
         
         // Verify shares
         let mut index_batch: usize = 0;
+
+        let mut row_evaluations = Vec::new();
+        let mut nonce_evaluations = Vec::new();
+        let mut proofs = Vec::new();
         for (shares_batch_ser, (merkle_roots, (blinding_comm,dzk_polynomial))) in shares_msg.into_iter().zip(
             commitment.roots.into_iter().zip(
                 commitment.blinding_roots.into_iter().zip(commitment.dzk_poly.into_iter()))){
@@ -316,8 +327,8 @@ impl Context{
                 index_batch+=1;
             }
             // generate Merkle tree on commitments
-            let shares_mt = MerkleTree::new(merkle_roots, &self.hash_context);
-            let blinding_mt = MerkleTree::new(blinding_comm, &self.hash_context);
+            let shares_mt = MerkleTree::new(merkle_roots.clone(), &self.hash_context);
+            let blinding_mt = MerkleTree::new(blinding_comm.clone(), &self.hash_context);
 
             let master_root = self.hash_context.hash_two(shares_mt.root(), blinding_mt.root());
             // Verify commitments
@@ -343,8 +354,46 @@ impl Context{
                 log::error!("DZK proof verification failed for ACSS instance {}", instance_id);
                 return;
             }
+            let row_evaluations_batch: Vec<Vec<LargeField>> = shares_batch.coefficients.clone().into_iter().map(|coeffs| {
+                return (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&coeffs, point)).collect();
+            }).collect();
+
+            let nonce_evals_batch: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&shares_batch.nonce_coefficients , point)).collect();
+            
+            row_evaluations.push(row_evaluations_batch);
+            nonce_evaluations.push(nonce_evals_batch);
+            proofs.push(shares_batch.proofs);
+
+            acss_state.row_coefficients.push(shares_batch.coefficients);
+            acss_state.nonce_coefficients.push(shares_batch.nonce_coefficients);
+            
+            acss_state.blinding_commitments.push(blinding_comm);
+            acss_state.blinding_row_shares.push(shares_batch.blinding_evaluation);
+            acss_state.blinding_nonce_shares.push(shares_batch.blinding_nonce_evaluation);
+
+            acss_state.dzk_polynomials.push(dzk_polynomial);
+            acss_state.share_roots.push(merkle_roots);
         }
         log::info!("Successfully verified all shares for ACSS instance ID {}", instance_id);
+        acss_state.rows_reconstructed = true;
+
+        // Send ECHOs to all parties
+        let mut points_vec = Vec::new();
+        for _ in 0..self.num_nodes{
+            points_vec.push(PointsBV{
+                evaluations: Vec::new(),
+                nonce_evaluation: Vec::new(),
+                proof: Vec::new()
+            })
+        }
+
+        // for (row_evals, (nonce_evals, proofs)) in row_evaluations.into_iter().zip(nonce_evaluations.into_iter().zip(proofs.into_iter())){
+        //     for row_eval_sp in row_evals{
+        //         for (rep, point) in (0..self.num_nodes).into_iter().zip(row_eval_sp.into_iter()){
+        //             points_vec[rep].evaluations.push()
+        //         }                
+        //     }
+        // }        
     }
 
     fn generate_commitments(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{

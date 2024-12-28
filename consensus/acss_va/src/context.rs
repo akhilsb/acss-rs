@@ -25,7 +25,7 @@ use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 use consensus::SyncHandler;
 use crypto::{aes_hash::HashState, LargeField};
 
-use crate::{msg::ProtMsg, handlers::Handler};
+use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
 
 pub struct Context {
     /// Networking context
@@ -71,11 +71,12 @@ pub struct Context {
     /// DZK Proof context
     pub folding_dzk_context: FoldingDZKContext,
 
-    /// ACSS State
-    pub acss_state: HashMap<usize, usize>,
 
     /// Constants for PRF seeding
     pub nonce_seed: usize,
+
+    /// State for ACSS
+    pub acss_state: HashMap<usize, BatchACSSState>,
 }
 
 impl Context {

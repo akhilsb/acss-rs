@@ -206,6 +206,60 @@ impl RowPolynomialsBatchSer{
     }
 }
 
+
+pub struct PointsBV{
+    pub evaluations: Vec<Vec<LargeField>>,
+    pub nonce_evaluation: Vec<LargeField>,
+    pub proof: Vec<Proof>,
+}
+
+pub struct PointsBVSer{
+    pub evaluations: Vec<Vec<LargeFieldSer>>,
+    pub nonce_evaluation: Vec<LargeFieldSer>,
+    pub proofs: Vec<Proof>,
+}
+
+impl PointsBV{
+    pub fn verify_points(&self, roots: Vec<Hash>, hc: &HashState)->bool{
+        for (evaluations, (nonce,(proof, root))) in self.evaluations.iter().zip(self.nonce_evaluation.iter().zip(self.proof.iter().zip(roots.into_iter()))){
+            let mut appended_vec = Vec::new();
+            for eval in evaluations{
+                appended_vec.extend(eval.to_signed_bytes_be());
+            }
+            appended_vec.extend(nonce.to_signed_bytes_be());
+            let hash = do_hash(appended_vec.as_slice());
+            if !proof.validate(hc) || proof.item() != hash || proof.root() != root{
+                log::error!("Error verifying point on column");
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn to_ser(&self)-> PointsBVSer{
+        let evaluations_ser: Vec<Vec<LargeFieldSer>> = self.evaluations.clone().into_iter().map(|el| {
+            return el.into_iter().map(|deser| deser.to_signed_bytes_be()).collect();
+        }).collect();
+        let nonce_ser: Vec<LargeFieldSer> = self.nonce_evaluation.clone().into_iter().map(|el|{
+            el.to_signed_bytes_be()
+        }).collect();
+
+        PointsBVSer{
+            evaluations: evaluations_ser,
+            nonce_evaluation: nonce_ser,
+            proofs: self.proof.clone()
+        }
+    }
+
+    pub fn from_ser(pt: PointsBVSer)-> PointsBV{
+        let evaluations: Vec<Vec<LargeField>> = pt.evaluations.into_iter().map(|el| {
+            return el.into_iter().map(|ser| LargeField::from_signed_bytes_be(ser.as_slice())).collect();
+        }).collect();
+        let eval_nonce = pt.nonce_evaluation.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+        PointsBV { evaluations: evaluations, nonce_evaluation: eval_nonce, proof: pt.proofs }
+    }
+}
+
 pub struct ColPolynomialsBatch{
     pub coefficients: Vec<Vec<LargeField>>,
     pub blinding_coefficients: Vec<LargeField>,

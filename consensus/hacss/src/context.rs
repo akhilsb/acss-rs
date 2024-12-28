@@ -20,7 +20,7 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use crate::{Handler, ACSSState, ACSSVAState};
+use crate::{Handler, ACSSVAState};
 use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext, SyncHandler};
 
 use super::{ProtMsg};
@@ -53,7 +53,7 @@ pub struct Context {
     exit_rx: oneshot::Receiver<()>,
     
     // Each Reliable Broadcast instance is associated with a Unique Identifier. 
-    pub avid_context: HashMap<usize, ACSSState>,
+    //pub avid_context: HashMap<usize, ACSSState>,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
@@ -197,7 +197,7 @@ impl Context {
                 small_field_prime: small_field_prime,
                 large_field_prime: large_field_prime,
 
-                avid_context:HashMap::default(),
+                //avid_context:HashMap::default(),
                 threshold: 10000,
 
                 max_id: rbc_start_id, 
