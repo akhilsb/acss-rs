@@ -237,6 +237,7 @@ impl Context{
             }
             rep +=1;
         }
+        
         // (Replica, (g_0 values), (g_1 values), (Vector of Merkle Proofs for each g_0,g_1 value))
         let mut shares_proofs_dzk: Vec<(Replica, Vec<DZKProof>)> = Vec::new();
         for rep in 0..self.num_nodes{

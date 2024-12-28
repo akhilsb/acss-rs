@@ -1,3 +1,7 @@
+use std::fs::File;
+use std::io::Read;
+
+use crypto::LargeFieldSer;
 use num_bigint_dig::BigInt;
 use num_bigint_dig::RandBigInt;
 /**
@@ -20,7 +24,9 @@ pub struct LargeFieldSSS {
     /// the characteristic of finite field.
     pub prime: LargeField,
     /// Lagrange coefficients for points 1 through 2f
-    pub lag_coeffs: Vec<Vec<LargeField>> 
+    pub lag_coeffs: Vec<Vec<LargeField>>,
+    /// Vandermonde inverse matrix for points -f to f
+    pub vandermonde_matrix: Vec<Vec<LargeField>>
 }
 
 // 64-bit variant of shamir SS mainly because of efficiency
@@ -33,7 +39,30 @@ impl LargeFieldSSS {
             threshold: threshold, 
             share_amount: share_amount, 
             prime: prime, 
-            lag_coeffs: lag_coeffs 
+            lag_coeffs: lag_coeffs ,
+            vandermonde_matrix: Vec::new()
+        }
+    }
+
+    pub fn new_with_vandermonde(threshold: usize, share_amount: usize, vandermonde_matrix_file: String,prime: LargeField)-> LargeFieldSSS{
+        let lag_coeffs = Self::lagrange_coefficients(prime.clone(), threshold, share_amount);
+        
+        let mut file = File::open(vandermonde_matrix_file).expect("Failed to open file.");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).expect("Failed to read file.");
+        
+        let loaded_matrix: Vec<Vec<LargeFieldSer>> = serde_json::from_str(&contents).expect("Failed to deserialize matrix.");
+        
+        let load_matrix_bigint: Vec<Vec<LargeField>> = loaded_matrix.into_iter().map(|el| {
+            el.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect()
+        }).collect();
+
+        LargeFieldSSS { 
+            threshold: threshold, 
+            share_amount: share_amount, 
+            prime: prime, 
+            lag_coeffs: lag_coeffs,
+            vandermonde_matrix: load_matrix_bigint
         }
     }
     
@@ -251,6 +280,9 @@ impl LargeFieldSSS {
     }
 
     // Code from ChatGPT on Gaussian Elimination. Needed to interpolate coefficients from polynomial evaluations
+    fn mod_add(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+        ((a % p + b % p) % p + p) % p
+    }
 
     /// Modular arithmetic helper functions for BigInt
     fn mod_sub(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
@@ -281,6 +313,27 @@ impl LargeFieldSSS {
         }
 
         result
+    }
+
+    /// Multiply a matrix by a vector in a prime field
+    fn matrix_vector_multiply(
+        matrix: &Vec<Vec<LargeField>>,
+        vector: &Vec<LargeField>,
+        prime: &LargeField,
+    ) -> Vec<LargeField> {
+        matrix
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .zip(vector)
+                    .fold(BigInt::zero(), |sum, (a, b)| Self::mod_add(&sum, &Self::mod_mul(a, b, prime), prime))
+            })
+            .collect()
+    }
+
+    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(&self, y_values: &Vec<BigInt>) -> Vec<BigInt> {
+        // Multiply Vandermonde inverse by the y-values vector to solve for coefficients
+        Self::matrix_vector_multiply(&self.vandermonde_matrix, y_values, &self.prime)
     }
 
     /// Solves for polynomial coefficients in a prime field using Gaussian elimination.

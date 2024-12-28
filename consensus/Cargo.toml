@@ -16,11 +16,13 @@ bytes = "1.0"
 tokio-util = "0.6"
 tokio-stream = "0.1"
 serde = "1.0.70"
+serde_json = "1.0" # For JSON serialization
 log="*"
 priority-queue="1"
 fnv = "1"
 reed-solomon-erasure = "4.0"
 num-traits = "0.2.19"
+
 
 # Local randomness
 rand = "0.6"

@@ -23,7 +23,7 @@ use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 
 use consensus::SyncHandler;
-use crypto::aes_hash::HashState;
+use crypto::{aes_hash::HashState, LargeField};
 
 use crate::{msg::ProtMsg, handlers::Handler};
 
@@ -133,6 +133,12 @@ impl Context {
         
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
+
+        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
+        let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
+        // // Save to file
+        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
+
         let smallfield_ss = SmallFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 
@@ -145,10 +151,11 @@ impl Context {
             large_field_prime.clone()
         );
 
-        let lf_bv_sss = LargeFieldSSS::new(
+        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
             2*config.num_faults +1, 
             config.num_nodes,
-            large_field_prime_bv.clone()
+            file_path,
+            large_field_prime_bv.clone(),
         );
 
         let lf_uv_sss = LargeFieldSSS::new(
@@ -307,9 +314,10 @@ impl Context {
                             self.max_id = acss_inst_id;
                             // Craft ACSS message
                             let mut vec_msg = Vec::new();
-                            for i in 1u64..10u64{
-                                vec_msg.push(i);
+                            for i in 1u64..10000u64{
+                                vec_msg.push(LargeField::from(i));
                             }
+                            self.init_batch_acss_va(vec_msg , acss_inst_id).await;
                             //self.init_acss(vec_msg,acss_inst_id).await;
                             //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
                             // wait for messages
