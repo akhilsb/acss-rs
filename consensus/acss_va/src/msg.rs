@@ -12,6 +12,7 @@ pub struct RowPolynomialsBatch{
     pub nonce_coefficients: Vec<LargeField>,
     pub blinding_nonce_evaluation: LargeField,
 
+    pub num_bv_polys: usize,
     pub proofs: Vec<Proof>,
     //pub dzk_proof: DZKProof,
 
@@ -153,6 +154,7 @@ pub struct RowPolynomialsBatchSer{
     pub nonce_coefficients: Vec<LargeFieldSer>,
     pub blinding_nonce_evaluation: LargeFieldSer,
 
+    pub num_bv_polys: usize,
     pub proofs: Vec<Proof>,
     //pub dzk_proof: DZKProof,
 
@@ -160,7 +162,7 @@ pub struct RowPolynomialsBatchSer{
 }
 
 impl RowPolynomialsBatchSer{
-    pub fn from_deser(rows: &RowPolynomialsBatch)-> RowPolynomialsBatchSer{
+    pub fn from_deser(rows: RowPolynomialsBatch)-> RowPolynomialsBatchSer{
         let ser_coeffs: Vec<Vec<LargeFieldSer>> = rows.coefficients.iter().map(|coefficients| 
             coefficients.iter().map(|element| element.to_signed_bytes_be()).collect()
         ).collect();
@@ -174,9 +176,10 @@ impl RowPolynomialsBatchSer{
             nonce_coefficients: nonce_coeffs, 
             blinding_nonce_evaluation: blinding_nonce_eval,
 
-            proofs: rows.proofs.clone(),
+            num_bv_polys: rows.num_bv_polys,
+            proofs: rows.proofs,
             //dzk_proof: rows.dzk_proof.clone(),
-            blinding_poly_proof: rows.blinding_poly_proof.clone()
+            blinding_poly_proof: rows.blinding_poly_proof
         }
     }
 
@@ -194,6 +197,7 @@ impl RowPolynomialsBatchSer{
             nonce_coefficients: nonce_coeffs, 
             blinding_nonce_evaluation: blinding_nonce_eval, 
 
+            num_bv_polys: self.num_bv_polys,
             proofs: self.proofs.clone(),
             //dzk_proof: self.dzk_proof.clone(),
 
@@ -288,10 +292,9 @@ pub struct Shares{
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Commitment{
-    pub roots: Vec<Hash>,
-    pub blinding_roots: Vec<Hash>,
-    pub dzk_roots: Vec<Vec<Vec<Hash>>>,
-    pub dzk_polys: Vec<Vec<Vec<LargeFieldSer>>>
+    pub roots: Vec<Vec<Hash>>,
+    pub blinding_roots: Vec<Vec<Hash>>,
+    pub dzk_poly: Vec<Vec<LargeFieldSer>>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

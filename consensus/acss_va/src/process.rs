@@ -40,7 +40,7 @@ impl Context {
                 ProtMsg::Init(enc_shares, comm, dealer, instance_id) => {
                     // RBC initialized
                     log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
-                    //self.process_acss_init_vf(enc_shares,comm,dealer,instance_id).await;
+                    self.process_batch_acss_init(enc_shares,comm,dealer,instance_id).await;
                 },
                 // ProtMsg::Echo(main_msg, encrypted_share, instance_id) => {
                 //     // RBC initialized

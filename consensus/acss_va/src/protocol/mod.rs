@@ -1,1 +1,3 @@
 mod init;
+
+mod bivariate;
