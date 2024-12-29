@@ -1,6 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use consensus::get_shards;
 use crypto::{LargeField, hash::{Hash, do_hash}, aes_hash::{MerkleTree}, encrypt, decrypt, pseudorandom_lf};
+use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use num_bigint_dig::RandBigInt;
 use types::{WrapperMsg, Replica};
@@ -267,6 +269,7 @@ impl Context{
 
         let acss_state = self.acss_state.get_mut(&instance_id).unwrap();
 
+        let commitment_copy = commitment.clone();
 
         let secret_key = self.sec_key_map.get(&sender).clone().unwrap().clone();
         // Decrypt message first
@@ -387,13 +390,53 @@ impl Context{
             })
         }
 
-        // for (row_evals, (nonce_evals, proofs)) in row_evaluations.into_iter().zip(nonce_evaluations.into_iter().zip(proofs.into_iter())){
-        //     for row_eval_sp in row_evals{
-        //         for (rep, point) in (0..self.num_nodes).into_iter().zip(row_eval_sp.into_iter()){
-        //             points_vec[rep].evaluations.push()
-        //         }                
-        //     }
-        // }        
+        for (row_evals, (nonce_evals, proofs)) in row_evaluations.into_iter().zip(nonce_evaluations.into_iter().zip(proofs.into_iter())){
+            let mut evals_single_batch = Vec::new();
+            for _ in 0..self.num_nodes{
+                evals_single_batch.push(Vec::new());
+            }
+            for row_eval_sp in row_evals{
+                for (rep, point) in (0..self.num_nodes).into_iter().zip(row_eval_sp.into_iter()){
+                    evals_single_batch[rep].push(point);
+                }                
+            }
+            for (rep, (eval_points, (nonce, proof))) in (0..self.num_nodes).into_iter().zip(evals_single_batch.into_iter().zip(nonce_evals.into_iter().zip(proofs.into_iter()))){
+                points_vec[rep].evaluations.push(eval_points);
+                points_vec[rep].nonce_evaluation.push(nonce);
+                points_vec[rep].proof.push(proof);
+            }
+        }
+
+        // Broadcast commitment
+        let comm_ser = bincode::serialize(&commitment_copy).unwrap();
+        let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
+        let shard_hashes = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
+
+        let mt = MerkleTree::new(shard_hashes, &self.hash_context);
+
+        acss_state.verified_hash = Some(mt.root());
+        
+        // Send ECHOs now
+        for (rep, common_points) in (0..self.num_nodes).zip(points_vec.into_iter()){
+            let secret_key_party = self.sec_key_map.get(&rep).clone().unwrap();
+            let ser_points = common_points.to_ser();
+            let ser_msg = bincode::serialize(&ser_points).unwrap();
+
+            let enc_msg = encrypt(&secret_key_party, ser_msg);
+
+            let rbc_msg = CTRBCMsg{
+                shard: shards[self.myid].clone(),
+                mp: mt.gen_proof(self.myid),
+                origin: sender,
+            };
+
+            let echo = ProtMsg::Echo(rbc_msg, enc_msg, instance_id);
+            let wrapper_msg = WrapperMsg::new(echo,self.myid, secret_key_party.as_slice());
+
+            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
+            self.add_cancel_handler(cancel_handler);
+
+        }
     }
 
     fn generate_commitments(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{

@@ -213,6 +213,7 @@ pub struct PointsBV{
     pub proof: Vec<Proof>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PointsBVSer{
     pub evaluations: Vec<Vec<LargeFieldSer>>,
     pub nonce_evaluation: Vec<LargeFieldSer>,
