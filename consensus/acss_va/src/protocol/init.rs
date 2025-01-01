@@ -24,6 +24,9 @@ impl Context{
         let mut col_evaluations_batch = Vec::new();
         let mut col_dzk_proof_evaluations_batch = Vec::new();
 
+        let ht_indices: Vec<LargeField> = (1..2*self.num_faults+2).into_iter().map(|el| LargeField::from(el)).collect();
+        let vandermonde_matrix_ht =  self.large_field_uv_sss.vandermonde_matrix(&ht_indices);
+        let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_ht);
 
         for (index,batch) in (0..batched_secrets.len()).into_iter().zip(batched_secrets.into_iter()){
             
@@ -67,7 +70,12 @@ impl Context{
                 false
             );
 
-            row_coefficients_batch.push(bv_coefficients);
+            let mut coefficients_all_parties = Vec::new();
+            for row_poly in row_evaluations.iter(){
+                coefficients_all_parties.push(self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
+            }
+
+            row_coefficients_batch.push(coefficients_all_parties);
             row_evaluations_batch.push(row_evaluations);
             col_evaluations_batch.push(col_evaluations);
             col_dzk_proof_evaluations_batch.push(columns_secret);
@@ -107,16 +115,45 @@ impl Context{
             prf_seed.extend(self.nonce_seed.to_be_bytes());
             prf_seed.extend(index.clone().to_be_bytes());
             
-            let evaluation_points = (1..self.num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect();
-            let (_nonce_row_evals, nonce_col_evals, nonce_row_coeffs) 
-                    = self.sample_bivariate_polynomial_with_prf(None, evaluation_points, prf_seed);
+            let evaluation_points = (0..self.num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect();
             
-            // Generate commitments
-            let comms: Vec<Vec<Hash>> = col_evals_batch.clone().into_iter().zip(nonce_col_evals.into_iter()).map(
-                |(shares,nonces)|
-                Self::generate_commitments(shares, nonces)
-            ).collect();
+            // First polynomial must be randomly sampled
+            let mut first_poly = Vec::new();
+            for _ in 0..2*self.num_faults+1{
+                first_poly.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &self.large_field_uv_sss.prime));
+            }
 
+            let (mut nonce_row_evals, mut nonce_col_evals, _nonce_row_coeffs) 
+                    = self.sample_bivariate_polynomial_with_prf(Some(first_poly), evaluation_points, prf_seed);
+            
+            // Secrets are no longer needed. Remove the first row and column evaluation. They are not needed because they do not correspond to any node's shares
+            nonce_row_evals.remove(0);
+            nonce_col_evals.remove(0);
+            for (row, column) in nonce_row_evals.iter_mut().zip(nonce_col_evals.iter_mut()){
+                row.remove(0);
+                column.remove(0);
+            }
+
+            let mut nonce_coefficients_all_parties = Vec::new();
+            for row_poly in nonce_row_evals.iter(){
+                nonce_coefficients_all_parties.push(self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
+            }
+
+            // Generate commitments
+            let mut col_wise_grouped_polys = Vec::new();
+            for _ in 0..self.num_nodes{
+                col_wise_grouped_polys.push(Vec::new());
+            }
+            for bv_poly in col_evals_batch{
+                for (rep, col_poly) in (0..self.num_nodes).into_iter().zip(bv_poly.into_iter()){
+                    col_wise_grouped_polys[rep].push(col_poly);
+                }
+            }
+            let comms: Vec<Vec<Hash>> = col_wise_grouped_polys.clone().into_iter().zip(nonce_col_evals.into_iter()).map(
+                |(shares,nonces)|
+                Self::generate_poly_commitments(shares, nonces)
+            ).collect();
+            
             let merkle_trees: Vec<MerkleTree> = comms.into_iter().map(|el| MerkleTree::new(el,&self.hash_context)).collect();
             let mrs: Vec<Hash> = merkle_trees.iter().map(|mt| mt.root()).collect();
             
@@ -136,7 +173,7 @@ impl Context{
             let mut blinding_poly_evals_vec = Vec::new();
             blinding_poly_evals_vec.push(blinding_eval_points_comm.clone());
 
-            let blinding_commitment_vec = Self::generate_commitments(blinding_poly_evals_vec, blinding_nonce_eval_points.clone());
+            let blinding_commitment_vec = Self::generate_poly_commitments(blinding_poly_evals_vec, blinding_nonce_eval_points.clone());
             let blinding_mt = MerkleTree::new(blinding_commitment_vec.clone(), &self.hash_context);
             let blinding_root = blinding_mt.root();
 
@@ -175,7 +212,7 @@ impl Context{
                     row_coeffs_party[rep].push(deg_2t_poly);
                 }
             }
-            for (rep,nonce_poly) in (0..self.num_nodes).into_iter().zip(nonce_row_coeffs.into_iter()){
+            for (rep,nonce_poly) in (0..self.num_nodes).into_iter().zip(nonce_coefficients_all_parties.into_iter()){
                 nonce_coeffs_party[rep].extend(nonce_poly);
             }
 
@@ -237,7 +274,8 @@ impl Context{
         let commitment = Commitment{
             roots: merkle_roots_batches,
             blinding_roots: blinding_commitments_batches,
-            dzk_poly: dzk_polynomials
+            dzk_poly: dzk_polynomials,
+            batch_count: each_batch
         };
 
         for (rep,row_polys) in (0..self.num_nodes).into_iter().zip(share_messages_party.into_iter()){
@@ -344,6 +382,7 @@ impl Context{
                 log::error!("Commitment verification failed for ACSS instance {}", instance_id);
                 return;
             }
+            
 
             // Verify DZK proof
             let eval_point_start: isize = ((self.num_faults+1) as isize) * (-1);
@@ -390,7 +429,7 @@ impl Context{
             })
         }
 
-        for (row_evals, (nonce_evals, proofs)) in row_evaluations.into_iter().zip(nonce_evaluations.into_iter().zip(proofs.into_iter())){
+        for (row_evals, (nonce_evals, proofs_batch)) in row_evaluations.into_iter().zip(nonce_evaluations.into_iter().zip(proofs.into_iter())){
             let mut evals_single_batch = Vec::new();
             for _ in 0..self.num_nodes{
                 evals_single_batch.push(Vec::new());
@@ -400,13 +439,18 @@ impl Context{
                     evals_single_batch[rep].push(point);
                 }                
             }
-            for (rep, (eval_points, (nonce, proof))) in (0..self.num_nodes).into_iter().zip(evals_single_batch.into_iter().zip(nonce_evals.into_iter().zip(proofs.into_iter()))){
+            
+            for (rep, (eval_points, (nonce, proof))) in (0..self.num_nodes).into_iter().zip(evals_single_batch.into_iter().zip(nonce_evals.into_iter().zip(proofs_batch.into_iter()))){
                 points_vec[rep].evaluations.push(eval_points);
                 points_vec[rep].nonce_evaluation.push(nonce);
                 points_vec[rep].proof.push(proof);
             }
         }
 
+        for (rep,points) in (0..self.num_nodes).into_iter().zip(points_vec.iter()){
+            let roots_party = commitment_copy.roots.clone().into_iter().map(|comm_vec| comm_vec[rep].clone()).collect();
+            assert!(points.verify_points(roots_party, &self.hash_context).is_some());
+        }
         // Broadcast commitment
         let comm_ser = bincode::serialize(&commitment_copy).unwrap();
         let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
@@ -439,7 +483,7 @@ impl Context{
         }
     }
 
-    fn generate_commitments(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{
+    pub fn generate_poly_commitments(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{
         let mut hashes = Vec::new();
         let mut appended_msgs = Vec::new();
         for _ in 0..nonces.len(){
@@ -453,6 +497,24 @@ impl Context{
         for (mut msg,nonce) in appended_msgs.into_iter().zip(nonces.into_iter()){
             let nonce_ser = nonce.to_signed_bytes_be();
             msg.extend(nonce_ser);
+            hashes.push(do_hash(msg.as_slice()));
+        }
+        hashes
+    }
+
+    pub fn generate_commitments_element(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{
+        let mut hashes = Vec::new();
+        let mut appended_msgs = Vec::new();
+        for _ in 0..nonces.len(){
+            appended_msgs.push(Vec::new());
+        }
+        for (batch_index,(shares_poly, nonce)) in (0..shares.len()).into_iter().zip(shares.into_iter().zip(nonces.into_iter())){
+            for share in shares_poly.into_iter(){
+                appended_msgs[batch_index].extend(share.to_signed_bytes_be());
+            }
+            appended_msgs[batch_index].extend(nonce.to_signed_bytes_be());
+        }
+        for msg in appended_msgs.into_iter(){
             hashes.push(do_hash(msg.as_slice()));
         }
         hashes

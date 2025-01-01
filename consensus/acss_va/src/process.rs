@@ -42,11 +42,11 @@ impl Context {
                     log::debug!("Received Init for instance id {} from node : {}", instance_id, dealer);
                     self.process_batch_acss_init(enc_shares,comm,dealer,instance_id).await;
                 },
-                // ProtMsg::Echo(main_msg, encrypted_share, instance_id) => {
-                //     // RBC initialized
-                //     log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
-                //     self.process_echo(main_msg, encrypted_share, wrapper_msg.sender,instance_id).await;
-                // },
+                ProtMsg::Echo(main_msg, encrypted_share, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
+                    self.process_echo(main_msg, encrypted_share, wrapper_msg.sender,instance_id).await;
+                },
                 // ProtMsg::Ready(main_msg, encrypted_share, instance_id) => {
                 //     // RBC initialized
                 //     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);

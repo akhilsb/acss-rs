@@ -1,4 +1,4 @@
-use crypto::{aes_hash::HashState, hash::Hash};
+use crypto::{aes_hash::HashState};
 
 use crate::LargeFieldSSS;
 

@@ -2,7 +2,6 @@ use std::fs::File;
 use std::io::Read;
 
 use crypto::LargeFieldSer;
-use num_bigint_dig::BigInt;
 use num_bigint_dig::RandBigInt;
 /**
  * Cloned from https://github.com/bitrocks/verifiable-secret-sharing
@@ -81,7 +80,7 @@ impl LargeFieldSSS {
             for (coefficient,point) in coefficients.into_iter().zip(values.clone().into_iter()){
                 sum = (sum + (coefficient*point))% &self.prime;
             }
-            if sum < BigInt::from(0){
+            if sum < LargeField::from(0){
                 sum += &self.prime;
             }
             all_values.push(sum);
@@ -121,11 +120,11 @@ impl LargeFieldSSS {
 
     // Use Horner's method to evaluate polynomial points
     pub fn mod_evaluate_at(&self, polynomial: &[LargeField], x: usize) -> LargeField {
-        let x_largefield = BigInt::from(x);
+        let x_largefield = LargeField::from(x);
         let mut eval_point = polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
             (&x_largefield * sum + item) % &self.prime
         });
-        if eval_point < BigInt::from(0){
+        if eval_point < LargeField::from(0){
             eval_point += &self.prime; 
         }
         eval_point
@@ -133,11 +132,11 @@ impl LargeFieldSSS {
 
     // Use Horner's method to evaluate polynomial points
     pub fn mod_evaluate_at_lf(&self, polynomial: &[LargeField], x: LargeField) -> LargeField {
-        let x_largefield = BigInt::from(x);
+        let x_largefield = LargeField::from(x);
         let mut eval_point = polynomial.iter().rev().fold(Zero::zero(), |sum, item| {
             (&x_largefield * sum + item) % &self.prime
         });
-        if eval_point < BigInt::from(0){
+        if eval_point < LargeField::from(0){
             eval_point += &self.prime; 
         }
         eval_point
@@ -158,7 +157,7 @@ impl LargeFieldSSS {
     fn lagrange_interpolation(&self, x: LargeField, xs: Vec<usize>, ys: Vec<LargeField>) -> LargeField {
         let len = xs.len();
         // println!("x: {}, xs: {:?}, ys: {:?}", x, xs, ys);
-        let xs_largefield: Vec<LargeField> = xs.iter().map(|x| BigInt::from(*x as u64)).collect();
+        let xs_largefield: Vec<LargeField> = xs.iter().map(|x| LargeField::from(*x as u64)).collect();
         // println!("sx_LargeField: {:?}", xs_LargeField);
         (0..len).fold(Zero::zero(), |sum, item| {
             let numerator = (0..len).fold(One::one(), |product: LargeField, i| {
@@ -242,8 +241,8 @@ impl LargeFieldSSS {
         let xs: Vec<u64> = (0 as u64 .. threshold as u64).into_iter().collect();
         let ys: Vec<u64> = (threshold as u64 .. tot_shares as u64+1u64).into_iter().collect();
 
-        let xs_lf: Vec<LargeField> = xs.iter().map(|x| BigInt::from(*x as u64)).collect();
-        let ys_lf: Vec<LargeField> = ys.iter().map(|x| BigInt::from(*x as u64)).collect();
+        let xs_lf: Vec<LargeField> = xs.iter().map(|x| LargeField::from(*x as u64)).collect();
+        let ys_lf: Vec<LargeField> = ys.iter().map(|x| LargeField::from(*x as u64)).collect();
         
         for i in xs_lf.iter(){
             let mut denominator_prod: LargeField = One::one();
@@ -280,32 +279,32 @@ impl LargeFieldSSS {
     }
 
     // Code from ChatGPT on Gaussian Elimination. Needed to interpolate coefficients from polynomial evaluations
-    fn mod_add(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+    fn mod_add(a: &LargeField, b: &LargeField, p: &LargeField) -> LargeField {
         ((a % p + b % p) % p + p) % p
     }
 
-    /// Modular arithmetic helper functions for BigInt
-    fn mod_sub(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+    /// Modular arithmetic helper functions for LargeField
+    fn mod_sub(a: &LargeField, b: &LargeField, p: &LargeField) -> LargeField {
         ((a % p - b % p) % p + p) % p
     }
 
-    fn mod_mul(a: &BigInt, b: &BigInt, p: &BigInt) -> BigInt {
+    fn mod_mul(a: &LargeField, b: &LargeField, p: &LargeField) -> LargeField {
         ((a % p) * (b % p) % p + p) % p
     }
 
     /// Computes modular inverse using Fermat's Little Theorem: a^(p-2) % p
-    fn mod_inv(a: &BigInt, p: &BigInt) -> BigInt {
-        Self::mod_pow(a, &(p - BigInt::from(2)), p)
+    fn mod_inv(a: &LargeField, p: &LargeField) -> LargeField {
+        Self::mod_pow(a, &(p - LargeField::from(2)), p)
     }
 
     /// Computes (base^exp) % p using binary exponentiation
-    pub fn mod_pow(base: &BigInt, exp: &BigInt, p: &BigInt) -> BigInt {
-        let mut result = BigInt::one();
+    pub fn mod_pow(base: &LargeField, exp: &LargeField, p: &LargeField) -> LargeField {
+        let mut result = LargeField::one();
         let mut base = base.clone() % p;
         let mut exp = exp.clone();
 
         while !exp.is_zero() {
-            if &exp % 2 == BigInt::one() {
+            if &exp % 2 == LargeField::one() {
                 result = Self::mod_mul(&result, &base, p);
             }
             base = Self::mod_mul(&base, &base, p);
@@ -326,19 +325,23 @@ impl LargeFieldSSS {
             .map(|row| {
                 row.iter()
                     .zip(vector)
-                    .fold(BigInt::zero(), |sum, (a, b)| Self::mod_add(&sum, &Self::mod_mul(a, b, prime), prime))
+                    .fold(LargeField::zero(), |sum, (a, b)| Self::mod_add(&sum, &Self::mod_mul(a, b, prime), prime))
             })
             .collect()
     }
 
-    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(&self, y_values: &Vec<BigInt>) -> Vec<BigInt> {
+    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(&self, y_values: &Vec<LargeField>) -> Vec<LargeField> {
         // Multiply Vandermonde inverse by the y-values vector to solve for coefficients
         Self::matrix_vector_multiply(&self.vandermonde_matrix, y_values, &self.prime)
     }
 
+    pub fn polynomial_coefficients_with_vandermonde_matrix(&self, matrix: &Vec<Vec<LargeField>>, y_values: &Vec<LargeField>) -> Vec<LargeField>{
+        Self::matrix_vector_multiply(matrix, y_values, &self.prime)
+    }
+
     /// Solves for polynomial coefficients in a prime field using Gaussian elimination.
     /// Points are provided as a vector of (i, x_i).
-    pub fn polynomial_coefficients(&self, points: &Vec<(BigInt, BigInt)>) -> Vec<BigInt> {
+    pub fn polynomial_coefficients(&self, points: &Vec<(LargeField, LargeField)>) -> Vec<LargeField> {
         let prime = &self.prime;
         let n = points.len(); // n = t + 1, degree of polynomial is t
         assert!(
@@ -346,11 +349,11 @@ impl LargeFieldSSS {
             "Need at least one point to determine the coefficients."
         );
 
-        let mut matrix = vec![vec![BigInt::zero(); n + 1]; n];
+        let mut matrix = vec![vec![LargeField::zero(); n + 1]; n];
 
         // Construct the augmented matrix for Vandermonde system
         for (row, (i, x_i)) in points.iter().enumerate() {
-            let mut value = BigInt::one();
+            let mut value = LargeField::one();
             for col in 0..n {
                 matrix[row][col] = value.clone(); // i^col (mod prime)
                 value = Self::mod_mul(&value, i, prime); // Compute next power of i
@@ -389,7 +392,7 @@ impl LargeFieldSSS {
         }
 
         // Back-substitution to find solution
-        let mut coefficients = vec![BigInt::zero(); n];
+        let mut coefficients = vec![LargeField::zero(); n];
         for row in (0..n).rev() {
             coefficients[row] = matrix[row][n].clone();
             for col in row + 1..n {
@@ -402,5 +405,61 @@ impl LargeFieldSSS {
         }
 
         coefficients
+    }
+
+    /// Constructs the Vandermonde matrix for a given set of x-values.
+    pub fn vandermonde_matrix(&self, x_values: &Vec<LargeField>) -> Vec<Vec<LargeField>> {
+        let n = x_values.len();
+        let mut matrix = vec![vec![LargeField::zero(); n]; n];
+
+        for (row, x) in x_values.iter().enumerate() {
+            let mut value = LargeField::one();
+            for col in 0..n {
+                matrix[row][col] = value.clone();
+                value = Self::mod_mul(&value, x, &self.prime);
+            }
+        }
+
+        matrix
+    }
+
+    /// Computes the inverse of a Vandermonde matrix modulo prime using Gaussian elimination.
+    pub fn inverse_vandermonde(&self, matrix: Vec<Vec<LargeField>>) -> Vec<Vec<LargeField>> {
+        let n = matrix.len();
+        let mut augmented = matrix.clone();
+
+        // Extend the matrix with an identity matrix on the right
+        for i in 0..n {
+            augmented[i].extend((0..n).map(|j| if i == j { LargeField::one() } else { LargeField::zero() }));
+        }
+
+        // Perform Gaussian elimination
+        for col in 0..n {
+            // Normalize pivot row
+            let inv = Self::mod_inv(&augmented[col][col], &self.prime);
+            for k in col..2 * n {
+                augmented[col][k] = Self::mod_mul(&augmented[col][k], &inv, &self.prime);
+            }
+
+            // Eliminate other rows
+            for row in 0..n {
+                if row != col {
+                    let factor = augmented[row][col].clone();
+                    for k in col..2 * n {
+                        augmented[row][k] = Self::mod_sub(
+                            &augmented[row][k],
+                            &Self::mod_mul(&factor, &augmented[col][k], &self.prime),
+                            &self.prime,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Extract the right half as the inverse
+        augmented
+            .into_iter()
+            .map(|row| row[n..2 * n].to_vec())
+            .collect()
     }
 }

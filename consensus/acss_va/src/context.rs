@@ -137,9 +137,10 @@ impl Context {
 
         // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
         let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
+        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
         let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-
+        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
         let smallfield_ss = SmallFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 
@@ -159,9 +160,10 @@ impl Context {
             large_field_prime_bv.clone(),
         );
 
-        let lf_uv_sss = LargeFieldSSS::new(
+        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
             config.num_faults +1,
             config.num_nodes,
+            file_path_lt,
             large_field_prime_bv.clone()
         );
 

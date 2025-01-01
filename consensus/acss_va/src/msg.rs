@@ -207,6 +207,7 @@ impl RowPolynomialsBatchSer{
 }
 
 
+#[derive(Debug,Clone)]
 pub struct PointsBV{
     pub evaluations: Vec<Vec<LargeField>>,
     pub nonce_evaluation: Vec<LargeField>,
@@ -221,20 +222,29 @@ pub struct PointsBVSer{
 }
 
 impl PointsBV{
-    pub fn verify_points(&self, roots: Vec<Hash>, hc: &HashState)->bool{
-        for (evaluations, (nonce,(proof, root))) in self.evaluations.iter().zip(self.nonce_evaluation.iter().zip(self.proof.iter().zip(roots.into_iter()))){
+    pub fn verify_points(&self, roots: Vec<Hash>, hc: &HashState)->Option<Vec<Hash>>{
+        let commitments = self.gen_commitment();
+        for (commitment, (proof, root)) in commitments.clone().into_iter().zip(self.proof.iter().zip(roots.into_iter())){
+            if !proof.validate(hc) || proof.item() != commitment || proof.root() != root{
+                log::error!("Error verifying point on column because {:?} {:?} {:?} {:?}", proof.item(), commitment, proof.root(), root);
+                return None;
+            }
+        }
+        Some(commitments)
+    }
+
+    pub fn gen_commitment(&self)-> Vec<Hash>{
+        let mut vec_hashes = Vec::new();
+        for (evaluations, nonce) in self.evaluations.iter().zip(self.nonce_evaluation.iter()){
             let mut appended_vec = Vec::new();
             for eval in evaluations{
                 appended_vec.extend(eval.to_signed_bytes_be());
             }
             appended_vec.extend(nonce.to_signed_bytes_be());
             let hash = do_hash(appended_vec.as_slice());
-            if !proof.validate(hc) || proof.item() != hash || proof.root() != root{
-                log::error!("Error verifying point on column");
-                return false;
-            }
+            vec_hashes.push(hash);
         }
-        true
+        vec_hashes
     }
 
     pub fn to_ser(&self)-> PointsBVSer{
@@ -349,7 +359,8 @@ pub struct Shares{
 pub struct Commitment{
     pub roots: Vec<Vec<Hash>>,
     pub blinding_roots: Vec<Vec<Hash>>,
-    pub dzk_poly: Vec<Vec<LargeFieldSer>>
+    pub dzk_poly: Vec<Vec<LargeFieldSer>>,
+    pub batch_count: usize
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
