@@ -58,7 +58,7 @@ impl Context {
                 //     log::debug!("Received Deliver for instance id {} from node : {}", instance_id, origin);
                 //     self.handle_deliver(avid_shard, origin, wrapper_msg.sender, instance_id).await;
                 // }
-                //_ => {}
+                _ => {}
             }
         } else {
             log::warn!(

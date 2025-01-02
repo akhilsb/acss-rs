@@ -47,17 +47,16 @@ impl Context {
                     log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
                     self.process_echo(main_msg, encrypted_share, wrapper_msg.sender,instance_id).await;
                 },
-                // ProtMsg::Ready(main_msg, encrypted_share, instance_id) => {
-                //     // RBC initialized
-                //     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
-                //     self.process_ready_vf(main_msg,encrypted_share, wrapper_msg.sender,instance_id).await;
-                // },
+                ProtMsg::Ready(main_msg, encrypted_share, instance_id) => {
+                    // RBC initialized
+                    log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
+                    self.process_ready(main_msg,encrypted_share, wrapper_msg.sender,instance_id).await;
+                },
                 // ProtMsg::Deliver(avid_shard, origin, instance_id) => {
                     
                 //     log::debug!("Received Deliver for instance id {} from node : {}", instance_id, origin);
                 //     self.handle_deliver(avid_shard, origin, wrapper_msg.sender, instance_id).await;
                 // }
-                _ => {}
             }
         } else {
             log::warn!(

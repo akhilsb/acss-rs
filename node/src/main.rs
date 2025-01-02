@@ -10,7 +10,7 @@ use signal_hook::{
 use tokio::sync::mpsc::channel;
 use std::net::{SocketAddr, SocketAddrV4};
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     log::error!("{}", std::env::current_dir().unwrap().display());
     let yaml = load_yaml!("cli.yml");

@@ -1,4 +1,4 @@
-use consensus::{LargeFieldSSS, DZKProof};
+use consensus::{LargeFieldSSS};
 use crypto::{LargeField, aes_hash::{Proof, HashState, MerkleTree}, LargeFieldSer, hash::{Hash, do_hash}};
 use ctrbc::CTRBCMsg;
 use serde::{Serialize, Deserialize};
@@ -139,7 +139,7 @@ impl RowPolynomialsBatch{
 
     fn batch_root(&self, hc: &HashState)-> LargeField{
         // TODO: Change this for when multiple batches exist
-        let roots: Vec<Hash> = self.proofs.iter().map(|proof| proof.item()).collect();
+        let roots: Vec<Hash> = self.proofs.iter().map(|proof| proof.root()).collect();
         let mr = MerkleTree::new(roots,hc);
         let hash_two = hc.hash_two(mr.root() , self.blinding_poly_proof.root());
 
@@ -271,94 +271,11 @@ impl PointsBV{
     }
 }
 
-pub struct ColPolynomialsBatch{
-    pub coefficients: Vec<Vec<LargeField>>,
-    pub blinding_coefficients: Vec<LargeField>,
-    pub nonce_coefficients: Vec<LargeField>,
-    pub blinding_nonce_coefficients: Vec<LargeField>,
-
-    pub root_proof: Proof
-}
-
-impl ColPolynomialsBatch{
-    pub fn points(&self, large_field_shamir_ss: LargeFieldSSS, eval_points: Vec<usize>) -> (Vec<Vec<LargeField>>, Vec<LargeField>){
-        let mut orig_polys = Vec::new();
-        let mut blinding_poly = Vec::new();
-
-        for poly in self.coefficients.iter(){
-            let mut orig_poly = Vec::new();
-            for point in eval_points.clone().into_iter(){
-                orig_poly.push(large_field_shamir_ss.mod_evaluate_at(poly.as_slice(), point));
-            }
-            orig_polys.push(orig_poly);
-        }
-
-        for point in eval_points.into_iter(){
-            blinding_poly.push(large_field_shamir_ss.mod_evaluate_at(self.blinding_coefficients.as_slice(), point));
-        }
-        (orig_polys,blinding_poly)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ColPolynomialsBatchSer{
-    pub coefficients: Vec<Vec<LargeFieldSer>>,
-    pub blinding_coefficients: Vec<LargeFieldSer>,
-    pub nonce_coefficients: Vec<LargeFieldSer>,
-    pub blinding_nonce_coefficients: Vec<LargeFieldSer>,
-
-    pub root_proof: Proof
-}
-
-impl ColPolynomialsBatchSer{
-    pub fn from_deser(rows: &ColPolynomialsBatch)-> ColPolynomialsBatchSer{
-        let ser_coeffs: Vec<Vec<LargeFieldSer>> = rows.coefficients.iter().map(|coefficients| 
-            coefficients.iter().map(|element| element.to_signed_bytes_be()).collect()
-        ).collect();
-        let blind_coeffs: Vec<LargeFieldSer> = rows.blinding_coefficients.iter().map(|element| element.to_signed_bytes_be()).collect();
-        let nonce_coeffs: Vec<LargeFieldSer> = rows.nonce_coefficients.iter().map(|el| el.to_signed_bytes_be()).collect();
-        let blinding_nonce_coeffs: Vec<LargeFieldSer> = rows.blinding_nonce_coefficients.iter().map(|el| el.to_signed_bytes_be()).collect();
-
-        ColPolynomialsBatchSer { 
-            coefficients: ser_coeffs, 
-            blinding_coefficients: blind_coeffs, 
-            nonce_coefficients: nonce_coeffs, 
-            blinding_nonce_coefficients: blinding_nonce_coeffs,
-
-            root_proof: rows.root_proof.clone()
-        }
-    }
-
-    pub fn to_deser(&self) -> ColPolynomialsBatch{
-        let deser_coeffs: Vec<Vec<LargeField>> = self.coefficients.iter().map(|coefficients| 
-            coefficients.iter().map(|element| LargeField::from_signed_bytes_be(element)).collect()
-        ).collect();
-        let blind_coeffs: Vec<LargeField> = self.blinding_coefficients.iter().map(|element| LargeField::from_signed_bytes_be(element)).collect();
-        let nonce_coeffs: Vec<LargeField> = self.nonce_coefficients.iter().map(|el| LargeField::from_signed_bytes_be(el)).collect();
-        let blinding_nonce_coeffs: Vec<LargeField> = self.blinding_nonce_coefficients.iter().map(|el| LargeField::from_signed_bytes_be(el)).collect();
-
-        ColPolynomialsBatch { 
-            coefficients: deser_coeffs, 
-            blinding_coefficients: blind_coeffs, 
-            nonce_coefficients: nonce_coeffs, 
-            blinding_nonce_coefficients: blinding_nonce_coeffs, 
-
-            root_proof: self.root_proof.clone()
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Shares{
-    pub row_polys: Vec<RowPolynomialsBatchSer>,
-    pub col_polys: Vec<ColPolynomialsBatchSer>,
-    pub dzk_iters: Vec<DZKProof>
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Commitment{
     pub roots: Vec<Vec<Hash>>,
     pub blinding_roots: Vec<Vec<Hash>>,
+    pub blinding_nonces: Vec<Vec<LargeFieldSer>>,
     pub dzk_poly: Vec<Vec<LargeFieldSer>>,
     pub batch_count: usize
 }

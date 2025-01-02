@@ -76,5 +76,14 @@ pub enum ProtMsg{
         CTRBCMsg,
         Vec<u8>, // Encrypted shares on row and column
         usize // ACSS Instance ID
-    )
+    ),
+
+    InitAB(
+        Vec<u8>, // Encrypted shares
+        usize, // Number of secrets
+        VSSCommitments,
+        Polynomial<LargeFieldSer>, // dZK polynomial
+        Replica, // Dealer
+        usize // ACSS Instance ID (For PRF and share generation)
+    ),
 }

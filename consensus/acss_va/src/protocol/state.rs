@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash};
+use crypto::{LargeField, hash::Hash, aes_hash::MerkleTree};
 use ctrbc::RBCState;
 use types::Replica;
 
@@ -31,9 +31,15 @@ pub struct BatchACSSState{
     pub rows_reconstructed: bool,
     pub cols_reconstructed: bool,
 
+    pub echo_sent: bool,
+    pub ready_sent: bool, 
+
     // Points received during ECHO phase from other nodes
     pub bv_echo_points: HashMap<Replica, PointsBV>,
     pub bv_ready_points: HashMap<Replica, PointsBV>,
+
+    pub col_share_map: Vec<(Vec<Vec<LargeField>>, Vec<LargeField>)>,
+    pub col_merkle_trees: Option<Vec<MerkleTree>>,
 
     // Encrypted row polynomial shares
     pub encrypted_shares: Vec<(Replica, Vec<u8>)>,
@@ -60,11 +66,17 @@ impl BatchACSSState{
 
             dzk_polynomials: Vec::new(),
 
+            echo_sent: false,
+            ready_sent: false,
+
             rows_reconstructed: false,
             cols_reconstructed: false,
 
             bv_echo_points: HashMap::default(),
             bv_ready_points: HashMap::default(),
+
+            col_share_map: Vec::new(),
+            col_merkle_trees: None,
 
             encrypted_shares: Vec::new(),
 

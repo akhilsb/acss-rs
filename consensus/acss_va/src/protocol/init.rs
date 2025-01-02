@@ -31,9 +31,10 @@ impl Context{
         for (index,batch) in (0..batched_secrets.len()).into_iter().zip(batched_secrets.into_iter()){
             
             // Sample F(x,0) polynomial next
-            let eval_point_start: isize = ((self.num_faults+1) as isize) * (-1);
-            let eval_point_indices_lf: Vec<LargeField> = (0..eval_point_start).into_iter().map(|index| LargeField::from(index)).collect();
-            
+            let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            eval_point_indices_lf.reverse();
+
             let mut points_f_x0: Vec<LargeField> = batch.clone();
             for _ in 1..self.num_faults+1{
                 let rnd_share = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
@@ -65,10 +66,12 @@ impl Context{
             let eval_indices = eval_point_indices_lf.clone();
             let (_, columns_secret) = Self::generate_row_column_evaluations(
                 &bv_coefficients, 
-                eval_indices, 
+                eval_indices.clone(), 
                 &self.large_field_uv_sss,
                 false
             );
+
+            //log::info!("DZK polynomial: {:?} {:?}", eval_indices, columns_secret);
 
             let mut coefficients_all_parties = Vec::new();
             for row_poly in row_evaluations.iter(){
@@ -106,6 +109,8 @@ impl Context{
         let mut merkle_roots_batches = Vec::new();
         let mut blinding_commitments_batches = Vec::new();
         let mut dzk_polynomials = Vec::new();
+
+        let mut blinding_nonces = Vec::new();
         for ((row_coeffs_batch, _row_evals_batch),(col_evals_batch, dzk_polys_batch)) in 
                 (row_coeffs_batches.into_iter().zip(row_poly_evals_batches.into_iter())).zip(col_poly_evals_batches.into_iter().zip(dzk_poly_evals_batches).into_iter()){
 
@@ -198,6 +203,9 @@ impl Context{
             self.large_field_uv_sss.fill_evaluation_at_all_points(&mut agg_poly);
 
             dzk_polynomials.push(agg_poly.clone().into_iter().map(|el| el.to_signed_bytes_be()).collect());
+
+            blinding_nonces.push(blinding_nonce_eval_points.clone().into_iter().map(|el| el.to_signed_bytes_be()).collect());
+            
             //Compose share message
             
             let mut row_coeffs_party = Vec::new();
@@ -250,20 +258,22 @@ impl Context{
     
                         blinding_poly_proof: blinding_mt.gen_proof(rep)
                     };
+                    let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
+                    let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+                    eval_point_indices_lf.reverse();
+                    assert!(row_polys_sec_message.verify_shares_with_dzk(
+                        agg_poly[rep+1].clone(), 
+                        eval_point_indices_lf, 
+                        &self.large_field_uv_sss, 
+                        &self.hash_context)
+                    );
                 }
                 assert!(row_polys_sec_message.verify_commitments(&self.hash_context, 
                     &self.large_field_bv_sss, 
                     (1..self.num_nodes+1).into_iter().collect(), 
                     master_root_batch.clone())
                 );
-                let eval_point_start: isize = ((self.num_faults+1) as isize) * (-1);
-                let eval_point_indices_lf: Vec<LargeField> = (0..eval_point_start).into_iter().map(|index| LargeField::from(index)).collect();
-                assert!(row_polys_sec_message.verify_shares_with_dzk(
-                    agg_poly[rep+1].clone(), 
-                    eval_point_indices_lf, 
-                    &self.large_field_uv_sss, 
-                    &self.hash_context)
-                );
+                
                 share_messages_party[rep].push(row_polys_sec_message);
             }
             merkle_roots_batches.push(mrs);
@@ -274,6 +284,7 @@ impl Context{
         let commitment = Commitment{
             roots: merkle_roots_batches,
             blinding_roots: blinding_commitments_batches,
+            blinding_nonces: blinding_nonces,
             dzk_poly: dzk_polynomials,
             batch_count: each_batch
         };
@@ -385,8 +396,10 @@ impl Context{
             
 
             // Verify DZK proof
-            let eval_point_start: isize = ((self.num_faults+1) as isize) * (-1);
-            let eval_point_indices_lf: Vec<LargeField> = (0..eval_point_start).into_iter().map(|index| LargeField::from(index)).collect();
+            let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            eval_point_indices_lf.reverse();
+
             let dzk_polynomial: Vec<LargeField> = dzk_polynomial.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
             if !shares_batch.verify_shares_with_dzk(
                 dzk_polynomial[self.myid+1].clone(), 
@@ -460,6 +473,7 @@ impl Context{
 
         acss_state.verified_hash = Some(mt.root());
         
+        acss_state.echo_sent = true;
         // Send ECHOs now
         for (rep, common_points) in (0..self.num_nodes).zip(points_vec.into_iter()){
             let secret_key_party = self.sec_key_map.get(&rep).clone().unwrap();
