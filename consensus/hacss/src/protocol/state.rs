@@ -9,10 +9,10 @@ use consensus::PointBV;
 pub struct ACSSVAState{
     pub origin: Replica,
 
-    pub row_shares: Vec<LargeField>,
+    pub row_shares: Vec<Vec<LargeField>>,
     pub blinding_row_shares: Vec<LargeField>,
     
-    pub column_shares: HashMap<Replica,(LargeField,LargeField)>,
+    pub column_shares: HashMap<Replica,(Vec<LargeField>,LargeField)>,
     pub bcolumn_shares: HashMap<Replica,(LargeField, LargeField)>,
 
     // Merkle Roots
@@ -21,7 +21,7 @@ pub struct ACSSVAState{
     pub dzk_polynomial_roots: Vec<Vec<Hash>>,
     pub dzk_polynomials: Vec<Vec<LargeFieldSer>>,
 
-    pub secret: Option<LargeField>,
+    pub secret_shares: Option<Vec<LargeField>>,
 
     pub verified_hash: Option<Hash>,
 
@@ -57,7 +57,7 @@ impl ACSSVAState{
 
             encrypted_shares: Vec::new(),
 
-            secret: None,
+            secret_shares: None,
             verified_hash: None,
 
             rbc_state: RBCState::new(origin),

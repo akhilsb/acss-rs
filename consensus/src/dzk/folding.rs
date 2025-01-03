@@ -80,7 +80,7 @@ impl FoldingDZKContext{
         dzk_poly: Vec<LargeFieldSer>, 
         bv_ready_points: HashMap<Replica,PointBV>,
         instance_id: usize,
-    )-> Option<(Vec<LargeField>, Vec<LargeField>, Vec<LargeField>, Vec<LargeField>)>{
+    )-> Option<(Vec<Vec<LargeField>>, Vec<LargeField>, Vec<LargeField>, Vec<LargeField>)>{
         let mut column_evaluation_points = Vec::new();
         let mut nonce_evaluation_points = Vec::new();
 
@@ -90,13 +90,16 @@ impl FoldingDZKContext{
         //let bv_echo_points = acss_va_state.bv_echo_points.clone();
         //let dzk_roots = comm.dzk_roots[self.myid].clone();
         //let dzk_poly = comm.polys[self.myid].clone();
+        let mut valid_indices = Vec::new();
         for rep in self.evaluation_points.clone().into_iter(){
             if bv_ready_points.contains_key(&rep){
                 let (column_share,bcolumn_share, dzk_iter) = bv_ready_points.get(&rep).unwrap();
                 // Combine column and blinding column roots
                 let combined_root = self.hash_context.hash_two(column_share.2.root(), bcolumn_share.2.root());
                 
-                let point = LargeField::from_signed_bytes_be(column_share.0.as_slice());
+                let deser_points: Vec<LargeField> = column_share.0.clone().into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+                let agg_point = self.gen_agg_poly_dzk(deser_points.clone(), combined_root.clone());
+
                 let nonce = LargeField::from_signed_bytes_be(column_share.1.as_slice());
 
                 let blinding_point = LargeField::from_signed_bytes_be(bcolumn_share.0.as_slice()); 
@@ -106,14 +109,15 @@ impl FoldingDZKContext{
                                         dzk_roots.clone(), 
                                         dzk_poly.clone(), 
                                         combined_root, 
-                                        point.clone(), 
+                                        agg_point.clone(), 
                                         blinding_point.clone(), 
                                         rep){
-                    column_evaluation_points.push((LargeField::from(rep), point.clone()));
-                    nonce_evaluation_points.push((LargeField::from(rep), nonce));
+                    valid_indices.push(LargeField::from(rep));
+                    column_evaluation_points.push(deser_points);
+                    nonce_evaluation_points.push(nonce);
 
-                    blinding_evaluation_points.push((LargeField::from(rep), blinding_point.clone()));
-                    blinding_nonce_points.push((LargeField::from(rep), blinding_nonce));
+                    blinding_evaluation_points.push(blinding_point.clone());
+                    blinding_nonce_points.push( blinding_nonce);
                 }
                 
                 if column_evaluation_points.len() == self.recon_threshold{
@@ -131,16 +135,21 @@ impl FoldingDZKContext{
         //let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
 
         // Interpolate column
-        let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&column_evaluation_points);
-        let nonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_evaluation_points);
+        // Compute Vandermonde matrix here once. No other choice but to compute. If we have to interpolate the entire column, then it must cost O(n^3) operations
+        let vandermonde_matrix_lt =  self.large_field_uv_sss.vandermonde_matrix(&valid_indices);
+        let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_lt);
 
-        let bpoly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_evaluation_points);
-        let bnonce_coeffs = self.large_field_uv_sss.polynomial_coefficients(&blinding_nonce_points);
+        let poly_coeffs: Vec<Vec<LargeField>> = column_evaluation_points.into_iter().map(|poly| self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly)).collect();
+        //let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&column_evaluation_points);
+        let nonce_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde,&nonce_evaluation_points);
+
+        let bpoly_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&blinding_evaluation_points);
+        let bnonce_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&blinding_nonce_points);
 
         return Some((poly_coeffs,nonce_coeffs,bpoly_coeffs,bnonce_coeffs));
     }
 
-    fn verify_dzk_proof(&self,
+    pub fn verify_dzk_proof(&self,
         dzk_proof: DZKProof, 
         dzk_roots: Vec<Hash>, 
         dzk_poly: Vec<LargeFieldSer>, 
@@ -343,5 +352,22 @@ impl FoldingDZKContext{
             _rep+=1;
         }
         true
+    }
+    
+    pub fn gen_agg_poly_dzk(&self, evaluations: Vec<LargeField>, root: Hash)-> LargeField{
+
+        let mut root_mul_lf: LargeField = LargeField::from_signed_bytes_be(root.as_slice())%&self.large_field_uv_sss.prime;
+        let root_original = root_mul_lf.clone();
+        let mut aggregated_val = LargeField::from(0);
+
+        root_mul_lf = LargeField::from(1);
+        for share in evaluations{
+            aggregated_val += (&root_mul_lf*share)%&self.large_field_uv_sss.prime;
+            if aggregated_val < LargeField::from(0){
+                aggregated_val += &self.large_field_uv_sss.prime;
+            }
+            root_mul_lf = (&root_mul_lf*&root_original)%&self.large_field_uv_sss.prime;
+        }
+        aggregated_val
     }
 }

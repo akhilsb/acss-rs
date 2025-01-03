@@ -23,77 +23,89 @@ impl Context{
      * 5. Generate distributed ZK polynomial
      * 6. Encrypt shares and broadcast commitments.  
     */
-    pub async fn init_verifiable_abort(self: &mut Context, secret: LargeField, instance_id: usize, _threshold: usize){
+    pub async fn init_verifiable_abort(self: &mut Context, secrets: Vec<LargeField>, instance_id: usize, _threshold: usize){
         
         let field_prime = self.large_field_bv_sss.prime.clone();
         let zero = BigInt::from(0);
         
-        // Sample bivariate polynomial
-        // degree-2t row polynomial and degree-t column polynomial
+        let mut row_polynomials = Vec::new();
+        let mut col_polynomials = Vec::new();
 
-        // Sample degree-t polynomial
-        let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
-        secret_poly_y_deg_t.push(secret.clone());
-        secret_poly_y_deg_t.extend(self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
-        //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
+        let mut coeff_polynomials_y = Vec::new();
+
+        let lt_indices: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|el| LargeField::from(el)).collect();
+        let vandermonde_matrix_lt =  self.large_field_uv_sss.vandermonde_matrix(&lt_indices);
+        let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_lt);
+        for secret in secrets{
+            // Sample bivariate polynomial
+            // degree-2t row polynomial and degree-t column polynomial
+            // Sample degree-t polynomial
+            let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
+            secret_poly_y_deg_t.push(secret.clone());
+            secret_poly_y_deg_t.extend(self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
+            //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
 
 
-        // Fill polynomial on x-axis as well
-        let mut secret_poly_x_deg_2t = Vec::new();
-        secret_poly_x_deg_2t.push(secret.clone());
-        secret_poly_x_deg_2t.extend(self.large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
-        //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
+            // Fill polynomial on x-axis as well
+            let mut secret_poly_x_deg_2t = Vec::new();
+            secret_poly_x_deg_2t.push(secret.clone());
+            secret_poly_x_deg_2t.extend(self.large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
+            //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
 
 
-        // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
-        // Sample t degree-2t bivariate polynomials
-        let mut polys_x_deg_2t = Vec::new();
-        for rep in 0..self.num_nodes{
-            let share = secret_poly_y_deg_t[rep+1].clone();
-            let mut poly_x_deg_2t = Vec::new();
-            poly_x_deg_2t.push(share.clone());
-            if rep <= self.num_faults-1{
-                poly_x_deg_2t.extend(self.large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
+            // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
+            // Sample t degree-2t bivariate polynomials
+            let mut polys_x_deg_2t = Vec::new();
+            for rep in 0..self.num_nodes{
+                let share = secret_poly_y_deg_t[rep+1].clone();
+                let mut poly_x_deg_2t = Vec::new();
+                poly_x_deg_2t.push(share.clone());
+                if rep <= self.num_faults-1{
+                    poly_x_deg_2t.extend(self.large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
+                }
+                polys_x_deg_2t.push(poly_x_deg_2t);
             }
-            polys_x_deg_2t.push(poly_x_deg_2t);
-        }
 
-        // Keep track of corresponding column polynomials
-        let mut polys_y_deg_t = Vec::new();
-        for rep in 0..self.num_nodes{
-            let share = secret_poly_x_deg_2t[rep+1].clone();
-            let mut poly_y_deg_t = Vec::new();
-            poly_y_deg_t.push(share);
-            polys_y_deg_t.push(poly_y_deg_t);
-        }
-
-        for rep in 0..self.num_faults{
-            //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
-            for index in 0..self.num_nodes{
-                polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
+            // Keep track of corresponding column polynomials
+            let mut polys_y_deg_t = Vec::new();
+            for rep in 0..self.num_nodes{
+                let share = secret_poly_x_deg_2t[rep+1].clone();
+                let mut poly_y_deg_t = Vec::new();
+                poly_y_deg_t.push(share);
+                polys_y_deg_t.push(poly_y_deg_t);
             }
-        }
 
-        // Extend all degree-t polynomials to n points
-        // Generate Coefficients of these polynomials
-        let mut coefficients_y_deg_t = Vec::new();
-        for rep in 0..self.num_nodes{
-            // Coefficients
-            let poly_eval_pts:Vec<(BigInt,BigInt)> = (0..self.num_faults+1).into_iter().map(|x| BigInt::from(x)).zip(polys_y_deg_t[rep].clone().into_iter()).collect();
-            let coeffs = self.large_field_uv_sss.polynomial_coefficients(&poly_eval_pts);
-            coefficients_y_deg_t.push(coeffs.clone());
-            
-            // Evaluations
-            self.large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
-            //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
-        }
-
-        // Fill all remaining degree-2t polynomials
-        for rep in self.num_faults .. self.num_nodes{
-            for index in 0..self.num_nodes{
-                polys_x_deg_2t[rep].push(polys_y_deg_t[index][rep+1].clone());
+            for rep in 0..self.num_faults{
+                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+                for index in 0..self.num_nodes{
+                    polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
+                }
             }
-            //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+
+            // Extend all degree-t polynomials to n points
+            // Generate Coefficients of these polynomials
+            let mut coefficients_y_deg_t = Vec::new();
+            for rep in 0..self.num_nodes{
+                // Coefficients
+                let poly_eval_pts:Vec<BigInt> = polys_y_deg_t[rep].clone().into_iter().collect();
+                let coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly_eval_pts);
+                coefficients_y_deg_t.push(coeffs.clone());
+                
+                // Evaluations
+                self.large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
+                //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
+            }
+            coeff_polynomials_y.push(coefficients_y_deg_t);
+
+            // Fill all remaining degree-2t polynomials
+            for rep in self.num_faults .. self.num_nodes{
+                for index in 0..self.num_nodes{
+                    polys_x_deg_2t[rep].push(polys_y_deg_t[index][rep+1].clone());
+                }
+                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+            }
+            row_polynomials.push(polys_x_deg_2t);
+            col_polynomials.push(polys_y_deg_t);
         }
 
         // 2. Generate blinding polynomials
@@ -166,22 +178,44 @@ impl Context{
         // 3.b. Generate commitments
         let mut commitments = Vec::new();
         let mut blinding_commitments = Vec::new();
+        
+        let mut appended_shares=  Vec::new();
+        for _ in 0..self.num_nodes{
+            let mut shares_app = Vec::new();
+            for _ in 0..self.num_nodes+1{
+                shares_app.push(Vec::new());
+            }
+            appended_shares.push(shares_app);
+        }
+
+        for shares_y_deg_t in col_polynomials.clone(){
+            for (index,share_poly) in (0..self.num_nodes).zip(shares_y_deg_t.into_iter()){
+                for (l2_index, share) in (0..self.num_nodes+1).zip(share_poly.into_iter()){
+                    appended_shares[index][l2_index].extend(share.to_signed_bytes_be());
+                }
+            }
+        }
+
         for ((share_y_deg_t,nonce_y_deg_t),(blinding_y_deg_t, bnonce_y_deg_t)) in 
-                    (polys_y_deg_t.iter().zip(nonce_polys.iter())).zip(blinding_y_deg_t.iter().zip(blinding_nonce_polys.iter())){
+                    (appended_shares.iter().zip(nonce_polys.iter())).zip(blinding_y_deg_t.iter().zip(blinding_nonce_polys.iter())){
             
             let mut comm_y_deg_t = Vec::new();
             let mut bcomm_y_deg_t = Vec::new();
-            for rep in 0..self.num_nodes{
+            for (rep,share_eval_val) in (0..self.num_nodes+1).into_iter().zip(
+                share_y_deg_t.into_iter()){
                 let mut appended = Vec::new();
-                appended.extend(share_y_deg_t[rep+1].clone().to_signed_bytes_be());
-                appended.extend(nonce_y_deg_t[rep+1].clone().to_signed_bytes_be());
+                appended.extend(share_eval_val);
+                appended.extend(nonce_y_deg_t[rep].clone().to_signed_bytes_be());
                 comm_y_deg_t.push(do_hash(appended.as_slice()));
 
                 let mut appended = Vec::new();
-                appended.extend(blinding_y_deg_t[rep+1].clone().to_signed_bytes_be());
-                appended.extend(bnonce_y_deg_t[rep+1].clone().to_signed_bytes_be());
+                appended.extend(blinding_y_deg_t[rep].clone().to_signed_bytes_be());
+                appended.extend(bnonce_y_deg_t[rep].clone().to_signed_bytes_be());
                 bcomm_y_deg_t.push(do_hash(appended.as_slice()));
             }
+            comm_y_deg_t.remove(0);
+            bcomm_y_deg_t.remove(0);
+
             commitments.push(comm_y_deg_t);
             blinding_commitments.push(bcomm_y_deg_t);
         }
@@ -209,9 +243,13 @@ impl Context{
         let mut dzk_broadcast_polys = Vec::new();
 
         let mut dzk_share_polynomials = Vec::new();
-        // 4.a. Create DZK Share polynomials
-        let mut rep = 0;
-        for ((coefficient_vec, blinding_coefficient_vec), column_mr) in (coefficients_y_deg_t.into_iter().zip(blinding_coeffs_y_deg_t.into_iter())).zip(column_wise_roots.clone().into_iter()){
+        
+        // 4.a. Aggregate All share polynomials
+        let aggregated_coefficients = self.agg_share_poly_dzk_batch(coeff_polynomials_y, column_wise_roots.clone());
+
+        // 4.b. Create DZK Share polynomials
+        let mut _rep = 0;
+        for ((coefficient_vec, blinding_coefficient_vec), column_mr) in (aggregated_coefficients.into_iter().zip(blinding_coeffs_y_deg_t.into_iter())).zip(column_wise_roots.clone().into_iter()){
             let column_root_bint = BigInt::from_signed_bytes_be(column_mr.clone().as_slice());
             
             let dzk_poly: Vec<BigInt> = coefficient_vec.into_iter().zip(blinding_coefficient_vec.into_iter()).map(
@@ -228,16 +266,13 @@ impl Context{
             for i in 1..self.num_nodes+1{
                 let pt = self.large_field_uv_sss.mod_evaluate_at(&dzk_poly, i);
                 //assert!(polys_x_deg_2t[i-1][rep+1] == polys_y_deg_t[rep][i]);
-                let mut sub_eval = (blinding_y_deg_t[rep][i].clone() + &column_root_bint*polys_x_deg_2t[i-1][rep+1].clone())%&field_prime;
-                if sub_eval < zero{
-                    sub_eval += &field_prime;
-                }
+                
                 //assert!(pt == sub_eval);
                 vec_pts.push((i,pt));
             }
-            rep +=1;
+            _rep +=1;
         }
-        
+
         // (Replica, (g_0 values), (g_1 values), (Vector of Merkle Proofs for each g_0,g_1 value))
         let mut shares_proofs_dzk: Vec<(Replica, Vec<DZKProof>)> = Vec::new();
         for rep in 0..self.num_nodes{
@@ -282,7 +317,6 @@ impl Context{
 
             
             for (g_0_g_1_shares,mt) in eval_points.into_iter().zip(trees.into_iter()){                
-                //log::info!("Eval points iteration: {:?} rep: {}",g_0_g_1_shares ,rep);
                 for (rep,g) in (0..self.num_nodes).into_iter().zip(g_0_g_1_shares.into_iter()){
                     dzk_proofs_all_nodes.get_mut(rep).unwrap().g_0_x.push(g.0.to_signed_bytes_be());
                     dzk_proofs_all_nodes.get_mut(rep).unwrap().g_1_x.push(g.1.to_signed_bytes_be());
@@ -311,17 +345,35 @@ impl Context{
             // polys_x_deg_2t[rep].pop(..0);
             // nonce_polys[rep].drain(..0);
             //polys_x_deg_2t[rep] = polys_x_deg_2t[rep].split_off(1);
-            polys_y_deg_t[rep].truncate(self.num_faults+1);
+            let mut col_polys_party = Vec::new();
+            let mut row_polys_party = Vec::new();
+            for index in 0..col_polynomials.len(){
+                let bv_poly = &col_polynomials[index];
+                let bv_row_poly = &row_polynomials[index];
+
+                let mut col_poly_party = bv_poly[rep].clone();
+                let mut row_poly_party = Vec::new();
+                for l2_index in 1..self.num_nodes+1{
+                    row_poly_party.push(bv_row_poly[rep][l2_index].clone());
+                }
+
+                col_poly_party.truncate(self.num_faults+1);
+                col_polys_party.push(col_poly_party.into_iter().map(|el| el.to_signed_bytes_be()).collect());
+                row_polys_party.push(row_poly_party.into_iter().map(|el| el.to_signed_bytes_be()).collect());
+            }
+
+            let mut nonce_row_poly = Vec::new();
+            let mut proofs_row_poly = Vec::new();
+
+            for index in 0..self.num_nodes{
+                nonce_row_poly.push(nonce_polys[index][rep+1].clone().to_signed_bytes_be());
+                proofs_row_poly.push(mts[index].gen_proof(rep))
+            };
+            // polys_y_deg_t[rep].truncate(self.num_faults+1);
             //blinding_y_deg_t[rep].truncate(self.num_faults+1);
 
-            let row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().map(|index| {
-                (polys_x_deg_2t[rep][index+1].to_signed_bytes_be(),
-                    nonce_polys[index][rep+1].clone().to_signed_bytes_be(),
-                    mts[index].gen_proof(rep))
-            }).collect();
-            let column_poly: Vec<(LargeFieldSer,LargeFieldSer)> = polys_y_deg_t[rep].iter().zip(nonce_polys[rep].iter()).map(|(share,nonce)| 
-                (share.to_signed_bytes_be(),nonce.to_signed_bytes_be())
-            ).collect();
+            let row_poly: (Vec<Vec<LargeFieldSer>>,Vec<LargeFieldSer>, Vec<Proof>) = (row_polys_party, nonce_row_poly,proofs_row_poly);
+            let column_poly: (Vec<Vec<LargeFieldSer>>,Vec<LargeFieldSer>) = (col_polys_party,nonce_polys[rep].iter().map(|el| el.to_signed_bytes_be()).collect());
             
             let blinding_row_poly: Vec<(LargeFieldSer,LargeFieldSer, Proof)> = (0..self.num_nodes).into_iter().map(
                 |index| 
@@ -371,19 +423,18 @@ impl Context{
         let shares: VAShare = bincode::deserialize(&dec_shares).unwrap();
 
         // Verify Row Commitments
-        let row_shares:Vec<BigInt>  = shares.row_poly.iter().map(
+        let row_shares: Vec<Vec<LargeField>>  = shares.row_poly.0.iter().map(
             |x| 
-            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
-        ).collect();
+                x.iter().map(|el| LargeField::from_signed_bytes_be(el)).collect()).collect();
 
-        let blinding_row_shares: Vec<BigInt> = shares.blinding_row_poly.iter().map(
+        let blinding_row_shares: Vec<LargeField> = shares.blinding_row_poly.iter().map(
             |x|
-            BigInt::from_signed_bytes_be(x.0.clone().as_slice())
+            LargeField::from_signed_bytes_be(x.0.clone().as_slice())
         ).collect();
-
+        // Appended 
         // Verify commitments
-        if !self.verify_row_commitments(shares.blinding_row_poly.clone(), comm.blinding_column_roots.clone())
-        || !self.verify_row_commitments(shares.row_poly.clone(), comm.column_roots.clone()) 
+        if !self.verify_blinding_row_commitments(shares.blinding_row_poly.clone(), comm.blinding_column_roots.clone())
+        || !self.verify_commitments_rows(shares.row_poly.clone(), comm.column_roots.clone()) 
         
         {
             log::error!("Row Commitment verification failed for instance id: {}, abandoning ACSS", instance_id);
@@ -391,27 +442,32 @@ impl Context{
         }
 
         // Verify Column commitments next
-        let mut column_shares = Vec::new();
+        let mut columns = Vec::new();
+        for share_poly in shares.column_poly.0{
+            let mut col_shares = share_poly.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+            self.large_field_uv_sss.fill_evaluation_at_all_points(&mut col_shares);
+            columns.push(col_shares);
+        }
+
         let mut column_nonces = Vec::new();
 
         let mut blinding_shares = Vec::new();
         let mut blinding_nonces = Vec::new();
-        for ((share,nonce), (bshare,bnonce)) in shares.column_poly.into_iter().zip(shares.blinding_column_poly.into_iter()){
-            column_shares.push(BigInt::from_signed_bytes_be(share.as_slice()));
-            column_nonces.push(BigInt::from_signed_bytes_be(nonce.as_slice()));
 
-            blinding_shares.push(BigInt::from_signed_bytes_be(bshare.as_slice()));
-            blinding_nonces.push(BigInt::from_signed_bytes_be(bnonce.as_slice()));
+        for (nonce, (bshare,bnonce)) in shares.column_poly.1.into_iter().zip(shares.blinding_column_poly.into_iter()){
+            column_nonces.push(LargeField::from_signed_bytes_be(nonce.as_slice()));
+
+            blinding_shares.push(LargeField::from_signed_bytes_be(bshare.as_slice()));
+            blinding_nonces.push(LargeField::from_signed_bytes_be(bnonce.as_slice()));
         }
 
-        self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_shares);
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut column_nonces);
 
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_shares);
         self.large_field_uv_sss.fill_evaluation_at_all_points(&mut blinding_nonces);
 
-        if !self.verify_column_commitments(&column_shares, &column_nonces, comm.column_roots[self.myid]) || 
-        !self.verify_column_commitments(&blinding_shares, &blinding_nonces, comm.blinding_column_roots[self.myid]){
+        if !self.verify_column_share_commitments(&columns, &column_nonces, comm.column_roots[self.myid]) || 
+        !self.verify_blinding_column_commitments(&blinding_shares, &blinding_nonces, comm.blinding_column_roots[self.myid]){
             log::error!("Column Commitment verification failed");
             return ;
         }
@@ -421,12 +477,28 @@ impl Context{
             self.hash_context.hash_two(root1, root2)
         ).collect();
 
+        let mut party_wise_row_shares = Vec::new();
+        for _ in 0..self.num_nodes{
+            party_wise_row_shares.push(Vec::new());
+        }
+
+        for row in row_shares.clone().into_iter(){
+            for (rep, evaluation) in (0..self.num_nodes).into_iter().zip(row.into_iter()){
+                party_wise_row_shares[rep].push(evaluation);
+            }
+        }
+
+        let dzk_aggregated_points: Vec<LargeField> = party_wise_row_shares.clone().into_iter().zip(column_combined_roots.clone().into_iter()).map(
+            |(shares,root)| self.folding_dzk_context.gen_agg_poly_dzk(shares, root)
+        ).collect();
+
+
         let verf_check = self.folding_dzk_context.verify_dzk_proof_row(
             shares.dzk_iters.clone(), 
             comm.dzk_roots.clone(),
             comm.polys.clone(), 
             column_combined_roots, 
-            row_shares.clone(), 
+            dzk_aggregated_points.clone(),
             blinding_row_shares.clone(),
             self.myid+1
         );
@@ -434,7 +506,7 @@ impl Context{
             log::info!("Successfully verified shares for instance_id {}", instance_id);
         }
         else {
-            log::info!("Failed to verify dzk proofs of ACSS instance ID {}", instance_id);
+            log::error!("Failed to verify dzk proofs of ACSS instance ID {}", instance_id);
             return;
         }
         // Instantiate ACSS state
@@ -449,10 +521,10 @@ impl Context{
 
         acss_va_state.row_shares.extend(row_shares.clone());
         acss_va_state.blinding_row_shares.extend(blinding_row_shares.clone());
-        let secret_share = column_shares[0].clone();
+        let secret_shares = columns.iter().map(|col| col[0].clone()).collect();
 
         for (rep,((share,bshare),(nonce,bnonce))) in (0..self.num_nodes+1).into_iter().zip(
-            (column_shares.into_iter().zip(blinding_shares.into_iter())).zip(column_nonces.into_iter().zip(blinding_nonces.into_iter()))){
+            (columns.into_iter().zip(blinding_shares.into_iter())).zip(column_nonces.into_iter().zip(blinding_nonces.into_iter()))){
             acss_va_state.column_shares.insert(rep, (share,nonce));
             acss_va_state.bcolumn_shares.insert(rep, (bshare,bnonce));
         }
@@ -462,7 +534,7 @@ impl Context{
         acss_va_state.dzk_polynomial_roots.extend(comm.dzk_roots.clone());
         acss_va_state.dzk_polynomials.extend(comm.polys.clone());
 
-        acss_va_state.secret = Some(secret_share);
+        acss_va_state.secret_shares = Some(secret_shares);
         // Initiate ECHO process
         // Serialize commitment
         let comm_ser = bincode::serialize(&comm).unwrap();
@@ -479,12 +551,16 @@ impl Context{
         let mut encrypted_share_vec = Vec::new();
         for (rep, (row_share, (brow_share, dzk_iter))) in 
         (0..self.num_nodes).into_iter().zip(
-            shares.row_poly.into_iter().zip(
+            party_wise_row_shares.into_iter().zip(
                 shares.blinding_row_poly.into_iter().zip(
                     shares.dzk_iters.into_iter())))
         {
             let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
-            let point_bv: PointBV = (row_share, brow_share, dzk_iter);
+            let point_bv: PointBV = ((
+                row_share.into_iter().map(|el| el.to_signed_bytes_be()).collect(), 
+                shares.row_poly.1[rep].clone(), 
+                shares.row_poly.2[rep].clone()
+            ), brow_share, dzk_iter);
             
             let point_bv_ser = bincode::serialize(&point_bv).unwrap();
             let encrypted_shares = encrypt(secret_key.as_slice(), point_bv_ser.clone());
@@ -505,5 +581,37 @@ impl Context{
             let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
             self.add_cancel_handler(cancel_handler);
         }
+    }
+
+    fn agg_share_poly_dzk_batch(&self, coefficients: Vec<Vec<Vec<LargeField>>>, column_wise_roots: Vec<Hash>)-> Vec<Vec<LargeField>>{
+
+        let mut root_mul_lf: Vec<LargeField> = column_wise_roots.iter().map(|root| 
+            LargeField::from_signed_bytes_be(root)%&self.large_field_uv_sss.prime
+        ).collect();
+        let roots_original = root_mul_lf.clone();
+        let mut aggregated_coefficients = Vec::new();
+        for _ in 0..self.num_nodes{
+            let mut shares_app = Vec::new();
+            for _ in 0..self.num_faults+1{
+                shares_app.push(LargeField::from(0));
+            }
+            aggregated_coefficients.push(shares_app);
+        }
+
+        root_mul_lf = (0..column_wise_roots.len()).into_iter().map(|_| LargeField::from(1)).collect();
+        for bv_coeff_vec in coefficients{
+            for (index,(share_poly, root_lf)) in (0..self.num_nodes).zip(bv_coeff_vec.into_iter().zip(root_mul_lf.iter())){
+                for (l2_index, share) in (0..self.num_faults+1).zip(share_poly.into_iter()){
+                    aggregated_coefficients[index][l2_index] += (root_lf*share)%&self.large_field_uv_sss.prime;
+                    if aggregated_coefficients[index][l2_index] < LargeField::from(0){
+                        aggregated_coefficients[index][l2_index]+= &self.large_field_uv_sss.prime;
+                    }
+                }
+            }
+            for index in 0..self.num_nodes{
+                root_mul_lf[index] = &root_mul_lf[index]*&roots_original[index];
+            }
+        }
+        aggregated_coefficients
     }
 }

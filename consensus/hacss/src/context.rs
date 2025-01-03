@@ -24,7 +24,7 @@ use crate::{Handler, ACSSVAState};
 use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext, SyncHandler};
 
 use super::{ProtMsg};
-use crypto::aes_hash::HashState;
+use crypto::{aes_hash::HashState, LargeField};
 
 pub struct Context {
     /// Networking context
@@ -129,6 +129,13 @@ impl Context {
         
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
+        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
+        let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
+        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
+        // // Save to file
+        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
+        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
+
         let smallfield_ss = SmallFieldSSS::new(
             config.num_faults+1, 
             config.num_nodes, 
@@ -141,15 +148,17 @@ impl Context {
             large_field_prime.clone()
         );
 
-        let lf_bv_sss = LargeFieldSSS::new(
+        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
             2*config.num_faults +1, 
             config.num_nodes,
+            file_path,
             large_field_prime_bv.clone()
         );
 
-        let lf_uv_sss = LargeFieldSSS::new(
+        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
             config.num_faults +1,
             config.num_nodes,
+            file_path_lt,
             large_field_prime_bv.clone()
         );
 
@@ -308,7 +317,11 @@ impl Context {
                                 self.init_acss(vec_msg,acss_inst_id).await;
                             }
                             else{
-                                self.init_verifiable_abort(BigInt::from(0), acss_inst_id, self.num_nodes).await;
+                                let mut secrets = Vec::new();
+                                for i in 1u64..10u64{
+                                    secrets.push(LargeField::from(i));
+                                }
+                                self.init_verifiable_abort(secrets, acss_inst_id, self.num_nodes).await;
                             }
                             // wait for messages
                         },

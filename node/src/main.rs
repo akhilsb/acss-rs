@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     match vss_type {
         "acss" => {
             exit_tx =
-                acss_va::Context::spawn(config, node_normal)
+                hacss::Context::spawn(config, node_normal)
                     .unwrap();
         }
         // "ecc_rbc" => {

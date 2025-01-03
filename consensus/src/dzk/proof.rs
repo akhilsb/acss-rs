@@ -3,7 +3,7 @@
 use crypto::{LargeFieldSer, aes_hash::Proof};
 use serde::{Deserialize, Serialize};
 
-pub type PointBV = ((LargeFieldSer, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof), DZKProof);
+pub type PointBV = ((Vec<LargeFieldSer>, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof), DZKProof);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DZKProof{

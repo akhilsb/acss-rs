@@ -110,16 +110,16 @@ impl Context{
                     
                     // Used for error correction
                     let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
-                    let secret_share = poly_coeffs[0].clone();
-                    
-                    acss_va_state.verified_hash = Some(root);
-                    acss_va_state.secret = Some(secret_share);
 
+                    let secret_shares = poly_coeffs.iter().map(|poly| poly[0].clone()).collect();
+                    acss_va_state.verified_hash = Some(root);
+                    acss_va_state.secret_shares = Some(secret_shares);
                     // Fill up column shares
                     for rep in 0..self.num_nodes{
                         if !acss_va_state.column_shares.contains_key(&rep){
+                            let column_shares = poly_coeffs.iter().map(|poly| self.large_field_uv_sss.mod_evaluate_at(poly, rep+1)).collect();
                             acss_va_state.column_shares.insert(rep, 
-                                (self.large_field_uv_sss.mod_evaluate_at(&poly_coeffs, rep+1),
+                                (column_shares,
                                 self.large_field_uv_sss.mod_evaluate_at(&nonce_coeffs, rep+1)));
                             acss_va_state.bcolumn_shares.insert(rep, 
                                 (self.large_field_uv_sss.mod_evaluate_at(&bpoly_coeffs, rep+1),
