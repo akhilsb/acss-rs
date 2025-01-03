@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use consensus::get_shards;
 use crypto::aes_hash::{MerkleTree, Proof};
 use crypto::hash::{do_hash, Hash};
@@ -337,7 +339,10 @@ impl Context{
             polys: dzk_broadcast_polys 
         };
         
-
+        log::info!("Share Creation time: {:?}", SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis());
         // 4. Distribute shares through messages
         for (rep, dzk_proofs) in shares_proofs_dzk.into_iter(){
             
@@ -412,6 +417,7 @@ impl Context{
             let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
             self.add_cancel_handler(cancel_handler);
         }
+
     }
 
     pub async fn process_acss_init_vf(self: &mut Context, enc_shares: Vec<u8>, comm: VACommitment, dealer: Replica, instance_id: usize){

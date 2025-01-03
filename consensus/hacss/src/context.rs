@@ -318,7 +318,7 @@ impl Context {
                             }
                             else{
                                 let mut secrets = Vec::new();
-                                for i in 1u64..10u64{
+                                for i in 1u64..1000u64{
                                     secrets.push(LargeField::from(i));
                                 }
                                 self.init_verifiable_abort(secrets, acss_inst_id, self.num_nodes).await;
