@@ -13,9 +13,8 @@ use network::{
     Acknowledgement,
 };
 use num_bigint_dig::{BigInt};
-use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, Sender, Receiver},
+    mpsc::{unbounded_channel, UnboundedReceiver},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
@@ -24,11 +23,9 @@ use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 
 use consensus::SyncHandler;
-use crypto::{aes_hash::HashState, LargeField};
+use crypto::{aes_hash::HashState};
 
-use tokio::sync::mpsc::channel;
-
-use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
+use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
 
 pub struct Context {
     /// Networking context
@@ -79,37 +76,18 @@ pub struct Context {
     pub nonce_seed: usize,
 
     /// State for ACSS
-    pub acss_state: HashMap<usize, BatchACSSState>,
-
-    /// Channels for RBC Send and RBC Receive
-    pub rbc_req_send: Sender<(Replica, Vec<u8>)>,
-    pub rbc_out_recv: Receiver<(Replica, Vec<u8>)>
+    pub asks_state: HashMap<usize, ASKSState>,
 }
 
 impl Context {
     pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
-        // Constants for RBC service as a channel
-        let port_rbc: u16 = 150;
-        let port_ra: u16 = 300;
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
-        
-        let mut rbc_config = config.clone();
-        let mut ra_config = config.clone();
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
-            
-            let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_rbc);
-            let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
-
-            rbc_config.net_map.insert(*replica, rbc_address.to_string());
-            ra_config.net_map.insert(*replica, ra_address.to_string());
-
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
         }
-
-
         let my_port = consensus_addrs.get(&config.id).unwrap();
         let my_address = to_socket_address("0.0.0.0", my_port.port());
         let mut syncer_map: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -216,9 +194,6 @@ impl Context {
             end_degree_threshold: end_degree,
         };
 
-        let (rbc_req_send,rbc_req_recv) = channel(10000);
-        let (rbc_out_send, rbc_out_recv) = channel(10000);
-
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -250,11 +225,8 @@ impl Context {
 
                 folding_dzk_context:folding_context,
 
-                acss_state: HashMap::default(),
-                nonce_seed: 1,
-
-                rbc_req_send: rbc_req_send,
-                rbc_out_recv: rbc_out_recv
+                asks_state: HashMap::default(),
+                nonce_seed: 1
             };
 
             // Populate secret keys from config
@@ -267,18 +239,7 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
-        // Set up RBC service
 
-        let _rbc_serv_status = ctrbc::Context::spawn(
-            rbc_config, 
-            rbc_req_recv, 
-            rbc_out_send, 
-            false
-        );
-
-        let mut signals = Signals::new(&[SIGINT, SIGTERM]).unwrap();
-        signals.forever().next();
-        log::error!("Received termination signal");
         Ok(exit_tx)
     }
 
@@ -308,7 +269,7 @@ impl Context {
         self.add_cancel_handler(cancel_handler);
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self)-> Result<()>{
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
         let cancel_handler = self
@@ -354,12 +315,8 @@ impl Context {
                             // Dealer sends message to everybody. <M, init>
                             let acss_inst_id = self.max_id + 1;
                             self.max_id = acss_inst_id;
-                            // Craft ACSS message
-                            let mut vec_msg = Vec::new();
-                            for i in 1u64..100u64{
-                                vec_msg.push(LargeField::from(i));
-                            }
-                            self.init_batch_acss_va(vec_msg , acss_inst_id).await;
+                            
+                            self.init_asks( acss_inst_id).await;
                             //self.init_acss(vec_msg,acss_inst_id).await;
                             //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
                             // wait for messages
@@ -376,12 +333,6 @@ impl Context {
                         _=>{}
                     }
                 },
-                rbc_msg = self.rbc_out_recv.recv() => {
-                    let rbc_msg = rbc_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-                    log::info!("Received message from RBC channel {:?}", rbc_msg.0);
-                }
             };
         }
         Ok(())
