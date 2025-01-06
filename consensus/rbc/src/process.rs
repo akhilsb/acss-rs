@@ -58,6 +58,9 @@ impl Context {
                     log::info!("Received Ping from node : {:?}", rep);
                     self.handle_sendall(main_msg).await;
                 }
+                _ => {
+                    log::warn!("Received an unknown message type: {:?}", wrapper_msg.protmsg);
+                }
             }
         } else {
             log::warn!(

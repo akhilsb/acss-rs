@@ -37,4 +37,8 @@ pub enum ProtMsg {
     Output(Msg, Replica),
     // Example type is a ping message, which takes a Message and the sender replica
     Ping(Msg, Replica),
+
+    // Messages for reconstruction/publicweak
+    DistributeSharingOfShare(Msg, Replica),
+    ReconstructedShare(Msg, Replica)
 }
