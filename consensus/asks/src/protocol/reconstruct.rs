@@ -38,7 +38,7 @@ impl Context{
 
         let asks_state = self.asks_state.get_mut(&instance_id).unwrap();
         if asks_state.rbc_state.message.is_none(){
-            log::error!("RBC not terminated for this party yet for ASKS instance id {}, skipping share processing", instance_id);
+            log::error!("RBC did not terminate for this party yet for ASKS instance id {}, skipping share processing", instance_id);
             return;
         }
 
@@ -62,8 +62,8 @@ impl Context{
             for rep in 0..self.num_nodes{
                 if asks_state.secret_shares.contains_key(&rep){
                     let shares_party = asks_state.secret_shares.get(&rep).unwrap();
-                    share_poly_shares.push((LargeField::from(rep), shares_party.0.clone()));
-                    nonce_poly_shares.push((LargeField::from(rep), shares_party.1.clone()));
+                    share_poly_shares.push((LargeField::from(rep+1), shares_party.0.clone()));
+                    nonce_poly_shares.push((LargeField::from(rep+1), shares_party.1.clone()));
                 }
             }
             

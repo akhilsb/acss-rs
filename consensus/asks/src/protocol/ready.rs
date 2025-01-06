@@ -116,6 +116,7 @@ impl Context{
             log::info!("Received n-f READY messages for RBC Instance ID {}, terminating",instance_id);
             // Terminate protocol
             asks_context.rbc_state.terminated = true;
+            //self.reconstruct_asks(instance_id).await;
             //let term_msg = asks_context.rbc_state.message.clone().unwrap();
             //self.terminate(msg.origin,term_msg).await;
         }

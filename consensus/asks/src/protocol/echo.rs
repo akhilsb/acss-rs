@@ -109,21 +109,8 @@ impl Context{
 
             if echo_root.is_some() && !asks_state.terminated{
                 asks_state.terminated = true;
-                // Send Ready and terminate
-
-                let fragment = asks_state.rbc_state.fragment.clone().unwrap();
-                let ctrbc_msg = CTRBCMsg{
-                    shard: fragment.0,
-                    mp: fragment.1, 
-                    origin: ctrbc_msg.origin,
-                };
-
                 let _message = asks_state.rbc_state.message.clone().unwrap();
-
-                let ready_msg = ProtMsg::Ready(ctrbc_msg, instance_id);
-                
-                self.broadcast(ready_msg).await;
-                //self.terminate(msg.origin, message).await;
+                //self.reconstruct_asks(instance_id).await;
             }
         }
     }
