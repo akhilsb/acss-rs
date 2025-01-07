@@ -14,8 +14,6 @@ impl Context{
         let tot_batches = 1;
         let zero = LargeField::from(0);
         let field_prime = self.large_field_bv_sss.prime.clone();
-        // Initiate Reliable Broadcast
-        let _res = self.rbc_req_send.send((self.myid, secrets[0].clone().to_signed_bytes_be())).await;
         
         // Sample bivariate polynomials
         // Pack t+1 degree-t sharings in each bivariate polynomial

@@ -122,7 +122,7 @@ impl Context {
                 let ready_msg = ProtMsg::Ready(ctrbc_msg, instance_id);
                 
                 self.broadcast(ready_msg).await;
-                self.terminate(msg.origin, message).await;
+                self.terminate(instance_id, message).await;
             }
 
         }

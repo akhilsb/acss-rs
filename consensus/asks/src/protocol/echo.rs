@@ -111,6 +111,7 @@ impl Context{
                 asks_state.terminated = true;
                 let _message = asks_state.rbc_state.message.clone().unwrap();
                 //self.reconstruct_asks(instance_id).await;
+                self.terminate(instance_id, None).await;
             }
         }
     }

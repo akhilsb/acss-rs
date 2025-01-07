@@ -73,18 +73,6 @@ async fn main() -> Result<()> {
                 acss_va::Context::spawn(config, node_normal)
                     .unwrap();
         }
-        "asks" => {
-            
-            exit_tx =
-                asks::Context::spawn(config, node_normal)
-                    .unwrap();
-        }
-        "ctrbc" => {
-            let (sender,receiver) = channel(10000);
-            exit_tx =
-                ctrbc::Context::spawn(config, receiver, sender, node_normal)
-                    .unwrap();
-        }
         "avid" => {
             let (sender,receiver) = channel(10000);
             exit_tx =

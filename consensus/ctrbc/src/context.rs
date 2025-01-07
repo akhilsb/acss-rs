@@ -53,15 +53,15 @@ pub struct Context {
     pub max_id: usize, 
 
     /// Input and output message queues for Reliable Broadcast
-    pub inp_rbc: Receiver<(Replica,Vec<u8>)>,
-    pub out_rbc: Sender<(Replica,Vec<u8>)>,
+    pub inp_rbc: Receiver<Vec<u8>>,
+    pub out_rbc: Sender<(usize, Replica,Vec<u8>)>,
 }
 
 impl Context {
     pub fn spawn(
         config: Node, 
-        input_msgs: Receiver<(Replica, Vec<u8>)>, 
-        output_msgs: Sender<(Replica,Vec<u8>)>, 
+        input_msgs: Receiver<Vec<u8>>, 
+        output_msgs: Sender<(usize, Replica, Vec<u8>)>, 
         byz: bool
     ) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
@@ -190,7 +190,7 @@ impl Context {
                     // Dealer sends message to everybody. <M, init>
                     let rbc_inst_id = self.max_id + 1;
                     self.max_id = rbc_inst_id;
-                    self.start_init(sync_msg.1,rbc_inst_id).await;
+                    self.start_init(sync_msg,rbc_inst_id).await;
                 },
             };
         }

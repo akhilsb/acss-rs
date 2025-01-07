@@ -1,10 +1,8 @@
 use std::{
     collections::HashMap,
     net::{SocketAddr, SocketAddrV4},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, Result};
 use config::Node;
 
 use fnv::FnvHashMap;
@@ -14,16 +12,16 @@ use network::{
 };
 use num_bigint_dig::{BigInt};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver},
+    mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
-use types::{Replica, SyncMsg, SyncState, WrapperMsg};
+use types::{Replica, SyncMsg, WrapperMsg};
 
 use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 
 use consensus::SyncHandler;
-use crypto::{aes_hash::HashState};
+use crypto::{aes_hash::HashState, LargeField};
 
 use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
 
@@ -77,10 +75,17 @@ pub struct Context {
 
     /// State for ACSS
     pub asks_state: HashMap<usize, ASKSState>,
+
+    /// Input and output request channels
+    pub inp_asks_requests: Receiver<(usize, bool)>,
+    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
 }
 
 impl Context {
-    pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+    pub fn spawn(config: Node,
+        input_reqs: Receiver<(usize,bool)>, 
+        output_shares: Sender<(usize,Replica,Option<LargeField>)>,
+        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -226,7 +231,10 @@ impl Context {
                 folding_dzk_context:folding_context,
 
                 asks_state: HashMap::default(),
-                nonce_seed: 1
+                nonce_seed: 1,
+
+                inp_asks_requests: input_reqs,
+                out_asks_values: output_shares
             };
 
             // Populate secret keys from config
@@ -235,9 +243,7 @@ impl Context {
             }
 
             // Run the consensus context
-            if let Err(e) = c.run().await {
-                log::error!("Consensus error: {}", e);
-            }
+            c.run().await;
         });
 
         Ok(exit_tx)
@@ -269,73 +275,44 @@ impl Context {
         self.add_cancel_handler(cancel_handler);
     }
 
-    pub async fn run(&mut self)-> Result<()>{
+    pub async fn run(&mut self){
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::ALIVE,
-                    value: "".to_string().into_bytes(),
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
         loop {
             tokio::select! {
                 // Receive exit handlers
-                exit_val = &mut self.exit_rx => {
-                    exit_val.map_err(anyhow::Error::new)?;
+                _exit_tx = &mut self.exit_rx => {
                     log::info!("Termination signal received by the server. Exiting.");
                     break
                 },
                 msg = self.net_recv.recv() => {
                     // Received messages are processed here
                     log::trace!("Got a consensus message from the network: {:?}", msg);
-                    let msg = msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-                    self.process_msg(msg).await;
+                    if msg.is_none(){
+                        log::error!("Got none from the consensus layer, most likely it closed");
+                        return;
+                    }
+                    self.process_msg(msg.unwrap()).await;
                 },
-                sync_msg = self.sync_recv.recv() =>{
-                    let sync_msg = sync_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-                    match sync_msg.state {
-                        SyncState::START =>{
-                            log::info!("Consensus Start time: {:?}", SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis());
-                            // Start your protocol from here
-                            // Write a function to broadcast a message. We demonstrate an example with a PING function
-                            // Dealer sends message to everybody. <M, init>
-                            let acss_inst_id = self.max_id + 1;
-                            self.max_id = acss_inst_id;
-                            
-                            self.init_asks( acss_inst_id).await;
-                            //self.init_acss(vec_msg,acss_inst_id).await;
-                            //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
-                            // wait for messages
-                        },
-                        SyncState::STOP =>{
-                            // Code used for internal purposes
-                            log::info!("Consensus Stop time: {:?}", SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis());
-                            log::info!("Termination signal received by the server. Exiting.");
-                            break
-                        },
-                        _=>{}
+                req_msg = self.inp_asks_requests.recv() =>{
+                    if req_msg.is_none(){
+                        log::error!("Request channel closed");
+                        return;
+                    }
+                    let req_msg = req_msg.unwrap();
+                    if req_msg.1{
+                        let acss_inst_id = self.max_id + 1;
+                        self.max_id = acss_inst_id;
+                        
+                        self.init_asks(acss_inst_id).await;
+                    }
+                    else {
+                        // Reconstruct this message
+                        self.reconstruct_asks(req_msg.0).await;
                     }
                 },
             };
         }
-        Ok(())
     }
 }
 

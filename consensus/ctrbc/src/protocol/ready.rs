@@ -113,7 +113,7 @@ impl Context {
             // Terminate protocol
             rbc_context.terminated = true;
             let term_msg = rbc_context.message.clone().unwrap();
-            self.terminate(msg.origin,term_msg).await;
+            self.terminate(instance_id,term_msg).await;
         }
     }
 }

@@ -1,5 +1,5 @@
 use consensus::reconstruct_data;
-use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree};
+use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
 use ctrbc::CTRBCMsg;
 use types::Replica;
 
@@ -116,10 +116,26 @@ impl Context{
             log::info!("Received n-f READY messages for RBC Instance ID {}, terminating",instance_id);
             // Terminate protocol
             asks_context.rbc_state.terminated = true;
-            //self.reconstruct_asks(instance_id).await;
-            //let term_msg = asks_context.rbc_state.message.clone().unwrap();
-            //self.terminate(msg.origin,term_msg).await;
+            self.terminate(instance_id, None).await;
         }
     }
 
+    pub async fn terminate(&mut self, instance_id: usize, secret: Option<LargeField>){
+        let instance: usize = instance_id % self.threshold;
+        let rep = instance_id/self.threshold;
+
+        if secret.is_none(){
+            // Completed sharing
+            let msg = (instance, rep, None);
+            let status = self.out_asks_values.send(msg).await;
+            log::info!("Sent result back to original channel {:?}", status);
+        }
+        else{
+            // Completed reconstruction of the secret
+            let msg = (instance,rep, Some(secret.unwrap()));
+            let status = self.out_asks_values.send(msg).await;
+            log::info!("Sent result back to original channel {:?}", status);
+        }
+
+    }
 }

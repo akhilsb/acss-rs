@@ -99,6 +99,7 @@ impl Context{
                 // Invoke termination with
             }
             log::info!("Sending back value to ACS: {} for ASKS instancce {}", secret,instance_id);
+            self.terminate(instance_id, Some(secret)).await;
         }
     }
 }

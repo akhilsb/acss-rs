@@ -13,9 +13,8 @@ use network::{
     Acknowledgement,
 };
 use num_bigint_dig::{BigInt};
-use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, Sender, Receiver},
+    mpsc::{unbounded_channel, UnboundedReceiver},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
@@ -25,8 +24,6 @@ use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 
 use consensus::SyncHandler;
 use crypto::{aes_hash::HashState, LargeField};
-
-use tokio::sync::mpsc::channel;
 
 use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
 
@@ -80,10 +77,6 @@ pub struct Context {
 
     /// State for ACSS
     pub acss_state: HashMap<usize, BatchACSSState>,
-
-    /// Channels for RBC Send and RBC Receive
-    pub rbc_req_send: Sender<(Replica, Vec<u8>)>,
-    pub rbc_out_recv: Receiver<(Replica, Vec<u8>)>
 }
 
 impl Context {
@@ -216,9 +209,6 @@ impl Context {
             end_degree_threshold: end_degree,
         };
 
-        let (rbc_req_send,rbc_req_recv) = channel(10000);
-        let (rbc_out_send, rbc_out_recv) = channel(10000);
-
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -252,9 +242,6 @@ impl Context {
 
                 acss_state: HashMap::default(),
                 nonce_seed: 1,
-
-                rbc_req_send: rbc_req_send,
-                rbc_out_recv: rbc_out_recv
             };
 
             // Populate secret keys from config
@@ -267,18 +254,6 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
-        // Set up RBC service
-
-        let _rbc_serv_status = ctrbc::Context::spawn(
-            rbc_config, 
-            rbc_req_recv, 
-            rbc_out_send, 
-            false
-        );
-
-        let mut signals = Signals::new(&[SIGINT, SIGTERM]).unwrap();
-        signals.forever().next();
-        log::error!("Received termination signal");
         Ok(exit_tx)
     }
 
@@ -376,12 +351,6 @@ impl Context {
                         _=>{}
                     }
                 },
-                rbc_msg = self.rbc_out_recv.recv() => {
-                    let rbc_msg = rbc_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-                    log::info!("Received message from RBC channel {:?}", rbc_msg.0);
-                }
             };
         }
         Ok(())

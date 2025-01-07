@@ -13,10 +13,11 @@ use network::{
     Acknowledgement,
 };
 use num_bigint_dig::{BigInt};
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver},
+use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
+use tokio::{sync::{
+    mpsc::{UnboundedReceiver, Sender, Receiver, channel, unbounded_channel},
     oneshot,
-};
+}};
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
@@ -25,7 +26,7 @@ use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
 use consensus::SyncHandler;
 use crypto::{aes_hash::HashState, LargeField};
 
-use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
+use crate::{msg::ProtMsg, Handler};
 
 pub struct Context {
     /// Networking context
@@ -75,8 +76,13 @@ pub struct Context {
     /// Constants for PRF seeding
     pub nonce_seed: usize,
 
-    /// State for ACSS
-    pub acss_state: HashMap<usize, BatchACSSState>,
+    ///// State for ACSS
+    //pub acss_state: HashMap<usize, BatchACSSState>,
+    /// Channels to interact with other services
+    pub asks_req: Sender<(usize, bool)>,
+    pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
+    pub ctrbc_req: Sender<Vec<u8>>,
+    pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
 }
 
 impl Context {
@@ -84,9 +90,27 @@ impl Context {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
+
+        let mut rbc_config = config.clone();
+        let mut ra_config = config.clone();
+        let mut asks_config = config.clone();
+
+        let port_rbc: u16 = 150;
+        let port_ra: u16 = 300;
+        let port_asks: u16 = 450;
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
+            
+            let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_rbc);
+            let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
+            let asks_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_asks);
+
+            rbc_config.net_map.insert(*replica, rbc_address.to_string());
+            ra_config.net_map.insert(*replica, ra_address.to_string());
+            asks_config.net_map.insert(*replica, asks_address.to_string());
+
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
+
         }
         let my_port = consensus_addrs.get(&config.id).unwrap();
         let my_address = to_socket_address("0.0.0.0", my_port.port());
@@ -193,6 +217,13 @@ impl Context {
             recon_threshold: config.num_faults+1,
             end_degree_threshold: end_degree,
         };
+        // Prepare RBC config
+        let rbc_config = config.clone();
+
+        let (ctrbc_req_send_channel, ctrbc_req_recv_channel) = channel(10000);
+        let (ctrbc_out_send_channel, ctrbc_out_recv_channel) = channel(10000);
+        let (asks_req_send_channel, asks_req_recv_channel) = channel(10000);
+        let (asks_out_send_channel, asks_out_recv_channel) = channel(10000);
 
         tokio::spawn(async move {
             let mut c = Context {
@@ -225,8 +256,13 @@ impl Context {
 
                 folding_dzk_context:folding_context,
 
-                acss_state: HashMap::default(),
-                nonce_seed: 1
+                nonce_seed: 1,
+
+                ctrbc_req: ctrbc_req_send_channel,
+                ctrbc_out_recv: ctrbc_out_recv_channel,
+
+                asks_req: asks_req_send_channel,
+                asks_out_recv: asks_out_recv_channel
             };
 
             // Populate secret keys from config
@@ -240,6 +276,22 @@ impl Context {
             }
         });
 
+        let _rbc_serv_status = ctrbc::Context::spawn(
+            rbc_config,
+            ctrbc_req_recv_channel, 
+            ctrbc_out_send_channel, 
+            false
+        );
+
+        let _asks_serv_status = asks::Context::spawn(
+            asks_config, 
+            asks_req_recv_channel, 
+            asks_out_send_channel,
+            false
+        );
+        let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
+        signals.forever().next();
+        log::error!("Received termination signal");
         Ok(exit_tx)
     }
 
@@ -269,7 +321,7 @@ impl Context {
         self.add_cancel_handler(cancel_handler);
     }
 
-    pub async fn run(&mut self){
+    pub async fn run(&mut self) -> Result<()>{
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
         let cancel_handler = self
@@ -298,7 +350,7 @@ impl Context {
                     let msg = msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    self.process_msg(msg).await;
+                    //self.process_msg(msg).await;
                 },
                 sync_msg = self.sync_recv.recv() =>{
                     let sync_msg = sync_msg.ok_or_else(||
@@ -320,7 +372,7 @@ impl Context {
                             for i in 1u64..10000u64{
                                 vec_msg.push(LargeField::from(i));
                             }
-                            self.init_batch_acss_va(vec_msg , acss_inst_id).await;
+                            //self.init_batch_acss_va(vec_msg , acss_inst_id).await;
                             //self.init_acss(vec_msg,acss_inst_id).await;
                             //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
                             // wait for messages

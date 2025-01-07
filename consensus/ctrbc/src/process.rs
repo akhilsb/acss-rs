@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::{ProtMsg};
 use crate::context::Context;
 use crypto::hash::verf_mac;
-use types::{WrapperMsg, Replica};
+use types::{WrapperMsg};
 
 impl Context {
     // This function verifies the Message Authentication Code (MAC) of a sent message
@@ -57,9 +57,12 @@ impl Context {
     }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, origin: Replica, data: Vec<u8>) {
-        log::info!("Terminated RBC, sending message back to the channel");
-        let status = self.out_rbc.send((origin,data)).await;
+    pub async fn terminate(&mut self, instance_id: usize, data: Vec<u8>) {
+        let inst_id = instance_id % self.threshold;
+        let party = instance_id/self.threshold;
+        log::info!("Terminated {}th RBC initiated by instance {}, sending message back to the channel",inst_id, party);
+
+        let status = self.out_rbc.send((inst_id,party,data)).await;
         if status.is_err(){
             log::error!("Error sending message back to the channel: {}",status.unwrap_err());
         }
