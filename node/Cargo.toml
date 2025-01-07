@@ -8,13 +8,16 @@ edition = "2021"
 [dependencies]
 bincode = "1"
 config = { package = "config", path="../config"}
+
 rbc = {package = "rbc",path="../consensus/rbc"}
+ra = {package = "ra",path="../consensus/ra"}
 asks = {package = "asks",path="../consensus/asks"}
 ctrbc = {package = "ctrbc",path="../consensus/ctrbc"}
 hacss = {package = "hacss", path="../consensus/hacss"}
 acss_va = {package = "acss_va", path="../consensus/acss_va"}
 acs = {package = "acs", path="../consensus/acs"}
 avid = {package= "avid", path="../consensus/avid"}
+
 consensus = { package = "consensus", path="../consensus"}
 util = { package = "util", path="../util"}
 anyhow = "1"

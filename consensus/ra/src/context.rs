@@ -5,12 +5,13 @@ use std::{
 
 use config::Node;
 
+use ctrbc::RBCState;
 use fnv::FnvHashMap;
 use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::{BigInt};
+
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
     oneshot,
@@ -18,11 +19,10 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use consensus::{LargeFieldSSS};
+use crypto::{aes_hash::HashState};
 
-use crypto::{aes_hash::HashState, LargeField};
+use crate::{msg::ProtMsg, handlers::Handler};
 
-use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
 
 pub struct Context {
     /// Networking context
@@ -50,23 +50,21 @@ pub struct Context {
 
     pub max_id: usize,
 
-    pub large_field_uv_sss: LargeFieldSSS,
-
     /// Constants for PRF seeding
     pub nonce_seed: usize,
 
     /// State for ACSS
-    pub asks_state: HashMap<usize, ASKSState>,
+    pub ra_state: HashMap<usize, RBCState>,
 
     /// Input and output request channels
-    pub inp_asks_requests: Receiver<(usize, bool)>,
-    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
+    pub inp_ra_requests: Receiver<(usize,usize)>,
+    pub out_ra_values: Sender<(usize, Replica, usize)>
 }
 
 impl Context {
     pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize,bool)>, 
-        output_shares: Sender<(usize,Replica,Option<LargeField>)>,
+        input_reqs: Receiver<(usize, usize)>, 
+        output_shares: Sender<(usize,Replica,usize)>,
         byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
@@ -99,26 +97,7 @@ impl Context {
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
 
-        let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
-
-        
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
-        //let small_field_prime = 37;
-        //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
-
-        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
-        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
-        // // Save to file
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
-
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
-            config.num_faults +1,
-            config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
-        );
+        let rbc_start_id = 0;
 
         tokio::spawn(async move {
             let mut c = Context {
@@ -139,13 +118,11 @@ impl Context {
 
                 max_id: rbc_start_id, 
 
-                large_field_uv_sss: lf_uv_sss,
-
-                asks_state: HashMap::default(),
+                ra_state: HashMap::default(),
                 nonce_seed: 1,
 
-                inp_asks_requests: input_reqs,
-                out_asks_values: output_shares
+                inp_ra_requests: input_reqs,
+                out_ra_values: output_shares
             };
 
             // Populate secret keys from config
@@ -205,22 +182,21 @@ impl Context {
                     }
                     self.process_msg(msg.unwrap()).await;
                 },
-                req_msg = self.inp_asks_requests.recv() =>{
+                req_msg = self.inp_ra_requests.recv() =>{
                     if req_msg.is_none(){
                         log::error!("Request channel closed");
                         return;
                     }
                     let req_msg = req_msg.unwrap();
-                    if req_msg.1{
-                        let acss_inst_id = self.max_id + 1;
-                        self.max_id = acss_inst_id;
-                        
-                        self.init_asks(acss_inst_id).await;
-                    }
-                    else {
-                        // Reconstruct this message
-                        self.reconstruct_asks(req_msg.0).await;
-                    }
+
+                    let ra_id = self.max_id+1;
+                    self.max_id = ra_id;
+
+                    let representative_replica = req_msg.0;
+                    let value = req_msg.1;
+                    
+                    let instance_id = representative_replica*self.threshold + ra_id;
+                    self.init_ra(instance_id, representative_replica, value).await;
                 },
             };
         }

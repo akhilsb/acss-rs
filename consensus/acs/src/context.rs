@@ -81,8 +81,12 @@ pub struct Context {
     /// Channels to interact with other services
     pub asks_req: Sender<(usize, bool)>,
     pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
+
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
+
+    pub ra_req_send: Sender<(usize, usize)>,
+    pub ra_out_recv: Receiver<(usize, Replica, usize)>
 }
 
 impl Context {
@@ -222,6 +226,10 @@ impl Context {
 
         let (ctrbc_req_send_channel, ctrbc_req_recv_channel) = channel(10000);
         let (ctrbc_out_send_channel, ctrbc_out_recv_channel) = channel(10000);
+        
+        let (ra_req_send_channel, ra_req_recv_channel) = channel(10000);
+        let (ra_out_send_channel, ra_out_recv_channel) = channel(10000);
+        
         let (asks_req_send_channel, asks_req_recv_channel) = channel(10000);
         let (asks_out_send_channel, asks_out_recv_channel) = channel(10000);
 
@@ -262,7 +270,10 @@ impl Context {
                 ctrbc_out_recv: ctrbc_out_recv_channel,
 
                 asks_req: asks_req_send_channel,
-                asks_out_recv: asks_out_recv_channel
+                asks_out_recv: asks_out_recv_channel,
+
+                ra_req_send: ra_req_send_channel,
+                ra_out_recv: ra_out_recv_channel
             };
 
             // Populate secret keys from config
@@ -289,6 +300,14 @@ impl Context {
             asks_out_send_channel,
             false
         );
+
+        let _ra_serv_status = ra::Context::spawn(
+            ra_config,
+            ra_req_recv_channel,
+            ra_out_send_channel,
+            false
+        );
+
         let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
         signals.forever().next();
         log::error!("Received termination signal");
