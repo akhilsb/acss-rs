@@ -10,7 +10,7 @@ pub struct ACSState{
     pub broadcasts_left_to_be_accepted: HashMap<Replica, HashSet<Replica>>,
     pub accepted_witnesses: HashSet<Replica>,
 
-    pub vaba_states: Vec<VABAState>,
+    pub vaba_states: HashMap<usize, VABAState>,
     pub ra_value: Option<Replica>,
 }
 
@@ -23,7 +23,7 @@ impl ACSState{
             broadcasts_left_to_be_accepted: HashMap::default(),
             accepted_witnesses: HashSet::default(),
 
-            vaba_states: Vec::new(), 
+            vaba_states: HashMap::default(), 
             ra_value: None
         }
     }
@@ -33,13 +33,16 @@ pub struct VABAState{
 
     pub pre: Option<Replica>,
     pub justify: Option<Vec<(Replica, Replica)>>,
+    
     pub term_asks_instances: Vec<Replica>,
-    pub pre_votes: HashMap<Replica, (Replica, Vec<Replica>)>,
+    pub pre_justify_votes: HashMap<Replica, (Replica, Vec<(Replica,Replica)>)>,
+    pub validated_pre_justify_votes: HashSet<Replica>,
+
     pub gather_state: GatherState,
     pub votes: HashMap<Replica, Vec<Replica>>,
+    
     pub reconstructed_values: HashMap<Replica, LargeField>,
     pub elected_leader: Option<Replica>,
-
 }
 
 impl VABAState{
@@ -49,7 +52,9 @@ impl VABAState{
             justify: Some(justify),
 
             term_asks_instances: Vec::new(), 
-            pre_votes: HashMap::default(), 
+            pre_justify_votes: HashMap::default(), 
+            validated_pre_justify_votes: HashSet::default(), 
+
             gather_state: GatherState::new(), 
             votes: HashMap::default(),
 
@@ -64,7 +69,9 @@ impl VABAState{
             justify: None,
 
             term_asks_instances: Vec::new(), 
-            pre_votes: HashMap::default(), 
+            pre_justify_votes: HashMap::default(), 
+            validated_pre_justify_votes: HashSet::default(),
+
             gather_state: GatherState::new(), 
             votes: HashMap::default(),
 

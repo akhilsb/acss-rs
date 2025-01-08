@@ -67,7 +67,7 @@ impl Context{
             if true_inst % tot_rbcs_per_vaba == 1{
                 // This broadcast corresponds to Broadcast termination of (pre_v, asks_v, justify_v)
                 let msg: (Vec<Replica>, Vec<Replica>, Vec<Replica>) = bincode::deserialize(&value).unwrap();
-
+                
             }
         }
     }
