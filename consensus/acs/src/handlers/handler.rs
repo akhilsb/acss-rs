@@ -22,11 +22,11 @@ impl Handler {
 impl network::Handler<Acknowledgement, WrapperMsg<ProtMsg>> for Handler {
     async fn dispatch(&self, msg: WrapperMsg<ProtMsg>, writer: &mut network::Writer<Acknowledgement>) {
         // Forward the message
-        let status = self.consensus_tx
+        let _status = self.consensus_tx
             .send(msg);
-        if status.is_err(){
-            log::error!("Failed to send consensus message to the channel because of {:?}", status.err().unwrap());
-        }
+        // if status.is_err(){
+        //     log::error!("Failed to send consensus message to the channel because of {:?}", status.err().unwrap());
+        // }
         // Acknowledge
         let status = writer
             .send(Acknowledgement::Pong)

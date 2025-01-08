@@ -8,7 +8,7 @@ use signal_hook::{
     iterator::Signals,
 };
 use tokio::sync::mpsc::channel;
-use std::net::{SocketAddr, SocketAddrV4};
+use std::{net::{SocketAddr, SocketAddrV4}, env};
 
 //#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 #[tokio::main]
@@ -72,6 +72,10 @@ async fn main() -> Result<()> {
             exit_tx =
                 acss_va::Context::spawn(config, node_normal)
                     .unwrap();
+        }
+        "acs" => {
+            exit_tx = 
+                acs::Context::spawn(config, node_normal).unwrap();
         }
         "avid" => {
             let (sender,receiver) = channel(10000);

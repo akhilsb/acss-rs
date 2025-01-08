@@ -21,12 +21,10 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
-
 use consensus::SyncHandler;
 use crypto::{aes_hash::HashState, LargeField};
 
-use crate::{msg::ProtMsg, Handler};
+use crate::{msg::ProtMsg, Handler, protocol::ACSState};
 
 pub struct Context {
     /// Networking context
@@ -41,7 +39,6 @@ pub struct Context {
     byz: bool,
 
     /// Primes for computation
-    pub small_field_prime: u64,
     pub large_field_prime: BigInt,
 
     /// Secret Key map
@@ -53,31 +50,17 @@ pub struct Context {
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
-    
-    // Each Reliable Broadcast instance is associated with a Unique Identifier. 
-    // pub avid_context: HashMap<usize, ACSSState>,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
 
     pub max_id: usize,
 
-    /// Shamir secret sharing states
-    pub small_field_sss: SmallFieldSSS,
-    pub large_field_sss: LargeFieldSSS,
-
-    pub large_field_bv_sss: LargeFieldSSS,
-    pub large_field_uv_sss: LargeFieldSSS,
-
-    /// DZK Proof context
-    pub folding_dzk_context: FoldingDZKContext,
-
-
     /// Constants for PRF seeding
     pub nonce_seed: usize,
 
-    ///// State for ACSS
-    //pub acss_state: HashMap<usize, BatchACSSState>,
+    ///// State for GatherState and ACS
+    pub acs_state: ACSState,
     /// Channels to interact with other services
     pub asks_req: Sender<(usize, bool)>,
     pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
@@ -116,6 +99,7 @@ impl Context {
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
 
         }
+        log::info!("Consensus addresses: {:?}", consensus_addrs);
         let my_port = consensus_addrs.get(&config.id).unwrap();
         let my_address = to_socket_address("0.0.0.0", my_port.port());
         let mut syncer_map: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -150,80 +134,13 @@ impl Context {
         let key1 = [29u8; 16];
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
-        let hashstate2 = HashState::new(key0, key1, key2);
 
         let threshold:usize = 10000;
         let rbc_start_id = threshold*config.id;
-
-        let small_field_prime:u64 = 4294967291;
-        let large_field_prime: BigInt = BigInt::parse_bytes(b"115792088158918333131516597762172392628570465465856793992332884130307292657121",10).unwrap();
         
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
+        let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
         
-        //let small_field_prime = 37;
-        //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
-
-        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
-        let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
-        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
-        // // Save to file
-        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
-        let smallfield_ss = SmallFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes, 
-            small_field_prime
-        );
-        // Blinding and Nonce polynomials
-        let largefield_ss = LargeFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes, 
-            large_field_prime.clone()
-        );
-
-        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
-            2*config.num_faults +1, 
-            config.num_nodes,
-            file_path,
-            large_field_prime_bv.clone(),
-        );
-
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
-            config.num_faults +1,
-            config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
-        );
-
-        // Prepare dZK context for halving degrees
-        let mut start_degree = config.num_faults as isize;
-        let end_degree = 2 as usize;
-        let mut ss_contexts = HashMap::default();
-        while start_degree > 0 {
-            let split_point;
-            if start_degree % 2 == 0{
-                split_point = start_degree/2;
-            }
-            else{
-                split_point = (start_degree+1)/2;
-            }
-            start_degree = start_degree - split_point;
-            ss_contexts.insert(start_degree,split_point);
-        }
-        //ss_contexts.insert(start_degree, lf_dzk_sss);
-
-        // Folding context
-        let folding_context = FoldingDZKContext{
-            large_field_uv_sss: lf_uv_sss.clone(),
-            hash_context: hashstate2,
-            poly_split_evaluation_map: ss_contexts,
-            evaluation_points: (1..config.num_nodes+1).into_iter().collect(),
-            recon_threshold: config.num_faults+1,
-            end_degree_threshold: end_degree,
-        };
         // Prepare RBC config
-        let rbc_config = config.clone();
-
         let (ctrbc_req_send_channel, ctrbc_req_recv_channel) = channel(10000);
         let (ctrbc_out_send_channel, ctrbc_out_recv_channel) = channel(10000);
         
@@ -248,21 +165,13 @@ impl Context {
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
                 
-                small_field_prime: small_field_prime,
                 large_field_prime: large_field_prime,
 
                 //avid_context:HashMap::default(),
                 threshold: 10000,
 
                 max_id: rbc_start_id, 
-
-                small_field_sss: smallfield_ss,
-                large_field_sss: largefield_ss,
-
-                large_field_bv_sss: lf_bv_sss,
-                large_field_uv_sss: lf_uv_sss,
-
-                folding_dzk_context:folding_context,
+                acs_state: ACSState::new(),
 
                 nonce_seed: 1,
 
@@ -388,9 +297,10 @@ impl Context {
                             self.max_id = acss_inst_id;
                             // Craft ACSS message
                             let mut vec_msg = Vec::new();
-                            for i in 1u64..10000u64{
-                                vec_msg.push(LargeField::from(i));
+                            for i in 0..self.num_faults+1{
+                                vec_msg.push(i);
                             }
+                            self.init_rbc(vec_msg).await;
                             //self.init_batch_acss_va(vec_msg , acss_inst_id).await;
                             //self.init_acss(vec_msg,acss_inst_id).await;
                             //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
@@ -408,6 +318,13 @@ impl Context {
                         _=>{}
                     }
                 },
+                ctrbc_msg = self.ctrbc_out_recv.recv() => {
+                    let ctrbc_msg = ctrbc_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+
+                    log::info!("Received message from CTRBC channel {:?}", ctrbc_msg);
+                }
             };
         }
         Ok(())

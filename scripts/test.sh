@@ -22,7 +22,7 @@ for((i=0;i<4;i++)); do
 ./target/$TYPE/node \
     --config $TESTDIR/nodes-$i.json \
     --ip ip_file \
-    --protocol asks \
+    --protocol acs \
     --input $2 \
     --syncer $1 \
     --bfile $4 \
