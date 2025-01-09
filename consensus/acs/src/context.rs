@@ -323,7 +323,22 @@ impl Context {
                         anyhow!("Networking layer has closed")
                     )?;
 
-                    log::info!("Received message from CTRBC channel {:?}", ctrbc_msg);
+                    log::debug!("Received message from CTRBC channel {:?}", ctrbc_msg);
+
+                },
+                asks_msg = self.asks_out_recv.recv() =>{
+                    let asks_msg = asks_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+
+                    log::debug!("Received message from ASKS channel {:?}", asks_msg);
+                },
+                ra_msg = self.ra_out_recv.recv() => {
+                    let ra_msg = ra_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+
+                    log::debug!("Received message from RA channel {:?}", ra_msg);
                 }
             };
         }

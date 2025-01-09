@@ -34,10 +34,17 @@ pub struct VABAState{
     pub pre: Option<Replica>,
     pub justify: Option<Vec<(Replica, Replica)>>,
     
-    pub term_asks_instances: Vec<Replica>,
-    pub pre_justify_votes: HashMap<Replica, (Replica, Vec<(Replica,Replica)>)>,
+    pub term_asks_instances: HashSet<Replica>,
+    pub pre_broadcast: bool,
+    // Pre, ASKS instances terminated, Justify values
+    pub pre_justify_votes: HashMap<Replica, (Replica, Vec<Replica>, Vec<(Replica,Replica)>)>,
+    // If Pre has been validated, remaining ASKS instances left to be terminated, Justify values remaining
+    pub unvalidated_pre_justify_votes: HashMap<Replica, (Option<Replica>, HashSet<Replica>, HashMap<Replica, Replica>)>,
     pub validated_pre_justify_votes: HashSet<Replica>,
 
+    pub reliable_agreement: HashSet<Replica>,
+
+    pub gather_started: bool, 
     pub gather_state: GatherState,
     pub votes: HashMap<Replica, Vec<Replica>>,
     
@@ -51,10 +58,16 @@ impl VABAState{
             pre: Some(pre),
             justify: Some(justify),
 
-            term_asks_instances: Vec::new(), 
-            pre_justify_votes: HashMap::default(), 
+            term_asks_instances: HashSet::default(), 
+            pre_broadcast: false,
+
+            pre_justify_votes: HashMap::default(),
+            unvalidated_pre_justify_votes: HashMap::default(), 
             validated_pre_justify_votes: HashSet::default(), 
 
+            reliable_agreement: HashSet::default(),
+
+            gather_started: false,
             gather_state: GatherState::new(), 
             votes: HashMap::default(),
 
@@ -68,10 +81,16 @@ impl VABAState{
             pre: None,
             justify: None,
 
-            term_asks_instances: Vec::new(), 
-            pre_justify_votes: HashMap::default(), 
+            term_asks_instances: HashSet::default(), 
+            pre_broadcast: false,
+
+            pre_justify_votes: HashMap::default(),
+            unvalidated_pre_justify_votes: HashMap::default(),
             validated_pre_justify_votes: HashSet::default(),
 
+            reliable_agreement: HashSet::default(),
+
+            gather_started: false,
             gather_state: GatherState::new(), 
             votes: HashMap::default(),
 
@@ -82,17 +101,11 @@ impl VABAState{
 }
 
 pub struct GatherState{
-    
-    // Each replica and its corresponding ASKS instances
-    pub terminated_rbcs: HashMap<Replica, Vec<Replica>>,
-    pub validated_rbcs: HashSet<Replica>,
-
-    pub reliable_agreement: HashSet<Replica>,
-
     pub received_gather_echos: HashMap<Replica, Vec<Replica>>,
     pub unvalidated_gather_echos: HashMap<Replica, HashSet<Replica>>,
     pub validated_gather_echos: HashSet<Replica>,
 
+    pub gather2_started: bool,
     pub received_gather_echo2s: HashMap<Replica, Vec<Replica>>,
     pub unvalidated_gather_echo2s: HashMap<Replica, HashSet<Replica>>,
     pub validated_gather_echo2s: HashSet<Replica>,
@@ -100,16 +113,12 @@ pub struct GatherState{
 
 impl GatherState{
     pub fn new()-> GatherState{
-        GatherState { 
-            terminated_rbcs: HashMap::default(),
-            validated_rbcs: HashSet::default(),
-
-            reliable_agreement: HashSet::default(),
-            
+        GatherState {            
             received_gather_echos: HashMap::default(), 
             unvalidated_gather_echos: HashMap::default(), 
             validated_gather_echos: HashSet::default(),
 
+            gather2_started: false, 
             received_gather_echo2s: HashMap::default(),
             unvalidated_gather_echo2s: HashMap::default(),
             validated_gather_echo2s: HashSet::default(),
