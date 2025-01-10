@@ -58,6 +58,8 @@ impl Context {
                     log::info!("Received Ping from node : {:?}", rep);
                     self.handle_sendall(main_msg).await;
                 }
+
+                _ => todo!("The messages for rbc are already handled here but not for other protocols.")
             }
         } else {
             log::warn!(
