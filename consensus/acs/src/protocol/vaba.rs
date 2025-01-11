@@ -20,7 +20,7 @@ impl Context{
         }
 
         // Start ASKS
-        let status = self.asks_req.send((instance, false)).await;
+        let status = self.asks_req.send((instance, None, false)).await;
         self.broadcast_pre(instance).await;
         if status.is_err(){
             log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");
@@ -57,6 +57,10 @@ impl Context{
         
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
         vaba_context.reliable_agreement.insert(representative_rep);
+        
+        // Check if received enough Reliable Agreement instances to start Gather protocol. 
+        self.check_gather_start(inst).await;
+        // Check if received enough Reliable Agreement instances to start next phase of Gather protocol. 
         self.check_gather_echo_termination(inst, vec![representative_rep]).await;
     }
 
@@ -65,9 +69,10 @@ impl Context{
         if vaba_context.term_asks_instances.len() == self.num_faults+1 &&
             vaba_context.pre.is_some() && 
             vaba_context.justify.is_some() &&
-            !vaba_context.pre_broadcast{
+            !vaba_context.pre_broadcast {
+            log::info!("Starting Pre broadcast for instance_id {}", inst);
             // Start new RBC instance
-            let p_i = vaba_context.term_asks_instances.clone();
+            let p_i: Vec<Replica> = vaba_context.term_asks_instances.clone().into_iter().collect();
             
             let ctrbc_msg = (
                 vaba_context.pre.clone().unwrap(), 
@@ -86,7 +91,7 @@ impl Context{
         }
     }
 
-    // Checks if the termination of an RBC added any new witnesses
+    // Checks if the termination of an RBC added any new witnesses for PRE Broadcast
     pub async fn check_witness_pre_broadcast(&mut self, inst: usize){
         log::info!("Checking for witnesses in inst {}", inst);
         let mut list_of_witnesses = Vec::new();
@@ -99,7 +104,6 @@ impl Context{
             for (key, entry) in vaba_context.unvalidated_pre_justify_votes.iter_mut(){
                 // If this party indeed indicated the broadcaster as a pre-vote, then check if other conditions are true as well
                 if entry.0.is_some() && (self.acs_state.accepted_witnesses.contains(&entry.0.clone().unwrap())){
-                    
                     if entry.1.is_empty(){
                         log::info!("Found new witness {} at check_witness_pre_broadcast for inst {}", *key, inst);
                         list_of_witnesses.push(*key);
@@ -151,11 +155,11 @@ impl Context{
                 }
             }
 
-
             // Check if party pre's RBC terminated in the first phase
             if remaining_asks_instances.is_empty() && self.acs_state.accepted_witnesses.contains(pre){
                 // Add party to set of witnesses
                 vaba_context.validated_pre_justify_votes.insert(broadcaster.clone());
+
             }
 
             else{
@@ -181,6 +185,7 @@ impl Context{
         else{
             // Check if justified votes have been broadcasted and validated. 
             // Fetch the previous VABA context
+            // TODO: Case unhandled
             return;
         }
 
@@ -198,7 +203,8 @@ impl Context{
         }
         let gather2 = vaba_context.gather_state.gather2_started;
         self.check_gather_start(inst).await;
-        if gather2{
+
+        if gather2 {
             self.check_gather_echo2_termination(inst, vec![broadcaster]).await;
         }
         else{
@@ -209,15 +215,19 @@ impl Context{
     pub async fn check_gather_start(&mut self, inst: usize){
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
         if vaba_context.validated_pre_justify_votes.len() >= self.num_nodes - self.num_faults && !vaba_context.gather_started{
+            
             let mut gather_start_set = Vec::new();
             for rep in vaba_context.validated_pre_justify_votes.iter(){
                 if vaba_context.reliable_agreement.contains(rep){
                     gather_start_set.push(*rep);
                 }
             }
+            
             if gather_start_set.len() >= self.num_nodes - self.num_faults{
                 // Start Gather by sending Gather Echo
                 let prot_msg = ProtMsg::GatherEcho(inst , gather_start_set);
+                
+                // Gather started here
                 vaba_context.gather_started = true;
                 self.broadcast(prot_msg).await;
             }

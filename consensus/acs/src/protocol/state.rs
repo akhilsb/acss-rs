@@ -46,6 +46,12 @@ pub struct VABAState{
 
     pub gather_started: bool, 
     pub gather_state: GatherState,
+    
+    pub asks_reconstruction_started: bool,
+    pub asks_reconstruction_list: HashMap<Replica, HashSet<Replica>>,
+    pub asks_reconstructed_values: HashMap<Replica, LargeField>,
+    pub ranks_parties: HashMap<Replica, LargeField>, 
+
     pub votes: HashMap<Replica, Vec<Replica>>,
     
     pub reconstructed_values: HashMap<Replica, LargeField>,
@@ -69,7 +75,14 @@ impl VABAState{
 
             gather_started: false,
             gather_state: GatherState::new(), 
+            
+            asks_reconstruction_started: false,
+            asks_reconstruction_list: HashMap::default(),
+            asks_reconstructed_values: HashMap::default(),
+            ranks_parties: HashMap::default(),
+            
             votes: HashMap::default(),
+
 
             reconstructed_values: HashMap::default(),
             elected_leader: None
@@ -92,6 +105,12 @@ impl VABAState{
 
             gather_started: false,
             gather_state: GatherState::new(), 
+            
+            asks_reconstruction_started: false,
+            asks_reconstruction_list: HashMap::default(),
+            asks_reconstructed_values: HashMap::default(),
+            ranks_parties: HashMap::default(),
+
             votes: HashMap::default(),
 
             reconstructed_values: HashMap::default(),

@@ -62,7 +62,7 @@ pub struct Context {
     ///// State for GatherState and ACS
     pub acs_state: ACSState,
     /// Channels to interact with other services
-    pub asks_req: Sender<(usize, bool)>,
+    pub asks_req: Sender<(usize, Option<usize>,bool)>,
     pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
 
     pub ctrbc_req: Sender<Vec<u8>>,
@@ -324,7 +324,7 @@ impl Context {
                     )?;
 
                     log::debug!("Received message from CTRBC channel {:?}", ctrbc_msg);
-
+                    self.process_ctrbc_event(ctrbc_msg.1, ctrbc_msg.0, ctrbc_msg.2).await;
                 },
                 asks_msg = self.asks_out_recv.recv() =>{
                     let asks_msg = asks_msg.ok_or_else(||
@@ -332,6 +332,12 @@ impl Context {
                     )?;
 
                     log::debug!("Received message from ASKS channel {:?}", asks_msg);
+                    if asks_msg.2.is_none(){
+                        self.process_asks_termination(asks_msg.0, asks_msg.1, asks_msg.2).await;
+                    }
+                    else{
+                        self.process_asks_reconstruction_result(asks_msg.0, asks_msg.1, asks_msg.2.unwrap()).await;
+                    }
                 },
                 ra_msg = self.ra_out_recv.recv() => {
                     let ra_msg = ra_msg.ok_or_else(||
@@ -339,6 +345,7 @@ impl Context {
                     )?;
 
                     log::debug!("Received message from RA channel {:?}", ra_msg);
+                    self.process_ra_termination(ra_msg.0, ra_msg.1).await;
                 }
             };
         }

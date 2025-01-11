@@ -59,13 +59,13 @@ pub struct Context {
     pub asks_state: HashMap<usize, ASKSState>,
 
     /// Input and output request channels
-    pub inp_asks_requests: Receiver<(usize, bool)>,
+    pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
     pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
 }
 
 impl Context {
     pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize,bool)>, 
+        input_reqs: Receiver<(usize, Option<usize>,bool)>, 
         output_shares: Sender<(usize,Replica,Option<LargeField>)>,
         byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
@@ -209,7 +209,7 @@ impl Context {
                         return;
                     }
                     let req_msg = req_msg.unwrap();
-                    if req_msg.1{
+                    if req_msg.2{
                         let acss_inst_id = self.max_id + 1;
                         self.max_id = acss_inst_id;
                         
@@ -217,7 +217,8 @@ impl Context {
                     }
                     else {
                         // Reconstruct this message
-                        self.reconstruct_asks(req_msg.0).await;
+                        let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
+                        self.reconstruct_asks(instance_id).await;
                     }
                 },
             };

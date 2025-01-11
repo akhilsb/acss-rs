@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crypto::LargeField;
 use types::Replica;
 
@@ -26,5 +28,100 @@ impl Context{
         else{
             vaba_context.reconstructed_values.insert(sender, value.unwrap());
         }
+    }
+
+    pub async fn init_asks_reconstruction(&mut self, instance: usize){
+        // Generate list of all ASKS instances to be reconstructed
+        // Reconstruct all received ASKS shares
+        let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
+        if vaba_context.asks_reconstruction_started{
+            return;
+        }
+        for rep in 0..self.num_nodes{
+            vaba_context.ranks_parties.insert(rep, LargeField::from(0));
+        }
+        // Preprocess list of ASKS instances to be reconstructed for each oracle
+        for rep in vaba_context.gather_state.validated_gather_echo2s.iter(){
+            // Fetch list of asks instances specified by this party
+            let (_,asks_instances,_) = vaba_context.pre_justify_votes.get(rep).unwrap();
+            let mut asks_instance_set: HashSet<Replica> = HashSet::default();
+            asks_instance_set.extend(asks_instances);
+
+            // Remove already reconstructed instances from this list
+            let mut agg_secret = LargeField::from(0);
+            for inst in asks_instances{
+                if vaba_context.asks_reconstructed_values.contains_key(inst){
+                    let recon_value = vaba_context.asks_reconstructed_values.get(inst).unwrap();
+                    agg_secret = (agg_secret + recon_value)% &self.large_field_prime;
+                    asks_instance_set.remove(inst);
+                }
+            }
+
+            if !asks_instance_set.is_empty(){
+                vaba_context.asks_reconstruction_list.insert(*rep, asks_instance_set);
+            }
+        }
+
+        for rep in vaba_context.term_asks_instances.iter(){
+            let _status = self.asks_req.send((instance, Some(*rep), true)).await;
+        }
+        // Reconstruction true
+        vaba_context.asks_reconstruction_started = true;
+        // Wait until receiving all results for ranks
+    }
+
+    pub async fn process_asks_reconstruction_result(&mut self, instance: usize, secret_preparer_rep: usize, recon_result: LargeField){
+        log::info!("Received reconstruction result from ASKS for instance {} and Replica {}", instance, secret_preparer_rep);
+        // Compute Rank of reconstruction
+        if !self.acs_state.vaba_states.contains_key(&instance){
+            let vaba_context = VABAState::new_without_pre_justify();
+            self.acs_state.vaba_states.insert(instance, vaba_context);
+        }
+        
+        let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
+
+        vaba_context.asks_reconstructed_values.insert(secret_preparer_rep, recon_result.clone());
+        
+        if vaba_context.asks_reconstruction_started{
+            let mut new_ranks_reconstructed_parties = Vec::new();
+            for (rep, set_indices) in vaba_context.asks_reconstruction_list.iter_mut(){
+                if set_indices.contains(&secret_preparer_rep){
+                    let mut agg_secret_old = vaba_context.ranks_parties.get(rep).unwrap().clone();
+                    
+                    agg_secret_old += &recon_result;
+                    vaba_context.ranks_parties.insert(*rep, agg_secret_old);
+                    set_indices.remove(&secret_preparer_rep);
+
+                    if set_indices.is_empty(){
+                        new_ranks_reconstructed_parties.push(*rep);
+                    }
+                }
+            }
+
+            for rep in new_ranks_reconstructed_parties.into_iter(){
+                vaba_context.asks_reconstruction_list.remove(&rep);
+            }
+
+        }
+    }
+
+    pub async fn check_reconstruction_phase_terminated(&mut self, instance: usize){
+        let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
+        // Compute party with maximum rank
+        let mut max_rank = LargeField::from(0);
+        let mut party_with_max_rank = 0 as usize;
+        if vaba_context.asks_reconstruction_list.is_empty() && vaba_context.asks_reconstruction_started{
+            // All ranks have been computed. Check the party with the maximum rank
+            for (rep, rank) in vaba_context.ranks_parties.iter(){
+                let rank_party = rank.clone();
+                if rank_party > max_rank{
+                    max_rank = rank_party;
+                    party_with_max_rank = *rep;
+                }
+            }
+        }
+        // Rank and Leader elected with rank
+        log::info!("Party with maximum rank {}, maximum rank {}", party_with_max_rank, max_rank);
+        // Start voting phase
     }
 }
