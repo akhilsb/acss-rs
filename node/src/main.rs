@@ -8,7 +8,7 @@ use signal_hook::{
     iterator::Signals,
 };
 use tokio::sync::mpsc::channel;
-use std::{net::{SocketAddr, SocketAddrV4}, env};
+use std::{net::{SocketAddr, SocketAddrV4}};
 
 //#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 #[tokio::main]

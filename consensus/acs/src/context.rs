@@ -278,7 +278,7 @@ impl Context {
                     let msg = msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    //self.process_msg(msg).await;
+                    self.process_msg(msg).await;
                 },
                 sync_msg = self.sync_recv.recv() =>{
                     let sync_msg = sync_msg.ok_or_else(||
