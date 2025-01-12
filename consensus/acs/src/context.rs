@@ -36,7 +36,7 @@ pub struct Context {
     pub num_nodes: usize,
     pub myid: usize,
     pub num_faults: usize,
-    byz: bool,
+    _byz: bool,
 
     /// Primes for computation
     pub large_field_prime: BigInt,
@@ -68,7 +68,7 @@ pub struct Context {
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
 
-    pub ra_req_send: Sender<(usize, usize)>,
+    pub ra_req_send: Sender<(usize, usize, usize)>,
     pub ra_out_recv: Receiver<(usize, Replica, usize)>
 }
 
@@ -160,7 +160,7 @@ impl Context {
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
                 myid: config.id,
-                byz: byz,
+                _byz: byz,
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
@@ -226,16 +226,9 @@ impl Context {
     pub async fn broadcast(&mut self, protmsg: ProtMsg) {
         let sec_key_map = self.sec_key_map.clone();
         for (replica, sec_key) in sec_key_map.into_iter() {
-            if self.byz && replica % 2 == 0 {
-                // Simulates a crash fault
-                continue;
-            }
-            if replica != self.myid {
-                let wrapper_msg = WrapperMsg::new(protmsg.clone(), self.myid, &sec_key.as_slice());
-                let cancel_handler: CancelHandler<Acknowledgement> =
-                    self.net_send.send(replica, wrapper_msg).await;
-                self.add_cancel_handler(cancel_handler);
-            }
+            let wrapper_msg = WrapperMsg::new(protmsg.clone(), self.myid, &sec_key.as_slice());
+            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(replica, wrapper_msg).await;
+            self.add_cancel_handler(cancel_handler);
         }
     }
 
@@ -345,7 +338,7 @@ impl Context {
                     )?;
 
                     log::debug!("Received message from RA channel {:?}", ra_msg);
-                    self.process_ra_termination(ra_msg.0, ra_msg.1).await;
+                    self.process_ra_termination(ra_msg.1, ra_msg.0).await;
                 }
             };
         }

@@ -20,7 +20,7 @@ impl Context{
                 let key_set:Vec<Replica> = self.acs_state.broadcast_messages.keys().map(|key | key.clone()).collect();
                 let ser_value = bincode::serialize(&key_set).unwrap();
 
-                
+                log::info!("Received n-f broadcasts of the initial value, broadcasting the list of broadcasts");
                 let _status = self.ctrbc_req.send(ser_value).await;
             }
             self.check_witnesses_rbc_inst(broadcaster).await;
@@ -69,11 +69,12 @@ impl Context{
         }
 
         // If this is the first witness accepted for the first time ever
-        if self.acs_state.accepted_witnesses.len() == 1 && self.acs_state.vaba_states.len() == 0{
+        if self.acs_state.accepted_witnesses.len() >= 1 && !self.acs_state.vaba_started{
             // Start first phase of VABA
             // Start ASKS first
             let pre_i = broadcaster;
             self.start_vaba(pre_i, Vec::new(), 1).await;
+            self.acs_state.vaba_started = true;
         }
     }
 
@@ -97,11 +98,12 @@ impl Context{
         }
 
         // If this is the first witness accepted for the first time ever
-        if self.acs_state.accepted_witnesses.len() == 1 && self.acs_state.vaba_states.len() == 0{
+        if self.acs_state.accepted_witnesses.len() >= 1 && !self.acs_state.vaba_started{
             // Start first phase of VABA
             // Start ASKS first
             let pre_i = broadcaster;
             self.start_vaba( pre_i, Vec::new(), 1).await;
+            self.acs_state.vaba_started = true;
         }
     }
 }

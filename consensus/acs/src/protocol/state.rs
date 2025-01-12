@@ -10,6 +10,7 @@ pub struct ACSState{
     pub broadcasts_left_to_be_accepted: HashMap<Replica, HashSet<Replica>>,
     pub accepted_witnesses: HashSet<Replica>,
 
+    pub vaba_started: bool,
     pub vaba_states: HashMap<usize, VABAState>,
     pub ra_value: Option<Replica>,
 }
@@ -23,6 +24,7 @@ impl ACSState{
             broadcasts_left_to_be_accepted: HashMap::default(),
             accepted_witnesses: HashSet::default(),
 
+            vaba_started: false,
             vaba_states: HashMap::default(), 
             ra_value: None
         }
@@ -105,7 +107,7 @@ impl VABAState{
 
             gather_started: false,
             gather_state: GatherState::new(), 
-            
+
             asks_reconstruction_started: false,
             asks_reconstruction_list: HashMap::default(),
             asks_reconstructed_values: HashMap::default(),

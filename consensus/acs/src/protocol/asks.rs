@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crypto::LargeField;
-use types::Replica;
+use types::{Replica, SyncMsg, SyncState, RBCSyncMsg};
 
 use crate::Context;
 
@@ -37,13 +37,21 @@ impl Context{
         if vaba_context.asks_reconstruction_started{
             return;
         }
+        log::info!("Secret reconstruction started for instance {}", instance);
         for rep in 0..self.num_nodes{
             vaba_context.ranks_parties.insert(rep, LargeField::from(0));
         }
         // Preprocess list of ASKS instances to be reconstructed for each oracle
+        let mut union_set: HashSet<Replica> = HashSet::default();
         for rep in vaba_context.gather_state.validated_gather_echo2s.iter(){
-            // Fetch list of asks instances specified by this party
-            let (_,asks_instances,_) = vaba_context.pre_justify_votes.get(rep).unwrap();
+            let set_indices = vaba_context.gather_state.received_gather_echo2s.get(rep).unwrap();
+            for index in set_indices{
+                union_set.insert(*index);
+            }
+        }
+        // Fetch list of asks instances specified by this party
+        for rep in union_set{
+            let (_,asks_instances,_) = vaba_context.pre_justify_votes.get(&rep).unwrap();
             let mut asks_instance_set: HashSet<Replica> = HashSet::default();
             asks_instance_set.extend(asks_instances);
 
@@ -56,9 +64,8 @@ impl Context{
                     asks_instance_set.remove(inst);
                 }
             }
-
             if !asks_instance_set.is_empty(){
-                vaba_context.asks_reconstruction_list.insert(*rep, asks_instance_set);
+                vaba_context.asks_reconstruction_list.insert(rep, asks_instance_set);
             }
         }
 
@@ -101,27 +108,54 @@ impl Context{
             for rep in new_ranks_reconstructed_parties.into_iter(){
                 vaba_context.asks_reconstruction_list.remove(&rep);
             }
-
+            self.check_reconstruction_phase_terminated(instance).await;
         }
     }
 
     pub async fn check_reconstruction_phase_terminated(&mut self, instance: usize){
         let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
-        // Compute party with maximum rank
-        let mut max_rank = LargeField::from(0);
-        let mut party_with_max_rank = 0 as usize;
-        if vaba_context.asks_reconstruction_list.is_empty() && vaba_context.asks_reconstruction_started{
+        if vaba_context.asks_reconstruction_list.is_empty() && vaba_context.asks_reconstruction_started && vaba_context.elected_leader.is_none(){
+            // Compute party with maximum rank
+            let mut max_rank = LargeField::from(0);
+            let mut party_with_max_rank = 0 as usize;
             // All ranks have been computed. Check the party with the maximum rank
-            for (rep, rank) in vaba_context.ranks_parties.iter(){
-                let rank_party = rank.clone();
-                if rank_party > max_rank{
-                    max_rank = rank_party;
-                    party_with_max_rank = *rep;
+
+            for rep in 0..self.num_nodes{
+                if vaba_context.ranks_parties.contains_key(&rep){
+                    let rank_party = vaba_context.ranks_parties.get(&rep).clone().unwrap().clone();
+                    if rank_party > max_rank{
+                        max_rank = rank_party;
+                        party_with_max_rank = rep;
+                    }
                 }
             }
+            // Rank and Leader elected with rank
+            log::info!("Party with maximum rank {}, maximum rank {}", party_with_max_rank, max_rank);
+            vaba_context.elected_leader = Some(party_with_max_rank);
+            // Start voting phase
+            self.terminate("Terminate".to_string()).await;   
         }
-        // Rank and Leader elected with rank
-        log::info!("Party with maximum rank {}, maximum rank {}", party_with_max_rank, max_rank);
-        // Start voting phase
+    }
+
+    // Invoke this function once you terminate the protocol
+    pub async fn terminate(&mut self, data: String) {
+        let rbc_sync_msg = RBCSyncMsg{
+            id: 1,
+            msg: data,
+        };
+
+        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
+        let cancel_handler = self
+            .sync_send
+            .send(
+                0,
+                SyncMsg {
+                    sender: self.myid,
+                    state: SyncState::COMPLETED,
+                    value: ser_msg,
+                },
+            )
+            .await;
+        self.add_cancel_handler(cancel_handler);
     }
 }

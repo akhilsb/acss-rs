@@ -57,13 +57,13 @@ pub struct Context {
     pub ra_state: HashMap<usize, RBCState>,
 
     /// Input and output request channels
-    pub inp_ra_requests: Receiver<(usize,usize)>,
+    pub inp_ra_requests: Receiver<(usize,usize, usize)>,
     pub out_ra_values: Sender<(usize, Replica, usize)>
 }
 
 impl Context {
     pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize, usize)>, 
+        input_reqs: Receiver<(usize, usize, usize)>, 
         output_shares: Sender<(usize,Replica,usize)>,
         byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
@@ -94,9 +94,7 @@ impl Context {
         let key1 = [29u8; 16];
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
-
-        let rbc_start_id = 0;
-
+        
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -114,7 +112,7 @@ impl Context {
                 //avid_context:HashMap::default(),
                 threshold: 10000,
 
-                max_id: rbc_start_id, 
+                max_id: 0, 
 
                 ra_state: HashMap::default(),
                 nonce_seed: 1,
@@ -187,13 +185,10 @@ impl Context {
                     }
                     let req_msg = req_msg.unwrap();
 
-                    let ra_id = self.max_id+1;
-                    self.max_id = ra_id;
-
                     let representative_replica = req_msg.0;
                     let value = req_msg.1;
                     
-                    let instance_id = representative_replica*self.threshold + ra_id;
+                    let instance_id = representative_replica*self.threshold + req_msg.2;
                     self.init_ra(instance_id, representative_replica, value).await;
                 },
             };

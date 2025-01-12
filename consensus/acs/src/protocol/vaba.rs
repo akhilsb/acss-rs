@@ -103,12 +103,12 @@ impl Context{
             // For the first RBC instance, check the list of witnesses
             for (key, entry) in vaba_context.unvalidated_pre_justify_votes.iter_mut(){
                 // If this party indeed indicated the broadcaster as a pre-vote, then check if other conditions are true as well
-                if entry.0.is_some() && (self.acs_state.accepted_witnesses.contains(&entry.0.clone().unwrap())){
+                if (entry.0.is_some() && (self.acs_state.accepted_witnesses.contains(&entry.0.clone().unwrap()))) || 
+                    entry.0.is_none(){
                     if entry.1.is_empty(){
                         log::info!("Found new witness {} at check_witness_pre_broadcast for inst {}", *key, inst);
                         list_of_witnesses.push(*key);
                     }
-                    
                     else{
                         // More ASKS instances need to be accepted
                         entry.0 = None;
@@ -118,17 +118,18 @@ impl Context{
             
         }
         else{
-
+            // 
         }
         // Start reliable agreement for new witnesses
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
         for witness in list_of_witnesses.iter(){
             vaba_context.unvalidated_pre_justify_votes.remove(witness);
+            log::info!("Validated party {}'s Pre vote, adding party to validated list", *witness);
             vaba_context.validated_pre_justify_votes.insert(*witness);
             
             if vaba_context.validated_pre_justify_votes.len() <= self.num_nodes - self.num_faults{
                 log::info!("Starting Reliable Agreement for witness {}", *witness);
-                let status = self.ra_req_send.send((*witness,1)).await;
+                let status = self.ra_req_send.send((*witness,1, inst)).await;
                 if status.is_err(){
                     log::error!("Error sending transaction to the RA queue, abandoning ACS instance");
                     return;
@@ -158,6 +159,7 @@ impl Context{
             // Check if party pre's RBC terminated in the first phase
             if remaining_asks_instances.is_empty() && self.acs_state.accepted_witnesses.contains(pre){
                 // Add party to set of witnesses
+                log::info!("Validated party {}'s Pre vote, adding party to validated list", broadcaster);
                 vaba_context.validated_pre_justify_votes.insert(broadcaster.clone());
 
             }
@@ -195,27 +197,24 @@ impl Context{
         if vaba_context.validated_pre_justify_votes.contains(&broadcaster) && 
             vaba_context.validated_pre_justify_votes.len() <= self.num_nodes - self.num_faults{
             log::info!("Starting Reliable Agreement for witness {} under method check_witness_single_party", broadcaster);
-            let status = self.ra_req_send.send((broadcaster,1)).await;
+            let status = self.ra_req_send.send((broadcaster,1, inst)).await;
             if status.is_err(){
                 log::error!("Error sending transaction to the RA queue, abandoning ACS instance");
                 return;
             }
         }
-        let gather2 = vaba_context.gather_state.gather2_started;
         self.check_gather_start(inst).await;
 
-        if gather2 {
-            self.check_gather_echo2_termination(inst, vec![broadcaster]).await;
-        }
-        else{
-            self.check_gather_echo_termination(inst, vec![broadcaster]).await;
-        }
+        self.check_gather_echo_termination(inst, vec![broadcaster]).await;
     }
 
     pub async fn check_gather_start(&mut self, inst: usize){
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
-        if vaba_context.validated_pre_justify_votes.len() >= self.num_nodes - self.num_faults && !vaba_context.gather_started{
-            
+        if vaba_context.validated_pre_justify_votes.len() >= self.num_nodes - self.num_faults && 
+            vaba_context.reliable_agreement.len() >= self.num_nodes-self.num_faults &&
+            !vaba_context.gather_started{
+            // Check if the intersection of pre_justify votes and reliable agreement votes is greater than n-f
+
             let mut gather_start_set = Vec::new();
             for rep in vaba_context.validated_pre_justify_votes.iter(){
                 if vaba_context.reliable_agreement.contains(rep){
@@ -225,6 +224,7 @@ impl Context{
             
             if gather_start_set.len() >= self.num_nodes - self.num_faults{
                 // Start Gather by sending Gather Echo
+                log::info!("Starting Gather Phase 1 with indices {:?}", gather_start_set);
                 let prot_msg = ProtMsg::GatherEcho(inst , gather_start_set);
                 
                 // Gather started here

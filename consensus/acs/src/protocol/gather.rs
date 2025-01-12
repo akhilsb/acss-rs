@@ -49,6 +49,7 @@ impl Context{
         if vaba_context.gather_state.validated_gather_echos.len() == self.num_nodes - self.num_faults{
             self.init_gather_echo2(inst).await;
         }
+        self.check_gather_echo2_termination(inst, terminated_rbcs).await;
     }
 
     pub async fn check_gather_echo_new_party(&mut self, inst: usize, sender: Replica){
@@ -66,7 +67,7 @@ impl Context{
             vaba_context.gather_state.unvalidated_gather_echos.remove(&sender);
         }
         // Upon collecting n-f ECHOs, broadcast this list again as ECHO2s. 
-        if vaba_context.gather_state.validated_gather_echos.len() == self.num_nodes - self.num_faults{
+        if vaba_context.gather_state.validated_gather_echos.len() >= self.num_nodes - self.num_faults{
             self.init_gather_echo2(inst).await;
         }
     }
@@ -88,6 +89,7 @@ impl Context{
                 }
             }
             
+            log::info!("Starting Gather Echo2 with witnesses {:?}", vec_witnesses);
             let prot_msg = ProtMsg::GatherEcho2(inst , vec_witnesses);
             vaba_context.gather_state.gather2_started = true;
             self.broadcast(prot_msg).await;
@@ -132,14 +134,14 @@ impl Context{
         vaba_context.gather_state.validated_gather_echo2s.extend(new_witnesses);
         
         // Upon collecting n-f ECHOs, broadcast this list again as ECHO2s. 
-        if vaba_context.gather_state.validated_gather_echo2s.len() == self.num_nodes - self.num_faults{
-            self.init_gather_echo2(inst).await;
+        if vaba_context.gather_state.validated_gather_echo2s.len() >= self.num_nodes - self.num_faults{
+            self.init_asks_reconstruction(inst).await;
         }
     }
 
     pub async fn check_gather_echo2_new_party(&mut self, inst: usize, sender: Replica){
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
-        let gather_indices = vaba_context.gather_state.unvalidated_gather_echos.get_mut(&sender).unwrap();
+        let gather_indices = vaba_context.gather_state.unvalidated_gather_echo2s.get_mut(&sender).unwrap();
         for index in gather_indices.clone().into_iter(){
             if vaba_context.validated_pre_justify_votes.contains(&index) && vaba_context.reliable_agreement.contains(&index){
                 gather_indices.remove(&index);
@@ -147,14 +149,14 @@ impl Context{
         }
         if gather_indices.is_empty(){
             // Add party as witness
-            log::info!("Added party {} as Gather ECHO1 witness", sender);
+            log::info!("Added party {} as Gather ECHO2 witness", sender);
             vaba_context.gather_state.validated_gather_echo2s.insert(sender);
             vaba_context.gather_state.unvalidated_gather_echo2s.remove(&sender);
         }
         // Upon collecting n-f ECHOs, broadcast this list again as ECHO2s. 
-        if vaba_context.gather_state.validated_gather_echo2s.len() == self.num_nodes - self.num_faults{
+        if vaba_context.gather_state.validated_gather_echo2s.len() >= self.num_nodes - self.num_faults{
             // Start next phase of the protocol. Reconstruct ASKS instances. 
-            self.init_gather_echo2(inst).await;
+            self.init_asks_reconstruction(inst).await;
         }
     }    
 }

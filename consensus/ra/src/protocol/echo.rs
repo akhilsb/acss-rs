@@ -6,6 +6,7 @@ use crate::{context::Context, msg::ProtMsg};
 
 impl Context{
     pub async fn init_ra(&mut self, instance_id: usize, representative_rep: Replica, value: usize){
+        log::info!("Request to start Reliable Agreement for instance {} corresponding to replica {}", instance_id, representative_rep);
         if !self.ra_state.contains_key(&instance_id){
             let rbc_context = RBCState::new(representative_rep);
             self.ra_state.insert(instance_id, rbc_context);
@@ -61,7 +62,7 @@ impl Context{
         }
         // Go for optimistic termination if all n shares have appeared
         else if size == self.num_nodes{
-            log::info!("Received n ECHO messages for RBC Instance ID {}, terminating",instance_id);
+            log::info!("Received n ECHO messages for RA Instance ID {}, terminating",instance_id);
             if !ra_state.terminated{
                 ra_state.terminated = true;
                 self.terminate(instance_id, value).await;
