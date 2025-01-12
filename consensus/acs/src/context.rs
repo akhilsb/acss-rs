@@ -338,7 +338,7 @@ impl Context {
                     )?;
 
                     log::debug!("Received message from RA channel {:?}", ra_msg);
-                    self.process_ra_termination(ra_msg.1, ra_msg.0).await;
+                    self.process_ra_termination(ra_msg.1, ra_msg.0, ra_msg.2).await;
                 }
             };
         }

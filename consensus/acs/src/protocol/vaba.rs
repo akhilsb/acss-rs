@@ -49,15 +49,22 @@ impl Context{
         
     }
 
-    pub async fn process_ra_termination(&mut self, inst: usize, representative_rep: usize){
+    pub async fn process_ra_termination(&mut self, inst: usize, representative_rep: usize, value: usize){
         if !self.acs_state.vaba_states.contains_key(&inst){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(inst , vaba_context);
         }
         
-        let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
-        vaba_context.reliable_agreement.insert(representative_rep);
-        
+        // Termination Gadget value
+        if representative_rep == self.num_nodes{
+            // Output this value finally
+            log::info!("ACS output of value {}", value);
+        }
+        else{
+            let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
+            vaba_context.reliable_agreement.insert(representative_rep);
+        }
+              
         // Check if received enough Reliable Agreement instances to start Gather protocol. 
         self.check_gather_start(inst).await;
         // Check if received enough Reliable Agreement instances to start next phase of Gather protocol. 
@@ -231,6 +238,53 @@ impl Context{
                 vaba_context.gather_started = true;
                 self.broadcast(prot_msg).await;
             }
+        }
+    }
+
+    pub async fn start_vote_phase(&mut self, instance: usize, leader: Replica){
+        let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
+        let pre_value_of_leader = vaba_context.pre_justify_votes.get(&leader).unwrap().0;
+
+        // Broadcast this value
+        if !vaba_context.vote_broadcasted{
+            let status = self.ctrbc_req.send(pre_value_of_leader.to_be_bytes().to_vec()).await;
+            if status.is_err(){
+                log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");
+                return;
+            }
+            vaba_context.vote_broadcasted = true;
+        }
+    }
+
+    pub async fn process_vote(&mut self, inst: usize, value: Vec<u8>, broadcaster: Replica){
+        if !self.acs_state.vaba_states.contains_key(&inst){
+            let vaba_context = VABAState::new_without_pre_justify();
+            self.acs_state.vaba_states.insert(inst , vaba_context);
+        }
+        
+        let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
+        let mut bytes: [u8;8] = [0;8];
+        for (index, value) in (0..8).into_iter().zip(value.into_iter()){
+            bytes[index] = value;
+        }
+        let vote_rep = usize::from_be_bytes(bytes);
+        log::info!("Received vote for instance {} from party {}", vote_rep, broadcaster);
+        if vaba_context.votes.contains_key(&vote_rep){
+            let rep_list = vaba_context.votes.get_mut(&vote_rep).unwrap();
+            rep_list.insert(broadcaster);
+            if rep_list.len() == self.num_nodes - self.num_faults{
+                // Start Reliable Agreement as a termination gadget
+                let status = self.ra_req_send.send((self.num_nodes, vote_rep, inst)).await;
+                if status.is_err(){
+                    log::error!("Error sending transaction to the RA queue, abandoning ACS instance");
+                    return;
+                }
+            }
+        }
+        else{
+            let mut rep_list: HashSet<Replica> = HashSet::default();
+            rep_list.insert(broadcaster);
+            vaba_context.votes.insert(vote_rep, rep_list);
         }
     }
 }

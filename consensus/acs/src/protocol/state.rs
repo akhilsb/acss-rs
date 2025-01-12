@@ -53,11 +53,13 @@ pub struct VABAState{
     pub asks_reconstruction_list: HashMap<Replica, HashSet<Replica>>,
     pub asks_reconstructed_values: HashMap<Replica, LargeField>,
     pub ranks_parties: HashMap<Replica, LargeField>, 
-
-    pub votes: HashMap<Replica, Vec<Replica>>,
     
     pub reconstructed_values: HashMap<Replica, LargeField>,
     pub elected_leader: Option<Replica>,
+
+    pub vote_broadcasted: bool,
+    pub votes: HashMap<Replica, HashSet<Replica>>,
+    pub termination_gadget: bool,
 }
 
 impl VABAState{
@@ -84,7 +86,8 @@ impl VABAState{
             ranks_parties: HashMap::default(),
             
             votes: HashMap::default(),
-
+            vote_broadcasted: false,
+            termination_gadget: false,
 
             reconstructed_values: HashMap::default(),
             elected_leader: None
@@ -114,6 +117,8 @@ impl VABAState{
             ranks_parties: HashMap::default(),
 
             votes: HashMap::default(),
+            vote_broadcasted: false,
+            termination_gadget: false,
 
             reconstructed_values: HashMap::default(),
             elected_leader: None

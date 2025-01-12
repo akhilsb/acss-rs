@@ -133,7 +133,7 @@ impl Context{
             log::info!("Party with maximum rank {}, maximum rank {}", party_with_max_rank, max_rank);
             vaba_context.elected_leader = Some(party_with_max_rank);
             // Start voting phase
-            self.terminate("Terminate".to_string()).await;   
+            //self.terminate("Terminate".to_string()).await;   
         }
     }
 

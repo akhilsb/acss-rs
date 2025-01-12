@@ -35,14 +35,17 @@ impl Context{
             // Second instance RBC is for VABA instance
             let true_inst_mod = instance - 2;
             let tot_rbcs_per_vaba = 2;
-            let vaba_index = (true_inst_mod/tot_rbcs_per_vaba) + 1;
+            
             if true_inst_mod % tot_rbcs_per_vaba == 1{
+                let vaba_index = (true_inst_mod/tot_rbcs_per_vaba) + 1;
                 // This broadcast corresponds to Broadcast termination of (pre_v, asks_v, justify_v)
                 self.process_pre_broadcast(vaba_index, broadcaster, value).await;
             }
             else if true_inst_mod % tot_rbcs_per_vaba == 0{
+                let vaba_index = true_inst_mod/tot_rbcs_per_vaba;
                 // This broadcast corresponds to a Vote instance
                 // This case has not been handled
+                self.process_vote(vaba_index, value, broadcaster).await;
             }
         }
     }
