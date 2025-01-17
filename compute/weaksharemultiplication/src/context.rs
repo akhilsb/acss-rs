@@ -70,6 +70,7 @@ impl Context {
 
                 grouped_shares: Vec::new(),
                 modulus: 97, // TODO: where do I get the modulus from?
+                // akhilsb: We choose a prime modulus that can fit within 64-bits. 
 
                 sharings: Vec::new(),
 

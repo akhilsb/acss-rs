@@ -302,12 +302,22 @@ impl Context {
         let evaluation_points: Option<i64> = None;
 
         // TODO: the following blocks only generate some garbage values for testing purposes -> need to get the actual values from somewhere?
+        // akhilsb: You will get these values from an input channel. 
+
+        // akhilsb:  Shares need to be a vector of vectors. Each inner vector must contain a vector of shares. 
+        // akhilsb: In the draft, variables written in bold are considered to be vectors.
+        // Need to clarify this with Xiaoyu once. 
+
+        // This part has dimension N>>self.num_nodes. Both vectors have N elements. 
         self.shares_a = vec![Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), Some(7), Some(8), Some(9), Some(0)];
         self.shares_b = vec![Some(0), Some(9), Some(8), Some(7), Some(6), Some(5), Some(4), Some(3), Some(2), Some(1)];
         assert_eq!(self.shares_a.len(), self.shares_b.len());
 
+        // This part also has dimension N. 
         self.shares_r = vec![Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4), Some(4)];
 
+        // This has dimension t*N/(2t+1) elements. It is later grouped into N/(2t+1) groups with each group containing t vectors. 
+        // TODO: change number of groups to shares_r.len()/(2*self.num_faults+1)
         self.o_shares_for_group = Vec::with_capacity(self.num_nodes / (2 * self.num_faults + 1));
         for _ in 0..(self.num_nodes / (2 * self.num_faults + 1)) {
             let mut o_shares: Vec<Option<i64>> = Vec::with_capacity(self.num_faults);
@@ -318,16 +328,21 @@ impl Context {
             self.o_shares_for_group.push(o_shares);
         }
 
-        // Partition inputs into groups
+        // Here, self.o_shares_for_group has N/(2t+1) vectors, with each vector of size n. 
+
+        // Partition inputs into N/(2*t+1) groups. TODO: Change the number
         let num_groups: usize = self.num_nodes / (2 * self.num_faults + 1);
         let group_size: usize = self.shares_a.len().div_ceil(num_groups);
 
+        // Total vectors in grouped_elements_a: N/(2t+1), each element of size (2t+1).
         let grouped_elements_a: Vec<Vec<Option<i64>>> = group_elements(self.shares_a.clone(), group_size as u64);
         let grouped_elements_b: Vec<Vec<Option<i64>>> = group_elements(self.shares_b.clone(), group_size as u64);
         assert_eq!(grouped_elements_a.len(), grouped_elements_b.len());
+        // This assertion should fail. 
         assert_eq!(grouped_elements_a.len(), (self.num_faults + 1));
 
         // Expand o_shares for each group
+        // o_shares only have one group. Not multiple groups. 
         let vdm_matrix = generate_vandermonde_matrix(self.num_nodes, self.num_faults, self.modulus);
         for o_shares in self.o_shares_for_group.clone() {
             let expanded_o_shares = multiply_vector_matrix(&(o_shares.clone().into_iter().filter_map(|x| x).collect()), &vdm_matrix, self.modulus);
@@ -335,6 +350,7 @@ impl Context {
         }
 
         // Define f(X)
+        // TODO: You need to define an f(X) for each group. There are N/2t+1 groups. 
         let num_zs = 2 * self.num_faults + 1;
         let mut zs = Vec::with_capacity(num_zs);
         for i in 0..num_zs {
@@ -349,6 +365,7 @@ impl Context {
         }
 
         // Compute Shares on evaluations on f(x) and send to parties for reconstruction
+        // TODO: Aggregate shares for all groups and then send the group of points to other parties. 
         for i in 0..self.num_nodes {
             let evaluation_point_P_i = self.evaluation_point[&i];
             // Compute my share of f(evaluation_point_P_i) and send it to party P_i
