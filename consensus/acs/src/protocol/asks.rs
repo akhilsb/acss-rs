@@ -131,8 +131,9 @@ impl Context{
             }
             // Rank and Leader elected with rank
             log::info!("Party with maximum rank {}, maximum rank {}", party_with_max_rank, max_rank);
-            vaba_context.elected_leader = Some(party_with_max_rank);
+            vaba_context.elected_leader = Some(party_with_max_rank.clone());
             // Start voting phase
+            self.start_vote_phase(instance, party_with_max_rank).await;
             //self.terminate("Terminate".to_string()).await;   
         }
     }

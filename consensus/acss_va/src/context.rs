@@ -83,22 +83,11 @@ impl Context {
     pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
         // Constants for RBC service as a channel
-        let port_rbc: u16 = 150;
-        let port_ra: u16 = 300;
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         
-        let mut rbc_config = config.clone();
-        let mut ra_config = config.clone();
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
-            
-            let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_rbc);
-            let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
-
-            rbc_config.net_map.insert(*replica, rbc_address.to_string());
-            ra_config.net_map.insert(*replica, ra_address.to_string());
-
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
         }
 

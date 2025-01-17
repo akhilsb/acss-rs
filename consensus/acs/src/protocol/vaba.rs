@@ -46,7 +46,6 @@ impl Context{
         //vaba_context.gather_state.terminated_rbcs.insert(broadcaster, p_i);
         // Process witness
         self.check_witness_single_party(inst, broadcaster).await;
-        
     }
 
     pub async fn process_ra_termination(&mut self, inst: usize, representative_rep: usize, value: usize){
@@ -59,6 +58,7 @@ impl Context{
         if representative_rep == self.num_nodes{
             // Output this value finally
             log::info!("ACS output of value {}", value);
+            log::info!("ACS output {:?}", self.acs_state.re_broadcast_messages.get(&value).unwrap());
         }
         else{
             let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
@@ -168,7 +168,6 @@ impl Context{
                 // Add party to set of witnesses
                 log::info!("Validated party {}'s Pre vote, adding party to validated list", broadcaster);
                 vaba_context.validated_pre_justify_votes.insert(broadcaster.clone());
-
             }
 
             else{
@@ -211,7 +210,6 @@ impl Context{
             }
         }
         self.check_gather_start(inst).await;
-
         self.check_gather_echo_termination(inst, vec![broadcaster]).await;
     }
 
@@ -267,6 +265,7 @@ impl Context{
         for (index, value) in (0..8).into_iter().zip(value.into_iter()){
             bytes[index] = value;
         }
+
         let vote_rep = usize::from_be_bytes(bytes);
         log::info!("Received vote for instance {} from party {}", vote_rep, broadcaster);
         if vaba_context.votes.contains_key(&vote_rep){
