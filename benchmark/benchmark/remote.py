@@ -257,19 +257,16 @@ class Bench:
                 print('Running syncer')
                 cmd = CommandMaker.run_syncer(
                     PathMaker.key_file(i),
-                    batches=batches,
-                    per=per_batch,
-                    debug=False
+                    batches,
+                    per_batch
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                st_time,
                 batches,
-                per_batch,
-                debug=False
+                per_batch
             )
             unzip_cmd = CommandMaker.unzip_tkeys('tkeys.tar.gz','thresh_keys')
             print(unzip_cmd)
@@ -364,19 +361,16 @@ class Bench:
                 cmd = CommandMaker.run_syncer(
                     PathMaker.key_file(i),
                     st_time,
-                    batches=batches,
-                    per=per_batch,
-                    debug=False
+                    batches,
+                    per_batch
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                st_time,
                 batches,
-                per_batch,
-                debug=False
+                per_batch
             )
             log_file = PathMaker.primary_log_file(i)
             self._background_run(ip, cmd, log_file)

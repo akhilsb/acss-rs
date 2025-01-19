@@ -23,6 +23,6 @@ fnv = "1"
 async-recursion = "1.0.0"
 anyhow = "1"
 
-network = { package = "network", git = "https://github.com/libdist-rs/libnet-rs.git" }
+network = { package = "network", git = "https://github.com/akhilsb/libnet-rs.git" }
 async-trait = "0"
 futures-util = "0"

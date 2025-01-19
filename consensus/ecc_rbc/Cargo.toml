@@ -24,7 +24,7 @@ async-recursion = "1.0.0"
 anyhow = "1"
 sha2 = "0.10.8"
 
-network = { package = "network", git = "https://github.com/libdist-rs/libnet-rs.git" }
+network = { package = "network", git = "https://github.com/akhilsb/libnet-rs.git" }
 async-trait = "0"
 futures-util = "0"
 reed_solomon_rs = "0.1.2"
