@@ -2,7 +2,7 @@ use std::collections::{HashSet, HashMap};
 
 use types::Replica;
 
-use crate::{Context, msg::ProtMsg};
+use crate::{Context, msg::{ProtMsg, CTRBCInterface}};
 
 use super::VABAState;
 
@@ -59,6 +59,10 @@ impl Context{
             // Output this value finally
             log::info!("ACS output of value {}", value);
             log::info!("ACS output {:?}", self.acs_state.re_broadcast_messages.get(&value).unwrap());
+            // Compute random linear combination of shares
+            let output_set = self.acs_state.re_broadcast_messages.get(&value).unwrap();
+            self.acs_state.acs_output.extend(output_set);
+            self.gen_rand_shares().await;
         }
         else{
             let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
@@ -86,9 +90,16 @@ impl Context{
                 p_i, 
                 vaba_context.justify.clone().unwrap()
             );
-            
-            let ser_msg = bincode::serialize(&ctrbc_msg).unwrap();
-            let status = self.ctrbc_req.send(ser_msg).await;
+
+            let ser_msg = bincode::serialize(&(ctrbc_msg)).unwrap();
+
+            let ctrbc_msg = CTRBCInterface{
+                id: 3,
+                msg: ser_msg
+            };
+
+            let ser_msg_inst_id = bincode::serialize(&ctrbc_msg).unwrap();
+            let status = self.ctrbc_req.send(ser_msg_inst_id).await;
 
             if status.is_err(){
                 log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");
@@ -134,7 +145,7 @@ impl Context{
             log::info!("Validated party {}'s Pre vote, adding party to validated list", *witness);
             vaba_context.validated_pre_justify_votes.insert(*witness);
             
-            if vaba_context.validated_pre_justify_votes.len() <= self.num_nodes - self.num_faults{
+            if vaba_context.reliable_agreement.len() <= self.num_nodes - self.num_faults{
                 log::info!("Starting Reliable Agreement for witness {}", *witness);
                 let status = self.ra_req_send.send((*witness,1, inst)).await;
                 if status.is_err(){
@@ -201,7 +212,7 @@ impl Context{
         // Start reliable agreement if needed
         
         if vaba_context.validated_pre_justify_votes.contains(&broadcaster) && 
-            vaba_context.validated_pre_justify_votes.len() <= self.num_nodes - self.num_faults{
+            vaba_context.reliable_agreement.len() <= self.num_nodes - self.num_faults{
             log::info!("Starting Reliable Agreement for witness {} under method check_witness_single_party", broadcaster);
             let status = self.ra_req_send.send((broadcaster,1, inst)).await;
             if status.is_err(){
@@ -245,7 +256,15 @@ impl Context{
 
         // Broadcast this value
         if !vaba_context.vote_broadcasted{
-            let status = self.ctrbc_req.send(pre_value_of_leader.to_be_bytes().to_vec()).await;
+            
+            let ctrbc_msg = CTRBCInterface{
+                id: 4,
+                msg: pre_value_of_leader.to_be_bytes().to_vec()
+            };
+            
+            let ser_msg_inst_id = bincode::serialize(&ctrbc_msg).unwrap();
+
+            let status = self.ctrbc_req.send(ser_msg_inst_id).await;
             if status.is_err(){
                 log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");
                 return;

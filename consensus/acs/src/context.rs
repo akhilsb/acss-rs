@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{SocketAddr, SocketAddrV4},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -21,8 +21,8 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::SyncHandler;
-use crypto::{aes_hash::HashState, LargeField};
+use consensus::{SyncHandler, LargeFieldSSS};
+use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
 
 use crate::{msg::ProtMsg, Handler, protocol::ACSState};
 
@@ -41,6 +41,7 @@ pub struct Context {
     /// Primes for computation
     pub large_field_prime: BigInt,
 
+    pub large_field_shamir_ss: LargeFieldSSS,
     /// Secret Key map
     pub sec_key_map: HashMap<Replica, Vec<u8>>,
 
@@ -50,6 +51,9 @@ pub struct Context {
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
+
+    pub num_batches: usize,
+    pub per_batch: usize,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
@@ -61,7 +65,28 @@ pub struct Context {
 
     ///// State for GatherState and ACS
     pub acs_state: ACSState,
+    
+    pub acss_map: HashMap<Replica, 
+        HashMap<usize, 
+        (
+            Option<(Vec<LargeField>, Hash)>,
+            Option<(Vec<LargeField>, Hash)>)>
+        >,
+    
+    pub sec_equivalence: HashMap<Replica, 
+        HashMap<usize, (
+                        HashMap<usize, LargeField>, 
+                        HashMap<usize, LargeField>
+                        )>
+                >,
+
+    pub completed_batches: HashMap<Replica, HashSet<usize>>,
+    pub acs_input_set: HashSet<Replica>,
     /// Channels to interact with other services
+
+    pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
+    pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
+
     pub asks_req: Sender<(usize, Option<usize>,bool)>,
     pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
 
@@ -73,25 +98,34 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+    pub fn spawn(
+        config: Node, 
+        num_batches: usize,
+        per_batch: usize,
+        low_or_high: bool,
+        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
 
+        let mut acss_config = config.clone();
         let mut rbc_config = config.clone();
         let mut ra_config = config.clone();
         let mut asks_config = config.clone();
 
-        let port_rbc: u16 = 150;
-        let port_ra: u16 = 300;
-        let port_asks: u16 = 450;
+        let port_acss: u16 = 150;
+        let port_rbc: u16 = 300;
+        let port_ra: u16 = 450;
+        let port_asks: u16 = 600;
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
             
+            let acss_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acss);
             let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_rbc);
             let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
             let asks_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_asks);
 
+            acss_config.net_map.insert(*replica, acss_address.to_string());
             rbc_config.net_map.insert(*replica, rbc_address.to_string());
             ra_config.net_map.insert(*replica, ra_address.to_string());
             asks_config.net_map.insert(*replica, asks_address.to_string());
@@ -135,11 +169,19 @@ impl Context {
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
 
-        let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
+        let rbc_start_id = 1;
         
-        let large_field_prime: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
+        let large_field_prime: LargeField = LargeField::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
         
+        // Blinding and Nonce polynomials
+        let largefield_ss = LargeFieldSSS::new(
+            config.num_faults+1, 
+            config.num_nodes, 
+            large_field_prime.clone()
+        );
+        // Prepare ACSS context
+        let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
+        let (acss_out_send_channel, acss_out_recv_channel) = channel(10000);
         // Prepare RBC config
         let (ctrbc_req_send_channel, ctrbc_req_recv_channel) = channel(10000);
         let (ctrbc_out_send_channel, ctrbc_out_recv_channel) = channel(10000);
@@ -166,6 +208,7 @@ impl Context {
                 exit_rx: exit_rx,
                 
                 large_field_prime: large_field_prime,
+                large_field_shamir_ss: largefield_ss,
 
                 //avid_context:HashMap::default(),
                 threshold: 10000,
@@ -173,7 +216,19 @@ impl Context {
                 max_id: rbc_start_id, 
                 acs_state: ACSState::new(),
 
+                num_batches: num_batches,
+                per_batch: per_batch, 
+
+                acss_map: HashMap::default(),
+                sec_equivalence: HashMap::default(),
+                completed_batches: HashMap::default(),
+
+                acs_input_set: HashSet::default(),
+
                 nonce_seed: 1,
+
+                acss_req: acss_req_send_channel,
+                acss_out_recv: acss_out_recv_channel,
 
                 ctrbc_req: ctrbc_req_send_channel,
                 ctrbc_out_recv: ctrbc_out_recv_channel,
@@ -195,6 +250,23 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
+        let _acss_serv_status;
+        if low_or_high{
+            _acss_serv_status = acss_va::Context::spawn(
+                acss_config,
+                acss_req_recv_channel,
+                acss_out_send_channel, 
+                false
+            );
+        }
+        else{
+            _acss_serv_status = hacss::Context::spawn(
+                acss_config,
+                acss_req_recv_channel,
+                acss_out_send_channel, 
+                false
+            );
+        }
 
         let _rbc_serv_status = ctrbc::Context::spawn(
             rbc_config,
@@ -286,18 +358,9 @@ impl Context {
                             // Start your protocol from here
                             // Write a function to broadcast a message. We demonstrate an example with a PING function
                             // Dealer sends message to everybody. <M, init>
-                            let acss_inst_id = self.max_id + 1;
-                            self.max_id = acss_inst_id;
-                            // Craft ACSS message
-                            let mut vec_msg = Vec::new();
-                            for i in 0..self.num_faults+1{
-                                vec_msg.push(i);
+                            for _ in 0..self.num_batches{
+                                self.start_acss(self.per_batch).await;
                             }
-                            self.init_rbc(vec_msg).await;
-                            //self.init_batch_acss_va(vec_msg , acss_inst_id).await;
-                            //self.init_acss(vec_msg,acss_inst_id).await;
-                            //self.init_verifiable_abort(BigInt::from(0), 1, self.num_nodes).await;
-                            // wait for messages
                         },
                         SyncState::STOP =>{
                             // Code used for internal purposes
@@ -310,6 +373,13 @@ impl Context {
                         },
                         _=>{}
                     }
+                },
+                acss_msg = self.acss_out_recv.recv() => {
+                    let acss_msg = acss_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    log::debug!("Received message from CTRBC channel {:?}", acss_msg);
+                    self.process_acss_event(acss_msg.0, acss_msg.1, acss_msg.2, acss_msg.3).await;
                 },
                 ctrbc_msg = self.ctrbc_out_recv.recv() => {
                     let ctrbc_msg = ctrbc_msg.ok_or_else(||

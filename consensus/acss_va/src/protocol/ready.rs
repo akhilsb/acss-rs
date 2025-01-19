@@ -2,7 +2,7 @@ use consensus::reconstruct_data;
 use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt, LargeField};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use types::{Replica, WrapperMsg, SyncMsg, SyncState, RBCSyncMsg};
+use types::{Replica, WrapperMsg};
 
 use crate::{Context, msg::{PointsBV, PointsBVSer, ProtMsg, Commitment}, protocol::BatchACSSState};
 
@@ -192,7 +192,7 @@ impl Context{
                         }
                     }
 
-
+                    
                     let dzk_poly_point = LargeField::from_signed_bytes_be(dzk_poly[self.myid+1].clone().as_slice());
                     let mut sub_point = (dzk_poly_point - agg_value)%&self.large_field_uv_sss.prime;
                     if sub_point< LargeField::from(0){
@@ -210,34 +210,40 @@ impl Context{
                     }
                 }
                 log::info!("Verified dzk proofs for ACSS instance {}", instance_id);
+                let acss_va_context: &mut BatchACSSState = self.acss_state.get_mut(&instance_id).unwrap();
+                if acss_va_context.shares.is_none(){
+                    // Interpolate and set shares. 
+                    let mut shares_concatenated = Vec::new();
+                    for shares_poly in shares{
+                        for shares_each_row in shares_poly.0{
+                            shares_concatenated.extend(shares_each_row);
+                        }
+                    }
+                    acss_va_context.shares = Some(shares_concatenated);
+                    acss_va_context.rows_reconstructed = true;
+                }
+
             }
             log::info!("Received n-f READY messages for ACSS Instance ID {}, terminating",instance_id);
             // Terminate protocol
             // Interpolate rows and verify distributed ZK proof
-            let acss_va_context = self.acss_state.get_mut(&instance_id).unwrap();
+            let acss_va_context: &mut BatchACSSState = self.acss_state.get_mut(&instance_id).unwrap();
             acss_va_context.terminated = true;
             let _term_msg = "Terminated";
-            self.terminate(_term_msg.to_string(), instance_id).await;
+            let shares = acss_va_context.shares.clone().unwrap();
+            let root_commitment = acss_va_context.verified_hash.clone().unwrap();
+            // Get shares and then terminate
+            self.terminate(shares, root_commitment, instance_id).await;
         }
     }
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data: String, instance_id: usize) {
-        let rbc_sync_msg = RBCSyncMsg{
-            id: instance_id,
-            msg: data
-        };
-        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::COMPLETED,
-                    value: ser_msg,
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
+    pub async fn terminate(&mut self, shares: Vec<LargeField>, root_comm: Hash, instance_id: usize) {
+        
+        let true_inst_id = instance_id%self.threshold;
+        let sender_party = instance_id/self.threshold;
+        log::info!("Terminating ACSS for instance id {}, true_inst_id: {}, sender_party: {}",instance_id, true_inst_id, sender_party);
+
+        let shares_ser = shares.into_iter().map(|share| share.to_signed_bytes_be()).collect();
+        let _status = self.out_acss_shares.send((true_inst_id, sender_party, root_comm, shares_ser)).await;
     }
 }

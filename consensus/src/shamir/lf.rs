@@ -315,7 +315,7 @@ impl LargeFieldSSS {
     }
 
     /// Multiply a matrix by a vector in a prime field
-    fn matrix_vector_multiply(
+    pub fn matrix_vector_multiply(
         matrix: &Vec<Vec<LargeField>>,
         vector: &Vec<LargeField>,
         prime: &LargeField,

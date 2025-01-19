@@ -68,14 +68,9 @@ async fn main() -> Result<()> {
     // Start the Reliable Broadcast protocol
     let exit_tx;
     match vss_type {
-        "acss" => {
-            exit_tx =
-                acss_va::Context::spawn(config, node_normal)
-                    .unwrap();
-        }
         "acs" => {
             exit_tx = 
-                acs::Context::spawn(config, node_normal).unwrap();
+                acs::Context::spawn(config, 100, 100, false,node_normal).unwrap();
         }
         "avid" => {
             let (sender,receiver) = channel(10000);

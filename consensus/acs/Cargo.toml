@@ -10,6 +10,8 @@ crypto = { package = "crypto", path="../../crypto"}
 consensus = { package = "consensus", path="../"}
 types = { package = "types", path="../../types"}
 config = { package = "config", path="../../config"}
+acss_va = {package = "acss_va", path= "../acss_va"}
+hacss = {package = "hacss", path = "../hacss"}
 ctrbc = { package = "ctrbc", path="../ctrbc"}
 asks = { package = "asks", path="../asks"}
 ra = {package = "ra", path = "../ra"}

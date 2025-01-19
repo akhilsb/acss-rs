@@ -432,6 +432,7 @@ impl Context{
         let row_shares: Vec<Vec<LargeField>>  = shares.row_poly.0.iter().map(
             |x| 
                 x.iter().map(|el| LargeField::from_signed_bytes_be(el)).collect()).collect();
+        
 
         let blinding_row_shares: Vec<LargeField> = shares.blinding_row_poly.iter().map(
             |x|
@@ -527,6 +528,15 @@ impl Context{
 
         acss_va_state.row_shares.extend(row_shares.clone());
         acss_va_state.blinding_row_shares.extend(blinding_row_shares.clone());
+        // Row secrets computation
+        let mut row_secret_shares = Vec::new();
+        for row in row_shares{
+            let mut poly = Vec::new();
+            for (rep,share) in (1..2*self.num_faults+2).into_iter().zip(row.into_iter()){
+                poly.push((rep, share));
+            }
+            row_secret_shares.push(self.large_field_bv_sss.recover(&poly));
+        }
         let secret_shares = columns.iter().map(|col| col[0].clone()).collect();
 
         for (rep,((share,bshare),(nonce,bnonce))) in (0..self.num_nodes+1).into_iter().zip(
@@ -541,6 +551,7 @@ impl Context{
         acss_va_state.dzk_polynomials.extend(comm.polys.clone());
 
         acss_va_state.secret_shares = Some(secret_shares);
+        acss_va_state.row_secret_shares = Some(row_secret_shares);
         // Initiate ECHO process
         // Serialize commitment
         let comm_ser = bincode::serialize(&comm).unwrap();

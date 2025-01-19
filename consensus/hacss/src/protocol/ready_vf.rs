@@ -1,8 +1,8 @@
 use consensus::reconstruct_data;
-use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree};
+use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use types::{Replica, WrapperMsg, SyncMsg, SyncState, RBCSyncMsg};
+use types::{Replica, WrapperMsg};
 
 use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
 use consensus::{PointBV};
@@ -157,28 +157,21 @@ impl Context{
             // Terminate protocol
             acss_va_context.terminated = true;
             let _term_msg = "Terminated";
-            self.terminate(_term_msg.to_string(), instance_id).await;
+            let row_secret_shares = acss_va_context.row_secret_shares.clone().unwrap();
+            let root_comm = acss_va_context.verified_hash.clone().unwrap();
+            self.terminate(row_secret_shares, root_comm, instance_id).await;
         }
     }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data: String, instance_id: usize) {
-        let rbc_sync_msg = RBCSyncMsg{
-            id: instance_id,
-            msg: data
-        };
-        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::COMPLETED,
-                    value: ser_msg,
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
+    // Invoke this function once you terminate the protocol
+    pub async fn terminate(&mut self, shares: Vec<LargeField>, root_comm: Hash, instance_id: usize) {
+        
+        let true_inst_id = instance_id%self.threshold;
+        let sender_party = instance_id/self.threshold;
+        log::info!("Terminating ACSS for instance id {}, true_inst_id: {}, sender_party: {}",instance_id, true_inst_id, sender_party);
+
+        let shares_ser = shares.into_iter().map(|share| share.to_signed_bytes_be()).collect();
+        let _status = self.out_acss_shares.send((true_inst_id, sender_party, root_comm, shares_ser)).await;
     }
 }

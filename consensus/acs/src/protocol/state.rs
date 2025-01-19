@@ -13,6 +13,11 @@ pub struct ACSState{
     pub vaba_started: bool,
     pub vaba_states: HashMap<usize, VABAState>,
     pub ra_value: Option<Replica>,
+
+    pub acs_output: HashSet<Replica>,
+
+    pub pub_rec_echo1s: HashMap<Replica, Vec<LargeField>>,
+    pub pub_rec_echo2s: HashMap<Replica, Vec<LargeField>>
 }
 
 impl ACSState{
@@ -26,7 +31,12 @@ impl ACSState{
 
             vaba_started: false,
             vaba_states: HashMap::default(), 
-            ra_value: None
+            ra_value: None,
+
+            acs_output: HashSet::default(),
+
+            pub_rec_echo1s: HashMap::default(),
+            pub_rec_echo2s: HashMap::default()
         }
     }
 }

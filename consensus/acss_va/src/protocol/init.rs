@@ -26,6 +26,16 @@ impl Context{
         let mut col_dzk_proof_evaluations_batch = Vec::new();
 
         let ht_indices: Vec<LargeField> = (1..2*self.num_faults+2).into_iter().map(|el| LargeField::from(el)).collect();
+        
+        let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
+        let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+        for val in 1..self.num_faults+1{
+            eval_point_indices_lf.push(LargeField::from(val));
+        }
+
+        //let vandermonde_matrix_shares_ht = self.large_field_uv_sss.vandermonde_matrix(&eval_point_indices_lf);
+        //let inverse_vandermonde_shares = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_shares_ht);
+
         let vandermonde_matrix_ht =  self.large_field_uv_sss.vandermonde_matrix(&ht_indices);
         let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_ht);
 
@@ -333,6 +343,8 @@ impl Context{
         let mut row_evaluations = Vec::new();
         let mut nonce_evaluations = Vec::new();
         let mut proofs = Vec::new();
+
+        let mut shares = Vec::new();
         for (shares_batch_ser, (merkle_roots, (blinding_comm,dzk_polynomial))) in shares_msg.into_iter().zip(
             commitment.roots.into_iter().zip(
                 commitment.blinding_roots.into_iter().zip(commitment.dzk_poly.into_iter()))){
@@ -410,7 +422,17 @@ impl Context{
                 log::error!("DZK proof verification failed for ACSS instance {}", instance_id);
                 return;
             }
+
+
+            let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            eval_point_indices_lf.reverse();
+
             let row_evaluations_batch: Vec<Vec<LargeField>> = shares_batch.coefficients.clone().into_iter().map(|coeffs| {
+                // Shares of degree-t share polynomials
+                for point in eval_point_indices_lf.clone().into_iter(){
+                    shares.push(self.large_field_uv_sss.mod_evaluate_at_lf(&coeffs, point));
+                }
                 return (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&coeffs, point)).collect();
             }).collect();
 
@@ -432,7 +454,7 @@ impl Context{
         }
         log::info!("Successfully verified all shares for ACSS instance ID {}", instance_id);
         acss_state.rows_reconstructed = true;
-
+        acss_state.shares = Some(shares);
         // Send ECHOs to all parties
         let mut points_vec = Vec::new();
         for _ in 0..self.num_nodes{
@@ -554,8 +576,8 @@ impl Context{
             for _ in packed_secrets.len()..batch_size{
                 packed_secrets.push(zero.clone());
             }
+            bv_secrets_packed.push(packed_secrets);
         }
-        bv_secrets_packed.push(packed_secrets);
         bv_secrets_packed
     }
 }

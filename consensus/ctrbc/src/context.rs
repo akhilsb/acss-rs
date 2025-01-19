@@ -94,7 +94,7 @@ impl Context {
         let hashstate = HashState::new(key0, key1, key2);
 
         let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
+        let rbc_start_id = threshold*config.id + 1;
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,

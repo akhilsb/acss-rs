@@ -22,6 +22,7 @@ pub struct ACSSVAState{
     pub dzk_polynomials: Vec<Vec<LargeFieldSer>>,
 
     pub secret_shares: Option<Vec<LargeField>>,
+    pub row_secret_shares: Option<Vec<LargeField>>,
 
     pub verified_hash: Option<Hash>,
 
@@ -58,6 +59,8 @@ impl ACSSVAState{
             encrypted_shares: Vec::new(),
 
             secret_shares: None,
+            row_secret_shares: None,
+
             verified_hash: None,
 
             rbc_state: RBCState::new(origin),

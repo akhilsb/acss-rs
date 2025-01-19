@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     net::{SocketAddr, SocketAddrV4},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, Result};
@@ -14,24 +13,23 @@ use network::{
 };
 use num_bigint_dig::{BigInt};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver},
+    mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
-use types::{Replica, SyncMsg, SyncState, WrapperMsg};
+use types::{Replica, WrapperMsg};
 
 use crate::{Handler, ACSSVAState};
-use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext, SyncHandler};
+use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext};
 
 use super::{ProtMsg};
-use crypto::{aes_hash::HashState, LargeField};
+use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
 
 pub struct Context {
     /// Networking context
     pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
     pub net_recv: UnboundedReceiver<WrapperMsg<ProtMsg>>,
-    pub sync_send: TcpReliableSender<Replica, SyncMsg, Acknowledgement>,
-    pub sync_recv: UnboundedReceiver<SyncMsg>,
+    
     /// Data context
     pub num_nodes: usize,
     pub myid: usize,
@@ -72,10 +70,17 @@ pub struct Context {
 
     /// ACSS State
     pub acss_state: HashMap<usize, ACSSVAState>,
+
+    /// Input and output request channels
+    pub inp_acss_requests: Receiver<(usize, Vec<LargeFieldSer>)>,
+    pub out_acss_shares: Sender<(usize, usize, Hash, Vec<LargeFieldSer>)>
 }
 
 impl Context {
-    pub fn spawn(config: Node, byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+    pub fn spawn(config: Node, 
+        inp_req_channel: Receiver<(usize, Vec<LargeFieldSer>)>,
+        out_shares_channel: Sender<(usize, usize, Hash, Vec<LargeFieldSer>)>,
+        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -95,21 +100,9 @@ impl Context {
             Handler::new(tx_net_to_consensus),
         );
 
-        let syncer_listen_port = config.client_port;
-        let syncer_l_address = to_socket_address("0.0.0.0", syncer_listen_port);
-
-        // The server must listen to the client's messages on some port that is not being used to listen to other servers
-        let (tx_net_to_client, rx_net_from_client) = unbounded_channel();
-        TcpReceiver::<Acknowledgement, SyncMsg, _>::spawn(
-            syncer_l_address,
-            SyncHandler::new(tx_net_to_client),
-        );
-
         let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
             consensus_addrs.clone(),
         );
-        let sync_net =
-            TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(syncer_map);
         let (exit_tx, exit_rx) = oneshot::channel();
 
         // Keyed AES ciphers
@@ -192,8 +185,7 @@ impl Context {
             let mut c = Context {
                 net_send: consensus_net,
                 net_recv: rx_net_to_consensus,
-                sync_send: sync_net,
-                sync_recv: rx_net_from_client,
+                
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
@@ -219,7 +211,10 @@ impl Context {
 
                 folding_dzk_context: folding_context,
 
-                acss_state: HashMap::default()
+                acss_state: HashMap::default(),
+
+                inp_acss_requests: inp_req_channel,
+                out_acss_shares: out_shares_channel
             };
 
             // Populate secret keys from config
@@ -265,18 +260,6 @@ impl Context {
     pub async fn run(&mut self) -> Result<()> {
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::ALIVE,
-                    value: "".to_string().into_bytes(),
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
         loop {
             tokio::select! {
                 // Receive exit handlers
@@ -293,50 +276,16 @@ impl Context {
                     )?;
                     self.process_msg(msg).await;
                 },
-                sync_msg = self.sync_recv.recv() =>{
-                    let sync_msg = sync_msg.ok_or_else(||
+                acss_req_msg = self.inp_acss_requests.recv() => {
+                    let acss_msg = acss_req_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    match sync_msg.state {
-                        SyncState::START =>{
-                            log::info!("Consensus Start time: {:?}", SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis());
-                            // Start your protocol from here
-                            // Write a function to broadcast a message. We demonstrate an example with a PING function
-                            // Dealer sends message to everybody. <M, init>
-                            let acss_inst_id = self.max_id + 1;
-                            self.max_id = acss_inst_id;
-                            // Craft ACSS message
-                            let mut vec_msg = Vec::new();
-                            for i in 1u64..10u64{
-                                vec_msg.push(i);
-                            }
-                            if self.max_id > 15{
-                                self.init_acss(vec_msg,acss_inst_id).await;
-                            }
-                            else{
-                                let mut secrets = Vec::new();
-                                for i in 1u64..1000u64{
-                                    secrets.push(LargeField::from(i));
-                                }
-                                self.init_verifiable_abort(secrets, acss_inst_id, self.num_nodes).await;
-                            }
-                            // wait for messages
-                        },
-                        SyncState::STOP =>{
-                            // Code used for internal purposes
-                            log::info!("Consensus Stop time: {:?}", SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis());
-                            log::info!("Termination signal received by the server. Exiting.");
-                            break
-                        },
-                        _=>{}
-                    }
-                },
+                    let acss_inst_id = self.myid*self.threshold + acss_msg.0;
+                    let acss_share_msgs_ser = acss_msg.1;
+                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+                    
+                    self.init_verifiable_abort(acss_lf_secrets, acss_inst_id, 2*self.num_faults+1).await;
+                }
             };
         }
         Ok(())

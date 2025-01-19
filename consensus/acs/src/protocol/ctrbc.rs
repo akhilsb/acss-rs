@@ -2,17 +2,20 @@ use std::collections::{HashSet};
 
 use types::Replica;
 
-use crate::Context;
+use crate::{Context, msg::CTRBCInterface};
 
 impl Context{
-    pub async fn process_ctrbc_event(&mut self, broadcaster: usize, instance: usize, value: Vec<u8>){
+    pub async fn process_ctrbc_event(&mut self, broadcaster: usize, _instance: usize, value: Vec<u8>){
+        let deser_msg: CTRBCInterface = bincode::deserialize(value.as_slice()).unwrap();
+        let instance = deser_msg.id;
+        let value = deser_msg.msg;
         if instance == 1{
             
             // First instance is for the RBC of the core ACS instance
             // Replace this part with ACSS protocol invocation
             
-            let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
-            self.acs_state.broadcast_messages.insert(broadcaster , replicas_list);
+            //let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
+            self.acs_state.broadcast_messages.insert(broadcaster , Vec::new());
             
             // Second time CTRBC has been used. 
             if self.acs_state.broadcast_messages.len() == self.num_nodes - self.num_faults{
@@ -20,8 +23,15 @@ impl Context{
                 let key_set:Vec<Replica> = self.acs_state.broadcast_messages.keys().map(|key | key.clone()).collect();
                 let ser_value = bincode::serialize(&key_set).unwrap();
 
+                let ctrbc_msg = CTRBCInterface{
+                    id: 2,
+                    msg: ser_value
+                };
+
+                let ser_inst_id_val = bincode::serialize(&ctrbc_msg).unwrap();
+
                 log::info!("Received n-f broadcasts of the initial value, broadcasting the list of broadcasts");
-                let _status = self.ctrbc_req.send(ser_value).await;
+                let _status = self.ctrbc_req.send(ser_inst_id_val).await;
             }
             self.check_witnesses_rbc_inst(broadcaster).await;
         }

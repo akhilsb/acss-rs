@@ -24,7 +24,7 @@ pub struct BatchACSSState{
     // DZK polynomials
     pub dzk_polynomials: Vec<Vec<LargeField>>,
 
-    pub secret: Option<Vec<LargeField>>,
+    pub shares: Option<Vec<LargeField>>,
 
     pub verified_hash: Option<Hash>,
 
@@ -80,7 +80,7 @@ impl BatchACSSState{
 
             encrypted_shares: Vec::new(),
 
-            secret: None,
+            shares: None,
             verified_hash: None,
 
             rbc_state: RBCState::new(origin),

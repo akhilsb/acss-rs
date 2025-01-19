@@ -34,14 +34,26 @@ impl Context {
             match wrapper_msg.clone().protmsg {
                 ProtMsg::GatherEcho(instance, witnesses) => {
                     // RBC initialized
-                    log::debug!("Received Init for instance id {} from node : {}", instance, wrapper_msg.sender);
+                    log::debug!("Received Gather Echo for instance id {} from node : {}", instance, wrapper_msg.sender);
                     self.process_gather_echo(witnesses, wrapper_msg.sender, instance).await;
                 },
                 ProtMsg::GatherEcho2(instance, witnesses) => {
                     // RBC initialized
-                    log::debug!("Received Echo for instance id {} from node : {}", instance, wrapper_msg.sender);
+                    log::debug!("Received Gather Echo2 for instance id {} from node : {}", instance, wrapper_msg.sender);
                     self.process_gather_echo2(witnesses, wrapper_msg.sender, instance).await;
                 },
+                ProtMsg::SecEq(instance, origin, c1_c2, eval_ser) => {
+                    log::debug!("Received Gather Echo2 for instance id {} from node : {}", instance, wrapper_msg.sender);
+                    self.process_sec_equivalence_msg(instance, origin, wrapper_msg.sender, c1_c2, eval_ser).await;
+                }
+                ProtMsg::PubRecEcho1(shares_ser) => {
+                    log::debug!("Received PubRecEcho1 from node : {}", wrapper_msg.sender);
+                    self.process_pub_rec_echo1_msg(shares_ser, wrapper_msg.sender).await;
+                }
+                ProtMsg::PubRecEcho2(shares_ser) => {
+                    log::debug!("Received PubRecEcho2 from node : {}", wrapper_msg.sender);
+                    self.process_pub_rec_echo2_msg(shares_ser, wrapper_msg.sender).await;
+                }
                 // ProtMsg::Deliver(avid_shard, origin, instance_id) => {
                     
                 //     log::debug!("Received Deliver for instance id {} from node : {}", instance_id, origin);

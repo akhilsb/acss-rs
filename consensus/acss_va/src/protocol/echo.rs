@@ -194,7 +194,9 @@ impl Context{
             if acss_va_state.cols_reconstructed && acss_va_state.rows_reconstructed{
                 log::info!("Received n ECHO messages for ACSS Instance ID {}, terminating",instance_id);
                 acss_va_state.terminated = true;
-                self.terminate("Terminated".to_string(), instance_id).await;
+                let comm_root = acss_va_state.verified_hash.clone().unwrap();
+                let shares = acss_va_state.shares.clone().unwrap();
+                self.terminate(shares, comm_root, instance_id).await;
             }
         } 
     }

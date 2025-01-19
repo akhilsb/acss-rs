@@ -217,7 +217,10 @@ impl Context{
                     let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(rep, wrapper_msg).await;
                     self.add_cancel_handler(cancel_handler);
                 }
-                self.terminate("Terminated".to_string(), instance_id).await;
+                let acss_va_state = self.acss_state.get_mut(&instance_id).unwrap();
+                let row_secret_shares = acss_va_state.row_secret_shares.clone().unwrap();
+                let root_comm = acss_va_state.verified_hash.clone().unwrap();
+                self.terminate(row_secret_shares, root_comm, instance_id).await;
             }
         }
     }
