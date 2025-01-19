@@ -15,7 +15,8 @@ TYPE=${TYPE:="release"}
     --protocol sync \
     --input 100 \
     --syncer $1 \
-    --bfile $4 \
+    --batches $4 \
+    --per $5 \
     --byzantine false > logs/syncer.log &
 
 for((i=0;i<4;i++)); do
@@ -25,7 +26,8 @@ for((i=0;i<4;i++)); do
     --protocol acs \
     --input $2 \
     --syncer $1 \
-    --bfile $4 \
+    --batches $4 \
+    --per $5 \
     --byzantine $3 > logs/$i.log &
 done
 

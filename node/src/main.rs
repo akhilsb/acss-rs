@@ -27,9 +27,17 @@ async fn main() -> Result<()> {
     let syncer_file = m
         .value_of("syncer")
         .expect("Unable to parse syncer ip file");
-    let broadcast_msgs_file = m
-        .value_of("bfile")
-        .expect("Unable to parse broadcast messages file");
+    let batches = m
+        .value_of("batches")
+        .expect("Unable to parse number of batches")
+        .parse::<usize>().unwrap();
+    let per_batch = m
+        .value_of("per")
+        .expect("Unable to parse per batch")
+        .parse::<usize>().unwrap();
+    // let broadcast_msgs_file = m
+    //     .value_of("bfile")
+    //     .expect("Unable to parse broadcast messages file");
     let byz_flag = m.value_of("byz").expect("Unable to parse Byzantine flag");
     let node_normal: bool = match byz_flag {
         "true" => true,
@@ -70,7 +78,12 @@ async fn main() -> Result<()> {
     match vss_type {
         "acs" => {
             exit_tx = 
-                acs::Context::spawn(config, 100, 100, false,node_normal).unwrap();
+                acs::Context::spawn(config, 
+                    batches, 
+                    per_batch, 
+                    true,
+                    node_normal
+                ).unwrap();
         }
         "avid" => {
             let (sender,receiver) = channel(10000);
@@ -89,7 +102,8 @@ async fn main() -> Result<()> {
                 idx += 1;
             }
             //let client_addr = net_map.get(&(net_map.len()-1)).unwrap();
-            exit_tx = Syncer::spawn(net_map, config.client_addr.clone(),broadcast_msgs_file.to_string()).unwrap();
+            //exit_tx = Syncer::spawn(net_map, config.client_addr.clone(),broadcast_msgs_file.to_string()).unwrap();
+            exit_tx = Syncer::spawn(net_map, config.client_addr.clone()).unwrap();
         }
         _ => {
             log::error!(

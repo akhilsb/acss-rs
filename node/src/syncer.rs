@@ -5,7 +5,7 @@ use fnv::FnvHashMap;
 use network::{plaintcp::{TcpReceiver, TcpReliableSender, CancelHandler}, Acknowledgement};
 use tokio::{sync::{oneshot, mpsc::{unbounded_channel, UnboundedReceiver}}, time};
 use types::{Replica, SyncMsg, SyncState, RBCSyncMsg};
-use std::fs::read_to_string;
+//use std::fs::read_to_string;
 
 use crate::SyncHandler;
 
@@ -19,7 +19,7 @@ pub struct Syncer{
     pub rbc_complete_times: HashMap<usize,HashMap<Replica,u128>>,
     pub rbc_comp_values: HashMap<usize,HashSet<String>>,
 
-    pub broadcast_msgs: Vec<String>,
+    //pub broadcast_msgs: Vec<String>,
     
     pub sharing_complete_times: HashMap<Replica,u128>,
     pub recon_start_time: u128,
@@ -41,7 +41,7 @@ impl Syncer{
     pub fn spawn(
         net_map: FnvHashMap<Replica,String>,
         cli_addr:SocketAddr,
-        filename: String
+        //filename: String
     )-> anyhow::Result<oneshot::Sender<()>>{
         let (exit_tx, exit_rx) = oneshot::channel();
         let (tx_net_to_server, rx_net_to_server) = unbounded_channel();
@@ -51,7 +51,7 @@ impl Syncer{
             std::net::SocketAddr::V4(new_sock_address),
             SyncHandler::new(tx_net_to_server),
         );
-        let broadcast_msgs = read_lines(&filename);
+        //let broadcast_msgs = read_lines(&filename);
         let mut server_addrs :FnvHashMap<Replica,SocketAddr>= FnvHashMap::default();
         for (replica,address) in net_map.iter(){
             let address:SocketAddr = address.parse().expect("Unable to parse address");
@@ -69,7 +69,7 @@ impl Syncer{
                 rbc_complete_times: HashMap::default(),
                 rbc_comp_values:HashMap::default(),
 
-                broadcast_msgs: broadcast_msgs,
+                //broadcast_msgs: broadcast_msgs,
 
                 sharing_complete_times:HashMap::default(),
                 recon_start_time:0,
@@ -155,9 +155,7 @@ impl Syncer{
                                 else{
                                     log::info!("All n nodes completed the protocol for ID: {} with latency {:?} and value {:?}",rbc_msg.id,vec_times,value_set);
                                 }
-                                if self.rbc_id > self.broadcast_msgs.len(){
-                                    self.broadcast(SyncMsg { sender: self.num_nodes, state: SyncState::STOP, value:"Terminate".to_string().into_bytes()}).await;
-                                }
+                                self.broadcast(SyncMsg { sender: self.num_nodes, state: SyncState::STOP, value:"Terminate".to_string().into_bytes()}).await;
                             }
                         }
                         _=>{}
@@ -166,13 +164,14 @@ impl Syncer{
                 _ = interval.tick() => {
                     if self.ready_for_broadcast{
                         // Initiate new broadcast
-                        if self.rbc_id >= self.broadcast_msgs.len(){
+                        if self.rbc_id >= 1{
                             continue;
                         }
                         self.rbc_id += 1;
                         let sync_rbc_msg = RBCSyncMsg{
                             id: self.rbc_id,
-                            msg: self.broadcast_msgs.get(&self.rbc_id-1).unwrap().to_string(),
+                            //msg: self.broadcast_msgs.get(&self.rbc_id-1).unwrap().to_string(),
+                            msg: "Start".to_string()
                         };
                         let binaryfy_val = bincode::serialize(&sync_rbc_msg).expect("Failed to serialize client message");
                         // let cancel_handler:CancelHandler<Acknowledgement> = self.net_send.send(0, SyncMsg { 
@@ -205,12 +204,12 @@ impl Syncer{
     }
 }
 
-fn read_lines(filename: &str) -> Vec<String> {
-    let mut result = Vec::new();
+// fn read_lines(filename: &str) -> Vec<String> {
+//     let mut result = Vec::new();
 
-    for line in read_to_string(filename).unwrap().lines() {
-        result.push(line.to_string())
-    }
+//     for line in read_to_string(filename).unwrap().lines() {
+//         result.push(line.to_string())
+//     }
 
-    result
-}
+//     result
+// }
