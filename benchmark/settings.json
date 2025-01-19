@@ -4,8 +4,8 @@
         "path": "/home/akhil/.ssh/aws"
     },
     "port": 5000,
-    "client_base_port": 9000,
-    "client_run_port": 9500,
+    "client_base_port": 6000,
+    "client_run_port": 6500,
     "repo": {
         "name": "acss-rs",
         "url": "https://github.com/akhilsb/acss-rs",

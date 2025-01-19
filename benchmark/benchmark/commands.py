@@ -46,8 +46,8 @@ class CommandMaker:
                 f'--protocol sync --input xx --syncer syncer --batches {batches} --per {per} --byzantine false')
 
     @staticmethod
-    def unzip_tkeys(fileloc,dir, debug=False):
-        return (f'tar -xvzf {fileloc} && cp {dir}/* .')
+    def unzip_tkeys(fileloc, debug=False):
+        return (f'tar -xvzf {fileloc}')
 
     @staticmethod
     def run_worker(keys, committee, store, parameters, id, debug=False):

@@ -245,8 +245,8 @@ class Bench:
             #c.put(PathMaker.parameters_file(), '.')
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
-        batches = 10
-        per_batch = 1000
+        batches = 2
+        per_batch = 825
         exp_vals = self.exp_setup(4)
         import numpy as np
         tri = np.max(exp_vals) - np.min(exp_vals)
@@ -268,7 +268,7 @@ class Bench:
                 batches,
                 per_batch
             )
-            unzip_cmd = CommandMaker.unzip_tkeys('tkeys.tar.gz','thresh_keys')
+            unzip_cmd = CommandMaker.unzip_tkeys('data.tar.gz')
             print(unzip_cmd)
             self._background_run(ip,unzip_cmd,"unzip.log")
             print(cmd)
@@ -351,8 +351,8 @@ class Bench:
         #     #c.put(PathMaker.parameters_file(), '.')
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
-        batches = 10
-        per_batch = 1000
+        batches = 2
+        per_batch = 825
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
