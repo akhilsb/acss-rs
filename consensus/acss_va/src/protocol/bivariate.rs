@@ -13,7 +13,11 @@ impl Context{
     // b is the set of evaluations on the column polynomials on the given evaluation points
     // c is the set of coefficients of row polynomials. 
     // instance_id acts the prf seed for generating shares randomly
-    pub fn sample_bivariate_polynomial_with_prf(&self, 
+    pub fn sample_bivariate_polynomial_with_prf(
+        num_faults: usize,
+        num_nodes:usize, 
+        sec_key_map: HashMap<Replica, Vec<u8>>,
+        large_field_uv_sss: LargeFieldSSS,
         secret_poly_coeffs: Option<Vec<LargeField>>, 
         evaluation_pts: Vec<LargeField>, 
         prf_seed: Vec<u8>
@@ -25,15 +29,15 @@ impl Context{
         if secret_encoded{
             row_coefficients.push(secret_poly_coeffs.unwrap());
         }
-        for rep in 0..self.num_faults{
-            let mut sec_key = self.sec_key_map.get(&rep).unwrap().clone();
+        for rep in 0..num_faults{
+            let mut sec_key = sec_key_map.get(&rep).unwrap().clone();
             sec_key.extend(prf_seed.clone());
             
-            let sampled_coefficients: Vec<LargeField> = pseudorandom_lf(sec_key.as_slice(), 2*self.num_faults+1).into_iter().map(
+            let sampled_coefficients: Vec<LargeField> = pseudorandom_lf(sec_key.as_slice(), 2*num_faults+1).into_iter().map(
                 |elem|{
-                    let mut mod_elem = elem%&self.large_field_uv_sss.prime;
+                    let mut mod_elem = elem%&large_field_uv_sss.prime;
                     if mod_elem < LargeField::from(0){
-                        mod_elem+=&self.large_field_uv_sss.prime;
+                        mod_elem+=&large_field_uv_sss.prime;
                     }
                     mod_elem
                 }
@@ -43,8 +47,8 @@ impl Context{
         if !secret_encoded{
             // First polynomial must be randomly sampled
             let mut first_poly = Vec::new();
-            for _ in 0..2*self.num_faults+1{
-                first_poly.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &self.large_field_uv_sss.prime));
+            for _ in 0..2*num_faults+1{
+                first_poly.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &large_field_uv_sss.prime));
             }
             row_coefficients.push(first_poly);
         }
@@ -52,11 +56,11 @@ impl Context{
         let (mut row_evals,col_evals) = Self::generate_row_column_evaluations(
             &row_coefficients, 
             evaluation_pts,
-            &self.large_field_uv_sss,
+            &large_field_uv_sss,
             true 
         );
         // Fill remaining row polynomials
-        for point in self.num_faults+1..self.num_nodes+1{
+        for point in num_faults+1..num_nodes+1{
             let mut row_poly_evaluations = Vec::new();
             for index in 0..eval_pts_len{
                 row_poly_evaluations.push(col_evals[index][point].clone());

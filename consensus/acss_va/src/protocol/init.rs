@@ -1,6 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{time::{SystemTime, UNIX_EPOCH}, collections::HashMap};
 
-use consensus::get_shards;
+use consensus::{get_shards, LargeFieldSSS};
 use crypto::{LargeField, hash::{Hash, do_hash}, aes_hash::{MerkleTree}, encrypt, decrypt, pseudorandom_lf};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
@@ -13,7 +13,7 @@ impl Context{
 
         let tot_batches = 1;
         let zero = LargeField::from(0);
-        let field_prime = self.large_field_bv_sss.prime.clone();
+        let _field_prime = self.large_field_bv_sss.prime.clone();
         
         // Sample bivariate polynomials
         // Pack t+1 degree-t sharings in each bivariate polynomial
@@ -39,63 +39,44 @@ impl Context{
         let vandermonde_matrix_ht =  self.large_field_uv_sss.vandermonde_matrix(&ht_indices);
         let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_ht);
 
-        for (index,batch) in (0..batched_secrets.len()).into_iter().zip(batched_secrets.into_iter()){
-            
-            // Sample F(x,0) polynomial next
-            let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
-            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
-            eval_point_indices_lf.reverse();
-
-            let mut points_f_x0: Vec<LargeField> = batch.clone();
-            for _ in 1..self.num_faults+1{
-                let rnd_share = rand::thread_rng().gen_bigint_range(&zero, &field_prime);
-                points_f_x0.push(rnd_share);
-            }
-
-            // Generate coefficients of this polynomial
-            let coeffs_f_x0 = self.large_field_bv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&points_f_x0);
-            
-            let mut prf_seed = Vec::new();
-            prf_seed.extend(instance_id.to_be_bytes());
-            prf_seed.extend(index.to_be_bytes());
-
-            let (mut row_evaluations,mut col_evaluations, bv_coefficients) 
-                        = self.sample_bivariate_polynomial_with_prf(
-                Some(coeffs_f_x0), 
-                (0..self.num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect(), 
-                prf_seed.clone()
-            );
-            
-            // Secrets are no longer needed. Remove the first row and column evaluation. They are not needed because they do not correspond to any node's shares
-            row_evaluations.remove(0);
-            col_evaluations.remove(0);
-            for (row, column) in row_evaluations.iter_mut().zip(col_evaluations.iter_mut()){
-                row.remove(0);
-                column.remove(0);
-            }
-
-            let eval_indices = eval_point_indices_lf.clone();
-            let (_, columns_secret) = Self::generate_row_column_evaluations(
-                &bv_coefficients, 
-                eval_indices.clone(), 
-                &self.large_field_uv_sss,
-                false
-            );
-
-            //log::info!("DZK polynomial: {:?} {:?}", eval_indices, columns_secret);
-
-            let mut coefficients_all_parties = Vec::new();
-            for row_poly in row_evaluations.iter(){
-                coefficients_all_parties.push(self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
-            }
-
-            row_coefficients_batch.push(coefficients_all_parties);
-            row_evaluations_batch.push(row_evaluations);
-            col_evaluations_batch.push(col_evaluations);
-            col_dzk_proof_evaluations_batch.push(columns_secret);
-            // Generate commitments on points in rows and columns
-            // Generate coefficients of all n row polynomials and column polynomials for transmission
-            // Generate dZK proofs on the polynomials generated on indices -t+1..0. 
+        // Parallelize this part using tokio
+        let num_cores = 4;
+        let len_each_chunk = batched_secrets.len()/num_cores;
+        // Divide everything into num_cores batches
+        let batched_parallel_secrets: Vec<Vec<Vec<LargeField>>> = batched_secrets.chunks(len_each_chunk).into_iter().map(|el| el.to_vec()).collect();
+        
+        let mut handles: Vec<(usize, 
+        tokio::task::JoinHandle<
+        (Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
+            Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
+            Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
+            Vec<Vec<Vec<num_bigint_dig::BigInt>>>)>)> = Vec::new();
+        for (b_i,batch) in (0..num_cores).into_iter().zip(batched_parallel_secrets.into_iter()){
+            let batch_index = b_i*len_each_chunk;
+            let job = tokio::spawn(
+                Self::generate_shares(
+                        self.sec_key_map.clone(),
+                        batch, 
+                        instance_id, 
+                        batch_index, 
+                        inverse_vandermonde.clone(),
+                        self.num_faults,
+                        self.num_nodes,
+                        self.large_field_bv_sss.clone(),
+                        self.large_field_uv_sss.clone()
+                    )
+                );
+            handles.push((
+                b_i, 
+                job
+            ));
+        }
+        for (_rep, handle) in handles{
+            let (row_coeffs, row_evals, col_evals, col_dzk_evals) = handle.await.unwrap();
+            row_coefficients_batch.extend(row_coeffs);
+            row_evaluations_batch.extend(row_evals);
+            col_evaluations_batch.extend(col_evals);
+            col_dzk_proof_evaluations_batch.extend(col_dzk_evals);
         }
 
         let each_batch;
@@ -140,7 +121,15 @@ impl Context{
             }
 
             let (mut nonce_row_evals, mut nonce_col_evals, _nonce_row_coeffs) 
-                    = self.sample_bivariate_polynomial_with_prf(Some(first_poly), evaluation_points, prf_seed);
+                    = Self::sample_bivariate_polynomial_with_prf(
+                        self.num_faults,
+                        self.num_nodes,
+                        self.sec_key_map.clone(),
+                        self.large_field_uv_sss.clone(),
+                        Some(first_poly), 
+                        evaluation_points, 
+                        prf_seed
+                    );
             
             // Secrets are no longer needed. Remove the first row and column evaluation. They are not needed because they do not correspond to any node's shares
             nonce_row_evals.remove(0);
@@ -319,6 +308,89 @@ impl Context{
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis());
+    }
+
+    async fn generate_shares(
+        sec_key_map: HashMap<Replica, Vec<u8>>,
+        batched_secrets: Vec<Vec<LargeField>>, 
+        instance_id: usize, 
+        batch_index: usize, 
+        inverse_vandermonde: Vec<Vec<LargeField>>,
+        num_faults: usize,
+        num_nodes: usize,
+        large_field_bv_sss: LargeFieldSSS,
+        large_field_uv_sss: LargeFieldSSS
+    )-> 
+    (Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>)
+    {
+        let zero = LargeField::from(0);
+        let mut row_coefficients_batch = Vec::new();
+        let mut row_evaluations_batch = Vec::new();
+        let mut col_evaluations_batch = Vec::new();
+        let mut col_dzk_proof_evaluations_batch = Vec::new();
+        for (index,batch) in (batch_index..batch_index+batched_secrets.len()).into_iter().zip(batched_secrets.into_iter()){
+            // Sample F(x,0) polynomial next
+            let eval_point_start: isize = ((num_faults) as isize) * (-1);
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            eval_point_indices_lf.reverse();
+
+            let mut points_f_x0: Vec<LargeField> = batch.clone();
+            for _ in 1..num_faults+1{
+                let rnd_share = rand::thread_rng().gen_bigint_range(&zero, &large_field_uv_sss.prime);
+                points_f_x0.push(rnd_share);
+            }
+
+            // Generate coefficients of this polynomial
+            let coeffs_f_x0 = large_field_bv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&points_f_x0);
+            
+            let mut prf_seed = Vec::new();
+            prf_seed.extend(instance_id.to_be_bytes());
+            prf_seed.extend(index.to_be_bytes());
+
+            let (mut row_evaluations,mut col_evaluations, bv_coefficients) 
+                        = Self::sample_bivariate_polynomial_with_prf(
+                            num_faults,
+                            num_nodes,
+                            sec_key_map.clone(),
+                            large_field_uv_sss.clone(),
+
+                Some(coeffs_f_x0), 
+                (0..num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect(), 
+                prf_seed.clone()
+            );
+            
+            // Secrets are no longer needed. Remove the first row and column evaluation. They are not needed because they do not correspond to any node's shares
+            row_evaluations.remove(0);
+            col_evaluations.remove(0);
+            for (row, column) in row_evaluations.iter_mut().zip(col_evaluations.iter_mut()){
+                row.remove(0);
+                column.remove(0);
+            }
+
+            let eval_indices = eval_point_indices_lf.clone();
+            let (_, columns_secret) = Self::generate_row_column_evaluations(
+                &bv_coefficients, 
+                eval_indices.clone(), 
+                &large_field_uv_sss,
+                false
+            );
+
+            //log::info!("DZK polynomial: {:?} {:?}", eval_indices, columns_secret);
+
+            let mut coefficients_all_parties = Vec::new();
+            for row_poly in row_evaluations.iter(){
+                coefficients_all_parties.push(large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
+            }
+
+            row_coefficients_batch.push(coefficients_all_parties);
+            row_evaluations_batch.push(row_evaluations);
+            col_evaluations_batch.push(col_evaluations);
+            col_dzk_proof_evaluations_batch.push(columns_secret);
+            // Generate commitments on points in rows and columns
+            // Generate coefficients of all n row polynomials and column polynomials for transmission
+            // Generate dZK proofs on the polynomials generated on indices -t+1..0.
+        }
+        (row_coefficients_batch,row_evaluations_batch, col_evaluations_batch, col_dzk_proof_evaluations_batch)
     }
 
     pub async fn process_batch_acss_init(&mut self, enc_msg: Vec<u8>, commitment: Commitment, sender: Replica, instance_id: usize){

@@ -245,8 +245,8 @@ class Bench:
             #c.put(PathMaker.parameters_file(), '.')
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
-        batches = 2
-        per_batch = 825
+        batches = 6
+        per_batch = 270
         exp_vals = self.exp_setup(4)
         import numpy as np
         tri = np.max(exp_vals) - np.min(exp_vals)
@@ -352,7 +352,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 2
-        per_batch = 825
+        per_batch = 85
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
