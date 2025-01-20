@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use consensus::get_shards;
+use consensus::{get_shards, LargeFieldSSS};
 use crypto::aes_hash::{MerkleTree, Proof};
 use crypto::hash::{do_hash, Hash};
 use crypto::{LargeField, LargeFieldSer, encrypt, decrypt};
@@ -38,78 +38,30 @@ impl Context{
         let lt_indices: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|el| LargeField::from(el)).collect();
         let vandermonde_matrix_lt =  self.large_field_uv_sss.vandermonde_matrix(&lt_indices);
         let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_lt);
-        for secret in secrets{
-            // Sample bivariate polynomial
-            // degree-2t row polynomial and degree-t column polynomial
-            // Sample degree-t polynomial
-            let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
-            secret_poly_y_deg_t.push(secret.clone());
-            secret_poly_y_deg_t.extend(self.large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
-            //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
-
-
-            // Fill polynomial on x-axis as well
-            let mut secret_poly_x_deg_2t = Vec::new();
-            secret_poly_x_deg_2t.push(secret.clone());
-            secret_poly_x_deg_2t.extend(self.large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
-            //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
-
-
-            // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
-            // Sample t degree-2t bivariate polynomials
-            let mut polys_x_deg_2t = Vec::new();
-            for rep in 0..self.num_nodes{
-                let share = secret_poly_y_deg_t[rep+1].clone();
-                let mut poly_x_deg_2t = Vec::new();
-                poly_x_deg_2t.push(share.clone());
-                if rep <= self.num_faults-1{
-                    poly_x_deg_2t.extend(self.large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
-                }
-                polys_x_deg_2t.push(poly_x_deg_2t);
-            }
-
-            // Keep track of corresponding column polynomials
-            let mut polys_y_deg_t = Vec::new();
-            for rep in 0..self.num_nodes{
-                let share = secret_poly_x_deg_2t[rep+1].clone();
-                let mut poly_y_deg_t = Vec::new();
-                poly_y_deg_t.push(share);
-                polys_y_deg_t.push(poly_y_deg_t);
-            }
-
-            for rep in 0..self.num_faults{
-                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
-                for index in 0..self.num_nodes{
-                    polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
-                }
-            }
-
-            // Extend all degree-t polynomials to n points
-            // Generate Coefficients of these polynomials
-            let mut coefficients_y_deg_t = Vec::new();
-            for rep in 0..self.num_nodes{
-                // Coefficients
-                let poly_eval_pts:Vec<BigInt> = polys_y_deg_t[rep].clone().into_iter().collect();
-                let coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly_eval_pts);
-                coefficients_y_deg_t.push(coeffs.clone());
-                
-                // Evaluations
-                self.large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
-                //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
-            }
-            coeff_polynomials_y.push(coefficients_y_deg_t);
-
-            // Fill all remaining degree-2t polynomials
-            for rep in self.num_faults .. self.num_nodes{
-                for index in 0..self.num_nodes{
-                    polys_x_deg_2t[rep].push(polys_y_deg_t[index][rep+1].clone());
-                }
-                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
-            }
-            row_polynomials.push(polys_x_deg_2t);
-            col_polynomials.push(polys_y_deg_t);
+        
+        let num_cores = 4;
+        let chunk_size = secrets.len()/num_cores;
+        let secret_batches: Vec<Vec<LargeField>> = secrets.chunks(chunk_size).into_iter().map(|el| el.to_vec()).collect();
+        let mut handles = Vec::new();
+        for secret_batch in secret_batches{
+            handles.push(tokio::spawn(
+                Self::generate_shares(
+                    self.large_field_uv_sss.clone(), 
+                    self.large_field_bv_sss.clone(), 
+                    secret_batch, 
+                    self.num_nodes, 
+                    self.num_faults, 
+                    inverse_vandermonde.clone()
+                )
+            ));
         }
 
+        for handle in handles{
+            let (row_evals, col_evals, col_coeffs) = handle.await.unwrap();
+            row_polynomials.extend(row_evals);
+            col_polynomials.extend(col_evals);
+            coeff_polynomials_y.extend(col_coeffs);
+        }
         // 2. Generate blinding polynomials
         let mut blinding_y_deg_t = Vec::new();
         let mut blinding_coeffs_y_deg_t = Vec::new();
@@ -418,6 +370,91 @@ impl Context{
             self.add_cancel_handler(cancel_handler);
         }
 
+    }
+
+    async fn generate_shares(
+        large_field_uv_sss: LargeFieldSSS,
+        large_field_bv_sss: LargeFieldSSS,
+        secrets: Vec<LargeField>,
+        num_nodes: usize,
+        num_faults: usize,
+        inverse_vandermonde: Vec<Vec<LargeField>>
+    )-> (Vec<Vec<Vec<LargeField>>>, Vec<Vec<Vec<LargeField>>>, Vec<Vec<Vec<LargeField>>>){
+        let mut row_polynomials = Vec::new();
+        let mut col_polynomials = Vec::new();
+        let mut coeff_polynomials_y = Vec::new();
+        for secret in secrets{
+            // Sample bivariate polynomial
+            // degree-2t row polynomial and degree-t column polynomial
+            // Sample degree-t polynomial
+            let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
+            secret_poly_y_deg_t.push(secret.clone());
+            secret_poly_y_deg_t.extend(large_field_uv_sss.split(secret.clone()).into_iter().map(|tup| tup.1));
+            //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
+
+
+            // Fill polynomial on x-axis as well
+            let mut secret_poly_x_deg_2t = Vec::new();
+            secret_poly_x_deg_2t.push(secret.clone());
+            secret_poly_x_deg_2t.extend(large_field_bv_sss.split(secret).into_iter().map(|tup| tup.1));
+            //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
+
+
+            // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
+            // Sample t degree-2t bivariate polynomials
+            let mut polys_x_deg_2t = Vec::new();
+            for rep in 0..num_nodes{
+                let share = secret_poly_y_deg_t[rep+1].clone();
+                let mut poly_x_deg_2t = Vec::new();
+                poly_x_deg_2t.push(share.clone());
+                if rep <= num_faults-1{
+                    poly_x_deg_2t.extend(large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
+                }
+                polys_x_deg_2t.push(poly_x_deg_2t);
+            }
+
+            // Keep track of corresponding column polynomials
+            let mut polys_y_deg_t = Vec::new();
+            for rep in 0..num_nodes{
+                let share = secret_poly_x_deg_2t[rep+1].clone();
+                let mut poly_y_deg_t = Vec::new();
+                poly_y_deg_t.push(share);
+                polys_y_deg_t.push(poly_y_deg_t);
+            }
+
+            for rep in 0..num_faults{
+                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+                for index in 0..num_nodes{
+                    polys_y_deg_t[index].push(polys_x_deg_2t[rep][index+1].clone());
+                }
+            }
+
+            // Extend all degree-t polynomials to n points
+            // Generate Coefficients of these polynomials
+            let mut coefficients_y_deg_t = Vec::new();
+            for rep in 0..num_nodes{
+                // Coefficients
+                let poly_eval_pts:Vec<BigInt> = polys_y_deg_t[rep].clone().into_iter().collect();
+                let coeffs = large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly_eval_pts);
+                coefficients_y_deg_t.push(coeffs.clone());
+                
+                // Evaluations
+                large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
+                //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
+            }
+
+            // Fill all remaining degree-2t polynomials
+            for rep in num_faults .. num_nodes{
+                for index in 0..num_nodes{
+                    polys_x_deg_2t[rep].push(polys_y_deg_t[index][rep+1].clone());
+                }
+                //assert!(self.large_field_bv_sss.verify_degree(&mut polys_x_deg_2t[rep]));
+            }
+            coeff_polynomials_y.push(coefficients_y_deg_t);
+            row_polynomials.push(polys_x_deg_2t);
+            col_polynomials.push(polys_y_deg_t);
+        }
+        (row_polynomials,col_polynomials,coeff_polynomials_y)
     }
 
     pub async fn process_acss_init_vf(self: &mut Context, enc_shares: Vec<u8>, comm: VACommitment, dealer: Replica, instance_id: usize){

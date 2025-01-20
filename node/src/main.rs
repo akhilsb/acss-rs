@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
                 acs::Context::spawn(config, 
                     batches, 
                     per_batch, 
-                    true,
+                    false,
                     node_normal
                 ).unwrap();
         }
