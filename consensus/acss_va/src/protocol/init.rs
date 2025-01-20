@@ -190,14 +190,29 @@ impl Context{
             
             // Generate Distributed ZK polynomial
             let mut agg_poly = blinding_eval_points_dzk.clone();
-            let mut master_root_lf_mul= master_root_lf.clone();
-            for bv_eval_polys in dzk_polys_batch.into_iter(){
-                for eval_poly in bv_eval_polys{
-                    for (index, evaluation) in (0..eval_poly.len()).zip(eval_poly){
-                        agg_poly[index] = (&agg_poly[index]+(&master_root_lf_mul*evaluation))%&self.large_field_uv_sss.prime;
+            // Divide DZK poly generation into batches
+            let per_batch = dzk_polys_batch.len()/num_cores;
+            let batches_chunked: Vec<Vec<Vec<Vec<LargeField>>>> = dzk_polys_batch.chunks(per_batch).into_iter().map(|el| el.to_vec()).collect();
+            let mut handles = Vec::new();
+            for batch in batches_chunked{
+                handles.push(tokio::spawn(Self::compute_agg_dzk(
+                    batch, 
+                    self.large_field_uv_sss.prime.clone(), 
+                    self.num_faults+1, 
+                    master_root_lf.clone())
+                    )
+                );
+            }
+            let mut master_root_lf_mul = LargeField::from(1);
+            for handle in handles{
+                let (agg_batch_poly, root_mul) = handle.await.unwrap();
+                for (rep, poly_num) in (0..agg_batch_poly.len()).into_iter().zip(agg_batch_poly){
+                    agg_poly[rep] = (&agg_poly[rep]+ &master_root_lf_mul*poly_num)%&self.large_field_uv_sss.prime;
+                    if agg_poly[rep]< LargeField::from(0){
+                        agg_poly[rep] += &self.large_field_uv_sss.prime;
                     }
-                    master_root_lf_mul = (&master_root_lf_mul*&master_root_lf)%&self.large_field_uv_sss.prime;
                 }
+                master_root_lf_mul = (&master_root_lf_mul*root_mul)%&self.large_field_uv_sss.prime;
             }
 
             self.large_field_uv_sss.fill_evaluation_at_all_points(&mut agg_poly);
@@ -308,6 +323,20 @@ impl Context{
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis());
+    }
+
+    async fn compute_agg_dzk(dzk_polys_batch: Vec<Vec<Vec<LargeField>>>, prime: LargeField, points: usize, master_root_lf: LargeField)-> (Vec<LargeField>, LargeField){
+        let mut agg_poly = vec![LargeField::from(0); points];
+        let mut master_root_lf_mul = master_root_lf.clone();
+        for bv_eval_polys in dzk_polys_batch.into_iter(){
+            for eval_poly in bv_eval_polys{
+                for (index, evaluation) in (0..eval_poly.len()).zip(eval_poly){
+                    agg_poly[index] = (&agg_poly[index]+(&master_root_lf_mul*evaluation))% &prime;
+                }
+                master_root_lf_mul = (&master_root_lf_mul*&master_root_lf)% &prime;
+            }
+        }
+        (agg_poly,master_root_lf_mul*LargeFieldSSS::mod_inv(&master_root_lf, &prime))
     }
 
     async fn generate_shares(

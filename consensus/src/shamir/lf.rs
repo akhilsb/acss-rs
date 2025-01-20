@@ -293,7 +293,7 @@ impl LargeFieldSSS {
     }
 
     /// Computes modular inverse using Fermat's Little Theorem: a^(p-2) % p
-    fn mod_inv(a: &LargeField, p: &LargeField) -> LargeField {
+    pub fn mod_inv(a: &LargeField, p: &LargeField) -> LargeField {
         Self::mod_pow(a, &(p - LargeField::from(2)), p)
     }
 
