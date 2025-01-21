@@ -97,6 +97,13 @@ pub struct Context {
     pub ra_out_recv: Receiver<(usize, Replica, usize)>
 }
 
+// s = num_batches*per_batch
+// num_batches = 1,3,5
+// num_batches = 1, per_batch = 10000/(t+1); n=16, per_batch = 1600, n=16, n=40, n=64
+// s*(t+1) - 3t+1 system
+// T = s*(t+1), s = T/(t+1),  T=10000
+// low_or_high= true: Low-threshold DPSS, high: High-threshold DPSS
+
 impl Context {
     pub fn spawn(
         config: Node, 
