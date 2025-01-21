@@ -393,10 +393,6 @@ class Bench:
                PathMaker.client_log_file(i, 0), 
                local=PathMaker.client_log_file(i, 0)
             )
-            # c.get(
-            #     PathMaker.worker_log_file(i, id),     
-            #     local=PathMaker.worker_log_file(i, id)
-            # )
 
         # primary_addresses = committee.primary_addresses(faults)
         # progress = progress_bar(primary_addresses, prefix='Downloading primaries logs:')
