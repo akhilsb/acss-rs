@@ -77,13 +77,14 @@ impl Context{
 
     pub async fn broadcast_pre(&mut self, inst: usize){
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
-        if vaba_context.term_asks_instances.len() == self.num_faults+1 &&
+        if vaba_context.term_asks_instances.len() >= self.num_faults+1 &&
             vaba_context.pre.is_some() && 
             vaba_context.justify.is_some() &&
             !vaba_context.pre_broadcast {
             log::info!("Starting Pre broadcast for instance_id {}", inst);
             // Start new RBC instance
-            let p_i: Vec<Replica> = vaba_context.term_asks_instances.clone().into_iter().collect();
+            let mut p_i: Vec<Replica> = vaba_context.term_asks_instances.clone().into_iter().collect();
+            p_i.truncate(self.num_faults+1);
             
             let ctrbc_msg = (
                 vaba_context.pre.clone().unwrap(), 
