@@ -1,7 +1,7 @@
 {
     "key": {
         "name": "aws",
-        "path": "/home/akhil/.ssh/aws"
+        "path": "/Users/sohamjog/desktop/aws"
     },
     "port": 5000,
     "client_base_port": 6000,
