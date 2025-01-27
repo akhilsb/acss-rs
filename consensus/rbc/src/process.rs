@@ -25,9 +25,8 @@ impl Context {
         true
     }
 
-
     pub(crate) async fn process_msg(&mut self, wrapper_msg: WrapperMsg<ProtMsg>) {
-        log::debug!("Received protocol msg: {:?}", wrapper_msg);
+        log::trace!("Received protocol msg: {:?}", wrapper_msg);
         let msg = Arc::new(wrapper_msg.clone());
 
         // Verify the message's authenticity before proceeding
@@ -35,28 +34,47 @@ impl Context {
             match wrapper_msg.clone().protmsg {
                 ProtMsg::Ping(main_msg, rep) => {
                     // RBC initialized
-                    log::info!("Received Ping from node : {:?}", rep);
+                    log::info!(
+                        "Received Ping for instance id {} from node : {:?}",
+                        rep,
+                        main_msg.origin
+                    );
                     self.handle_ping(main_msg).await;
                 }
                 ProtMsg::Echo(main_msg, rep) => {
                     // RBC initialized
-                    log::info!("Received Ping from node : {:?}", rep);
-                    self.handle_echo(main_msg).await;
+                    log::info!(
+                        "Received Echo for instance id {} from node : {:?}",
+                        rep,
+                        main_msg.origin
+                    );
+                    self.handle_echo(main_msg, rep).await;
                 }
                 ProtMsg::Output(main_msg, rep) => {
                     // RBC initialized
-                    log::info!("Received Ping from node : {:?}", rep);
+                    log::info!(
+                        "Received Output for instance id {} from node : {:?}",
+                        rep,
+                        main_msg.origin
+                    );
                     self.handle_ping(main_msg).await;
                 }
                 ProtMsg::Ready(main_msg, rep) => {
-                    // RBC initialized
-                    log::info!("Received Ping from node : {:?}", rep);
-                    self.handle_ready(main_msg).await;
+                    log::info!(
+                        "Received Ready for instance id {} from node : {:?}",
+                        rep,
+                        main_msg.origin
+                    );
+                    self.handle_ready(main_msg, rep).await;
                 }
                 ProtMsg::Sendall(main_msg, rep) => {
                     // RBC initialized
-                    log::info!("Received Ping from node : {:?}", rep);
-                    self.handle_sendall(main_msg).await;
+                    log::info!(
+                        "Received Sendall for instance id {} from node : {:?}",
+                        rep,
+                        main_msg.origin
+                    );
+                    self.handle_init(main_msg, rep).await;
                 }
             }
         } else {
@@ -68,7 +86,7 @@ impl Context {
     }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data: String) {
+    pub async fn terminate(&mut self, data: Vec<u8>) {
         let cancel_handler = self
             .sync_send
             .send(
@@ -76,7 +94,7 @@ impl Context {
                 SyncMsg {
                     sender: self.myid,
                     state: SyncState::COMPLETED,
-                    value: data.into_bytes(),
+                    value: data,
                 },
             )
             .await;

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crypto::hash::Hash;
 use reed_solomon_rs::fec::fec::*;
 use serde::{Deserialize, Serialize};
-use types::{Replica};
+use types::Replica;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Msg {

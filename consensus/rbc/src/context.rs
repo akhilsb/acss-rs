@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     net::{SocketAddr, SocketAddrV4},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -20,7 +20,7 @@ use types::{
     SyncMsg, SyncState, {ProtMsg, Replica, WrapperMsg},
 };
 
-use super::{Handler, SyncHandler};
+use super::{Handler, RBCState, SyncHandler};
 
 pub struct Context {
     /// Networking context
@@ -42,11 +42,9 @@ pub struct Context {
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
     // Add your custom fields here
-    pub received_echo_count: HashMap<Vec<u8>, usize>,
-    pub received_ready_count: HashMap<Vec<u8>, usize>,
-
-    pub echo_senders: HashMap<Vec<u8>, HashSet<usize>>,
-    pub ready_senders: HashMap<Vec<u8>, HashSet<usize>>,
+    // Each Reliable Broadcast instance is associated with a Unique Identifier.
+    pub rbc_context: HashMap<usize, RBCState>,
+    pub max_id: usize,
 }
 
 impl Context {
@@ -78,13 +76,15 @@ impl Context {
             SyncHandler::new(tx_net_to_client),
         );
 
-        let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
-            consensus_addrs.clone(),
-        );
+        let consensus_net =
+            TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
+                consensus_addrs.clone(),
+            );
         let sync_net =
             TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(syncer_map);
         let (exit_tx, exit_rx) = oneshot::channel();
-
+        let threshold: usize = 10000;
+        let rbc_start_id = threshold * config.id;
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -99,10 +99,8 @@ impl Context {
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
                 inp_message: message,
-                received_echo_count: HashMap::default(),
-                received_ready_count: HashMap::default(),
-                echo_senders: HashMap::default(),
-                ready_senders: HashMap::default(),
+                rbc_context: HashMap::default(),
+                max_id: rbc_start_id,
             };
 
             // Populate secret keys from config
@@ -190,7 +188,9 @@ impl Context {
                             // Write a function to broadcast a message. We demonstrate an example with a PING function
                             // Now the start_ping function has the sendall tag
                             if self.myid == 0 {
-                                self.start_ping().await;
+                                let rbc_inst_id = self.max_id + 1;
+                                self.max_id = rbc_inst_id;
+                                self.start_init(sync_msg.value, rbc_inst_id).await;
                             }
                             // wait for messages
                         },
