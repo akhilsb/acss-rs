@@ -24,14 +24,19 @@ impl Context{
             rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime)
         ).collect();
 
+        // hi = H(share_i, p(i))
+
         let shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point|
+            // TODO: Use lambdaworks
             self.large_field_uv_sss.mod_evaluate_at(&coefficients, point)
         ).collect();
 
         let nonce_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point|
+            // TODO: Use lambdaworks
             self.large_field_uv_sss.mod_evaluate_at(&nonce_coefficients, point)
         ).collect();
 
+        // h = [h1, h2, hn]
         let commitments: Vec<Hash> = shares.clone().into_iter().zip(nonce_shares.clone().into_iter()).map(|(share,nonce)|{
             let mut appended_vec = Vec::new();
             appended_vec.extend(share.to_signed_bytes_be());

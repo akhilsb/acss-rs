@@ -71,6 +71,7 @@ impl Context{
             let share_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&share_poly_shares);
             let nonce_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_poly_shares);
 
+            // TODO: Use lambdaworks
             let all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&share_poly_coeffs, val)).collect();
             let nonce_all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&nonce_poly_coeffs, val)).collect();
             
