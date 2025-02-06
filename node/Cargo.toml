@@ -33,3 +33,5 @@ signal-hook = "0"
 network = { package = "network", git = "https://github.com/akhilsb/libnet-rs.git" }
 async-trait = "0"
 futures-util = "0"
+num-bigint-dig = "0.4"
+num-bigint = {version = "0.2.6", features = ["rand"]}

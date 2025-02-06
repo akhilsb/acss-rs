@@ -3,12 +3,13 @@ use clap::{load_yaml, App};
 use config::Node;
 use fnv::FnvHashMap;
 use node::Syncer;
+use num_bigint_dig::BigInt;
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
+use std::net::{SocketAddr, SocketAddrV4};
 use tokio::sync::mpsc::channel;
-use std::{net::{SocketAddr, SocketAddrV4}};
 
 //#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 #[tokio::main]
@@ -30,11 +31,13 @@ async fn main() -> Result<()> {
     let batches = m
         .value_of("batches")
         .expect("Unable to parse number of batches")
-        .parse::<usize>().unwrap();
+        .parse::<usize>()
+        .unwrap();
     let per_batch = m
         .value_of("per")
         .expect("Unable to parse per batch")
-        .parse::<usize>().unwrap();
+        .parse::<usize>()
+        .unwrap();
     // let broadcast_msgs_file = m
     //     .value_of("bfile")
     //     .expect("Unable to parse broadcast messages file");
@@ -77,19 +80,15 @@ async fn main() -> Result<()> {
     let exit_tx;
     match vss_type {
         "acs" => {
-            exit_tx = 
-                acs::Context::spawn(config, 
-                    batches, 
-                    per_batch, 
-                    true,
-                    node_normal
-                ).unwrap();
+            exit_tx = acs::Context::spawn(config, batches, per_batch, true, node_normal).unwrap();
         }
         "avid" => {
-            let (sender,receiver) = channel(10000);
-            exit_tx =
-                avid::Context::spawn(config, receiver, sender, node_normal)
-                    .unwrap();
+            let (sender, receiver) = channel(10000);
+            exit_tx = avid::Context::spawn(config, receiver, sender, node_normal).unwrap();
+        }
+        "asks" => {
+            let (sender, receiver) = channel::<(usize, usize, Option<Bigint>)>(10000);
+            exit_tx = asks::Context::spawn(config, receiver, sender, node_normal).unwrap();
         }
         "sync" => {
             let f_str = syncer_file.to_string();

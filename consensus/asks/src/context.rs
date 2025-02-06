@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Ok, Result};
 use std::{
     collections::HashMap,
     net::{SocketAddr, SocketAddrV4},
@@ -10,25 +11,25 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::{BigInt};
+use num_bigint_dig::BigInt;
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
+    mpsc::{unbounded_channel, Receiver, Sender, UnboundedReceiver},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
-use types::{Replica, WrapperMsg};
+use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::{LargeFieldSSS};
+use consensus::{LargeFieldSSS, SyncHandler};
 
 use crypto::{aes_hash::HashState, LargeField};
 
-use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
+use crate::{handlers::Handler, msg::ProtMsg, protocol::ASKSState};
 
 pub struct Context {
     /// Networking context
     pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
     pub net_recv: UnboundedReceiver<WrapperMsg<ProtMsg>>,
-    
+
     /// Data context
     pub num_nodes: usize,
     pub myid: usize,
@@ -44,9 +45,9 @@ pub struct Context {
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
-    
-    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
-    pub threshold: usize, 
+
+    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service.
+    pub threshold: usize,
 
     pub max_id: usize,
 
@@ -59,16 +60,20 @@ pub struct Context {
     pub asks_state: HashMap<usize, ASKSState>,
 
     /// Input and output request channels
-    pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
-    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
+    // pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
+    pub sync_send: TcpReliableSender<Replica, SyncMsg, Acknowledgement>,
+    pub sync_recv: UnboundedReceiver<SyncMsg>,
+    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>,
 }
 
 impl Context {
-    pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize, Option<usize>,bool)>, 
-        output_shares: Sender<(usize,Replica,Option<LargeField>)>,
-        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
-        // Add a separate configuration for RBC service. 
+    pub fn spawn(
+        config: Node,
+        input_reqs: Receiver<(usize, Option<usize>, bool)>,
+        output_shares: Sender<(usize, Replica, Option<LargeField>)>,
+        byz: bool,
+    ) -> anyhow::Result<oneshot::Sender<()>> {
+        // Add a separate configuration for RBC service.
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         for (replica, address) in config.net_map.iter() {
@@ -85,10 +90,24 @@ impl Context {
             Handler::new(tx_net_to_consensus),
         );
 
-        let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
-            consensus_addrs.clone(),
+        let syncer_listen_port = config.client_port;
+        let syncer_l_address = to_socket_address("0.0.0.0", syncer_listen_port);
+
+        let (tx_net_to_client, rx_net_from_client) = unbounded_channel();
+        TcpReceiver::<Acknowledgement, SyncMsg, _>::spawn(
+            syncer_l_address,
+            SyncHandler::new(tx_net_to_client),
         );
-        
+
+        let sync_net = TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(
+            [(0, config.client_addr)].into_iter().collect(),
+        );
+
+        let consensus_net =
+            TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
+                consensus_addrs.clone(),
+            );
+
         let (exit_tx, exit_rx) = oneshot::channel();
 
         // Keyed AES ciphers
@@ -97,32 +116,36 @@ impl Context {
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
 
-        let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
+        let threshold: usize = 10000;
+        let rbc_start_id = threshold * config.id;
 
-        
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
+        let large_field_prime_bv: BigInt = BigInt::parse_bytes(
+            b"57896044618658097711785492504343953926634992332820282019728792003956564819949",
+            10,
+        )
+        .unwrap();
+
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
 
         // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
+        let file_path_lt =
+            file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
         let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
-            config.num_faults +1,
+            config.num_faults + 1,
             config.num_nodes,
             file_path_lt,
-            large_field_prime_bv.clone()
+            large_field_prime_bv.clone(),
         );
 
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
                 net_recv: rx_net_to_consensus,
-                
+
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
@@ -131,22 +154,26 @@ impl Context {
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
-                
+
                 //avid_context:HashMap::default(),
                 threshold: 10000,
 
-                max_id: rbc_start_id, 
+                max_id: rbc_start_id,
 
                 large_field_uv_sss: lf_uv_sss,
 
                 asks_state: HashMap::default(),
                 nonce_seed: 1,
 
-                inp_asks_requests: input_reqs,
-                out_asks_values: output_shares
+                // inp_asks_requests: input_reqs,
+                sync_send: sync_net,
+                sync_recv: rx_net_from_client,
+
+                out_asks_values: output_shares,
             };
 
             // Populate secret keys from config
+
             for (id, sk_data) in config.sk_map.clone() {
                 c.sec_key_map.insert(id, sk_data.clone());
             }
@@ -183,8 +210,8 @@ impl Context {
             self.net_send.send(replica, wrapper_msg).await;
         self.add_cancel_handler(cancel_handler);
     }
-
-    pub async fn run(&mut self){
+    // TODO: Revert back to () when the protocol is tested
+    pub async fn run(&mut self)  -> Result<()> {
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
         loop {
@@ -199,30 +226,59 @@ impl Context {
                     log::trace!("Got a consensus message from the network: {:?}", msg);
                     if msg.is_none(){
                         log::error!("Got none from the consensus layer, most likely it closed");
-                        return;
+                        return Ok(());
                     }
                     self.process_msg(msg.unwrap()).await;
                 },
-                req_msg = self.inp_asks_requests.recv() =>{
-                    if req_msg.is_none(){
-                        log::error!("Request channel closed");
-                        return;
-                    }
-                    let req_msg = req_msg.unwrap();
-                    if !req_msg.2{
-                        let acss_inst_id = self.max_id + 1;
-                        self.max_id = acss_inst_id;
-                        
-                        self.init_asks(acss_inst_id).await;
-                    }
-                    else {
-                        // Reconstruct this message
-                        let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
-                        self.reconstruct_asks(instance_id).await;
+                // TODO: Get back later
+                // req_msg = self.inp_asks_requests.recv() =>{
+                //     if req_msg.is_none(){
+                //         log::error!("Request channel closed");
+                //         return;
+                //     }
+                //     let req_msg = req_msg.unwrap();
+                //     if !req_msg.2{
+                //         let acss_inst_id = self.max_id + 1;
+                //         self.max_id = acss_inst_id;
+
+                //         self.init_asks(acss_inst_id).await;
+                //     }
+                //     else {
+                //         // Reconstruct this message
+                //         let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
+                //         self.reconstruct_asks(instance_id).await;
+                //     }
+                // },
+                sync_msg = self.sync_recv.recv() =>{
+                    let sync_msg = sync_msg.ok_or_else(|| {
+                        log::error!("Syncer channel closed");
+                        anyhow!("Syncer channel closed")
+                    })?;
+
+                    match sync_msg.state {
+                        SyncState::START => {
+                            log::info!("Starting ASKS protocol...");
+                            let acss_inst_id = self.max_id + 1;
+                            self.max_id = acss_inst_id;
+                            self.init_asks(acss_inst_id).await;
+                        },
+                        SyncState::STOP => {
+                            log::info!("Stopping ASKS protocol...");
+                            break;
+                        },
+                        SyncState::RECONSTRUCT(replica_id, instance_id) => {
+                            log::info!("Reconstructing ASKS for instance: {}", instance_id);
+                            let asks_instance_id = self.threshold * replica_id + instance_id;
+                            self.reconstruct_asks(asks_instance_id).await;
+                        },
+                        _ => {}
                     }
                 },
+
+
             };
         }
+        Ok(())
     }
 }
 

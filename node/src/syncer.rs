@@ -1,48 +1,61 @@
-use std::{collections::{HashSet, HashMap}, net::{SocketAddr,SocketAddrV4}, time::{SystemTime, UNIX_EPOCH, Duration}};
+use std::{
+    collections::{HashMap, HashSet},
+    net::{SocketAddr, SocketAddrV4},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use fnv::FnvHashMap;
-use network::{plaintcp::{TcpReceiver, TcpReliableSender, CancelHandler}, Acknowledgement};
-use tokio::{sync::{oneshot, mpsc::{unbounded_channel, UnboundedReceiver}}, time};
-use types::{Replica, SyncMsg, SyncState, RBCSyncMsg};
+use network::{
+    plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
+    Acknowledgement,
+};
+use tokio::{
+    sync::{
+        mpsc::{unbounded_channel, UnboundedReceiver},
+        oneshot,
+    },
+    time,
+};
+use types::{RBCSyncMsg, Replica, SyncMsg, SyncState};
 //use std::fs::read_to_string;
 
 use crate::SyncHandler;
 
-pub struct Syncer{
+pub struct Syncer {
     pub num_nodes: usize,
     pub ready_for_broadcast: bool,
 
-    pub rbc_id:usize,
-    pub rbc_msgs: HashMap<usize,String>,
-    pub rbc_start_times: HashMap<usize,u128>,
-    pub rbc_complete_times: HashMap<usize,HashMap<Replica,u128>>,
-    pub rbc_comp_values: HashMap<usize,HashSet<String>>,
+    pub rbc_id: usize,
+    pub rbc_msgs: HashMap<usize, String>,
+    pub rbc_start_times: HashMap<usize, u128>,
+    pub rbc_complete_times: HashMap<usize, HashMap<Replica, u128>>,
+    pub rbc_comp_values: HashMap<usize, HashSet<String>>,
 
     //pub broadcast_msgs: Vec<String>,
-    
-    pub sharing_complete_times: HashMap<Replica,u128>,
+    pub sharing_complete_times: HashMap<Replica, u128>,
     pub recon_start_time: u128,
-    pub net_map: FnvHashMap<Replica,String>,
+    pub net_map: FnvHashMap<Replica, String>,
     pub alive: HashSet<Replica>,
-    pub timings:HashMap<Replica,u128>,
-    
+    pub timings: HashMap<Replica, u128>,
+
     pub cli_addr: SocketAddr,
-    
+
     pub rx_net: UnboundedReceiver<SyncMsg>,
-    pub net_send: TcpReliableSender<Replica,SyncMsg,Acknowledgement>,
-    
+    pub net_send: TcpReliableSender<Replica, SyncMsg, Acknowledgement>,
+
     exit_rx: oneshot::Receiver<()>,
     /// Cancel Handlers
     pub cancel_handlers: Vec<CancelHandler<Acknowledgement>>,
+
 }
 
-impl Syncer{
+impl Syncer {
     pub fn spawn(
-        net_map: FnvHashMap<Replica,String>,
-        cli_addr:SocketAddr,
+        net_map: FnvHashMap<Replica, String>,
+        cli_addr: SocketAddr,
         //filename: String
-    )-> anyhow::Result<oneshot::Sender<()>>{
+    ) -> anyhow::Result<oneshot::Sender<()>> {
         let (exit_tx, exit_rx) = oneshot::channel();
         let (tx_net_to_server, rx_net_to_server) = unbounded_channel();
         let cli_addr_sock = cli_addr.port();
@@ -52,36 +65,36 @@ impl Syncer{
             SyncHandler::new(tx_net_to_server),
         );
         //let broadcast_msgs = read_lines(&filename);
-        let mut server_addrs :FnvHashMap<Replica,SocketAddr>= FnvHashMap::default();
-        for (replica,address) in net_map.iter(){
-            let address:SocketAddr = address.parse().expect("Unable to parse address");
+        let mut server_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
+        for (replica, address) in net_map.iter() {
+            let address: SocketAddr = address.parse().expect("Unable to parse address");
             server_addrs.insert(*replica, SocketAddr::from(address.clone()));
         }
-        let net_send = TcpReliableSender::<Replica,SyncMsg,Acknowledgement>::with_peers(server_addrs);
-        tokio::spawn(async move{
-            let mut syncer = Syncer{
-                net_map:net_map.clone(),
+        let net_send =
+            TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(server_addrs);
+        tokio::spawn(async move {
+            let mut syncer = Syncer {
+                net_map: net_map.clone(),
                 ready_for_broadcast: false,
 
                 rbc_id: 0,
                 rbc_msgs: HashMap::default(),
                 rbc_start_times: HashMap::default(),
                 rbc_complete_times: HashMap::default(),
-                rbc_comp_values:HashMap::default(),
+                rbc_comp_values: HashMap::default(),
 
                 //broadcast_msgs: broadcast_msgs,
+                sharing_complete_times: HashMap::default(),
+                recon_start_time: 0,
+                num_nodes: net_map.len(),
+                alive: HashSet::default(),
 
-                sharing_complete_times:HashMap::default(),
-                recon_start_time:0,
-                num_nodes:net_map.len(),
-                alive:HashSet::default(),
-                
-                timings:HashMap::default(),
-                cli_addr:cli_addr,
-                rx_net:rx_net_to_server,
-                net_send:net_send,
-                exit_rx:exit_rx,
-                cancel_handlers:Vec::new()
+                timings: HashMap::default(),
+                cli_addr: cli_addr,
+                rx_net: rx_net_to_server,
+                net_send: net_send,
+                exit_rx: exit_rx,
+                cancel_handlers: Vec::new(),
             };
             if let Err(e) = syncer.run().await {
                 log::error!("Consensus error: {}", e);
@@ -89,13 +102,14 @@ impl Syncer{
         });
         Ok(exit_tx)
     }
-    pub async fn broadcast(&mut self, sync_msg:SyncMsg){
+    pub async fn broadcast(&mut self, sync_msg: SyncMsg) {
         for replica in 0..self.num_nodes {
-            let cancel_handler:CancelHandler<Acknowledgement> = self.net_send.send(replica, sync_msg.clone()).await;
-            self.add_cancel_handler(cancel_handler);    
+            let cancel_handler: CancelHandler<Acknowledgement> =
+                self.net_send.send(replica, sync_msg.clone()).await;
+            self.add_cancel_handler(cancel_handler);
         }
     }
-    pub async fn run(&mut self)-> Result<()>{
+    pub async fn run(&mut self) -> Result<()> {
         let mut interval = time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
@@ -125,30 +139,30 @@ impl Syncer{
                         },
                         SyncState::COMPLETED=>{
                             log::info!("Got COMPLETED message from node {}",msg.sender);
-                            
+
                             // deserialize message
                             let rbc_msg: RBCSyncMsg = bincode::deserialize(&msg.value).expect("Unable to deserialize message received from node");
-                            
+
                             let latency_map = self.rbc_complete_times.entry(rbc_msg.id).or_default();
                             latency_map.insert(msg.sender, SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap()
                             .as_millis());
-                            
+
                             let value_set = self.rbc_comp_values.entry(rbc_msg.id).or_default();
                             value_set.insert(rbc_msg.msg.to_string());
                             if latency_map.len() == 2*self.num_nodes/3{
 
                                 let start_time = self.rbc_start_times.get(&rbc_msg.id).unwrap();
                                 // All nodes terminated protocol
-                                
+
                                 let mut vec_times = Vec::new();
                                 for (_rep,time) in latency_map.iter(){
                                     vec_times.push(time.clone()-start_time);
                                 }
-                                
+
                                 vec_times.sort();
-                                
+
                                 if value_set.len() > 1{
                                     log::info!("Received multiple values from nodes, broadcast failed, rerun test {:?}",value_set);
                                 }
@@ -174,23 +188,25 @@ impl Syncer{
                             msg: "Start".to_string()
                         };
                         let binaryfy_val = bincode::serialize(&sync_rbc_msg).expect("Failed to serialize client message");
-                        // let cancel_handler:CancelHandler<Acknowledgement> = self.net_send.send(0, SyncMsg { 
-                        //     sender: self.num_nodes, 
-                        //     state: SyncState::START,
-                        //     value:binaryfy_val
-                        // }).await;
-                        // self.add_cancel_handler(cancel_handler);
-                        
-                        self.broadcast(SyncMsg { 
-                            sender: self.num_nodes, 
+                        // TODO: comment out later
+                        let cancel_handler:CancelHandler<Acknowledgement> = self.net_send.send(0, SyncMsg {
+                            sender: self.num_nodes,
                             state: SyncState::START,
-                            value: binaryfy_val
+                            value:binaryfy_val
                         }).await;
+                        self.add_cancel_handler(cancel_handler);
+
+                        // TODO: uncomment later
+                        // self.broadcast(SyncMsg {
+                        //     sender: self.num_nodes,
+                        //     state: SyncState::START,
+                        //     value: binaryfy_val
+                        // }).await;
                         let start_time = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_millis();
-                        
+
                         self.rbc_start_times.insert(self.rbc_id, start_time);
                     }
                 }
@@ -198,9 +214,8 @@ impl Syncer{
         }
         Ok(())
     }
-    pub fn add_cancel_handler(&mut self, canc: CancelHandler<Acknowledgement>){
-        self.cancel_handlers
-            .push(canc);
+    pub fn add_cancel_handler(&mut self, canc: CancelHandler<Acknowledgement>) {
+        self.cancel_handlers.push(canc);
     }
 }
 
@@ -213,3 +228,7 @@ impl Syncer{
 
 //     result
 // }
+
+
+
+

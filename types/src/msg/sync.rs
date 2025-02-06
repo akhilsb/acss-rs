@@ -7,6 +7,8 @@ pub enum SyncState{
     ALIVE,
     START,
     STARTED,
+    RECONSTRUCT(usize, usize), // (replica_id, instance_id),
+    RECONSTRUCTED(usize),
     COMPLETED,
     STOP,
     STOPPED
