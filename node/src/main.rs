@@ -87,8 +87,12 @@ async fn main() -> Result<()> {
             exit_tx = avid::Context::spawn(config, receiver, sender, node_normal).unwrap();
         }
         "asks" => {
-            let (sender, receiver) = channel::<(usize, usize, Option<Bigint>)>(10000);
-            exit_tx = asks::Context::spawn(config, receiver, sender, node_normal).unwrap();
+            let (asks_req_send_channel, asks_req_recv_channel) = channel(10000);
+            let (asks_out_send_channel, asks_out_recv_channel) = channel(10000);
+
+            exit_tx =
+                asks::Context::spawn(config, asks_req_recv_channel, asks_out_send_channel, false)
+                    .unwrap();
         }
         "sync" => {
             let f_str = syncer_file.to_string();
