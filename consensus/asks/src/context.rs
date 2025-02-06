@@ -211,9 +211,21 @@ impl Context {
         self.add_cancel_handler(cancel_handler);
     }
     // TODO: Revert back to () when the protocol is tested
-    pub async fn run(&mut self)  -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
+        let cancel_handler = self
+            .sync_send
+            .send(
+                0,
+                SyncMsg {
+                    sender: self.myid,
+                    state: SyncState::ALIVE,
+                    value: "".to_string().into_bytes(),
+                },
+            )
+            .await;
+        self.add_cancel_handler(cancel_handler);
         loop {
             tokio::select! {
                 // Receive exit handlers

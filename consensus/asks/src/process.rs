@@ -61,4 +61,18 @@ impl Context {
     }
 
     // Invoke this function once you terminate the protocol
+    // pub async fn terminate(&mut self, data: Vec<u8>) {
+    //     let cancel_handler = self
+    //     .sync_send
+    //     .send(
+    //         0,
+    //         SyncMsg {
+    //             sender: self.myid,
+    //             state: SyncState::COMPLETED,
+    //             value: data,
+    //         },
+    //     )
+    //     .await;
+    // self.add_cancel_handler(cancel_handler);
+// }
 }

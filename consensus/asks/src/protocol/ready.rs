@@ -1,21 +1,34 @@
 use consensus::reconstruct_data;
-use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
+use crypto::{
+    aes_hash::MerkleTree,
+    hash::{do_hash, Hash},
+    LargeField,
+};
 use ctrbc::CTRBCMsg;
 use types::Replica;
 
-use crate::{context::Context, protocol::ASKSState, msg::ProtMsg};
+use types::{SyncMsg, SyncState, WrapperMsg};
 
-impl Context{
+use crate::{context::Context, msg::ProtMsg, protocol::ASKSState};
 
-    pub async fn process_asks_ready(&mut self, ctrbc_msg: CTRBCMsg, ready_sender: Replica,instance_id: usize){
-        if !self.asks_state.contains_key(&instance_id){
+use num_bigint_dig::BigInt;
+use num_bigint_dig::ToBigInt;
+
+impl Context {
+    pub async fn process_asks_ready(
+        &mut self,
+        ctrbc_msg: CTRBCMsg,
+        ready_sender: Replica,
+        instance_id: usize,
+    ) {
+        if !self.asks_state.contains_key(&instance_id) {
             let asks_state = ASKSState::new(ctrbc_msg.origin);
             self.asks_state.insert(instance_id, asks_state);
         }
 
         let asks_context = self.asks_state.get_mut(&instance_id).unwrap();
 
-        if asks_context.terminated{
+        if asks_context.terminated {
             return;
             // RBC Context already terminated, skip processing this message
         }
@@ -31,7 +44,7 @@ impl Context{
         let root = ctrbc_msg.mp.root();
         let ready_senders = asks_context.rbc_state.readys.entry(root).or_default();
 
-        if ready_senders.contains_key(&ready_sender){
+        if ready_senders.contains_key(&ready_sender) {
             return;
         }
 
@@ -39,14 +52,14 @@ impl Context{
 
         let size = ready_senders.len().clone();
 
-        if size == self.num_faults + 1{
-
+        if size == self.num_faults + 1 {
             // Sent ECHOs and getting a ready message for the same ECHO
-            if asks_context.rbc_state.echo_root.is_some() && asks_context.rbc_state.echo_root.clone().unwrap() == root{
-                
-                // No need to interpolate the Merkle tree again. 
+            if asks_context.rbc_state.echo_root.is_some()
+                && asks_context.rbc_state.echo_root.clone().unwrap() == root
+            {
+                // No need to interpolate the Merkle tree again.
                 // If the echo_root variable is set, then we already sent ready for this message.
-                // Nothing else to do here. Quit the execution. 
+                // Nothing else to do here. Quit the execution.
 
                 return;
             }
@@ -54,87 +67,123 @@ impl Context{
             let ready_senders = ready_senders.clone();
 
             // Reconstruct the entire Merkle tree
-            let mut shards:Vec<Option<Vec<u8>>> = Vec::new();
-            for rep in 0..self.num_nodes{
-                
-                if ready_senders.contains_key(&rep){
+            let mut shards: Vec<Option<Vec<u8>>> = Vec::new();
+            for rep in 0..self.num_nodes {
+                if ready_senders.contains_key(&rep) {
                     shards.push(Some(ready_senders.get(&rep).unwrap().clone()));
-                }
-
-                else{
+                } else {
                     shards.push(None);
                 }
             }
 
-            let status = reconstruct_data(&mut shards, self.num_faults+1 , 2*self.num_faults);
-            
-            if status.is_err(){
-                log::error!("FATAL: Error in Lagrange interpolation {}",status.err().unwrap());
+            let status = reconstruct_data(&mut shards, self.num_faults + 1, 2 * self.num_faults);
+
+            if status.is_err() {
+                log::error!(
+                    "FATAL: Error in Lagrange interpolation {}",
+                    status.err().unwrap()
+                );
                 return;
             }
 
-            let shards:Vec<Vec<u8>> = shards.into_iter().map(| opt | opt.unwrap()).collect();
-            
+            let shards: Vec<Vec<u8>> = shards.into_iter().map(|opt| opt.unwrap()).collect();
+
             let mut message = Vec::new();
-            for i in 0..self.num_faults+1{
+            for i in 0..self.num_faults + 1 {
                 message.extend(shards.get(i).clone().unwrap());
             }
 
-            let my_share:Vec<u8> = shards[self.myid].clone();
-            
-            // Reconstruct Merkle Root
-            // Reconstruct Merkle Root
-            let hashes_rbc: Vec<Hash> = shards
-            .into_iter()
-            .map(|x| do_hash(x.as_slice()))
-            .collect();
+            let my_share: Vec<u8> = shards[self.myid].clone();
 
-            let merkle_tree = MerkleTree::new(hashes_rbc, &self.hash_context);            
-            
-            if merkle_tree.root() == root{
-                
-                // Ready phase is completed. Save our share for later purposes and quick access. 
-                asks_context.rbc_state.fragment = Some((my_share.clone(),merkle_tree.gen_proof(self.myid)));
+            // Reconstruct Merkle Root
+            // Reconstruct Merkle Root
+            let hashes_rbc: Vec<Hash> = shards.into_iter().map(|x| do_hash(x.as_slice())).collect();
+
+            let merkle_tree = MerkleTree::new(hashes_rbc, &self.hash_context);
+
+            if merkle_tree.root() == root {
+                // Ready phase is completed. Save our share for later purposes and quick access.
+                asks_context.rbc_state.fragment =
+                    Some((my_share.clone(), merkle_tree.gen_proof(self.myid)));
 
                 asks_context.rbc_state.message = Some(message);
 
                 // Insert own ready share
-                asks_context.rbc_state.readys.get_mut(&root).unwrap().insert(self.myid, my_share.clone());
+                asks_context
+                    .rbc_state
+                    .readys
+                    .get_mut(&root)
+                    .unwrap()
+                    .insert(self.myid, my_share.clone());
                 // Send ready message
-                let ctrbc_msg = CTRBCMsg{
+                let ctrbc_msg = CTRBCMsg {
                     shard: my_share,
                     mp: merkle_tree.gen_proof(self.myid),
                     origin: ctrbc_msg.origin,
                 };
-                
+
                 let ready_msg = ProtMsg::Ready(ctrbc_msg.clone(), instance_id);
 
                 self.broadcast(ready_msg).await;
             }
-        }
-        else if size == self.num_nodes - self.num_faults && !asks_context.rbc_state.terminated {
-            log::info!("Received n-f READY messages for RBC Instance ID {}, terminating",instance_id);
+        } else if size == self.num_nodes - self.num_faults && !asks_context.rbc_state.terminated {
+            log::info!(
+                "Received n-f READY messages for RBC Instance ID {}, terminating",
+                instance_id
+            );
             // Terminate protocol
             asks_context.rbc_state.terminated = true;
             self.terminate(instance_id, None).await;
         }
     }
 
-    pub async fn terminate(&mut self, instance_id: usize, secret: Option<LargeField>){
+    pub async fn terminate(&mut self, instance_id: usize, secret: Option<LargeField>) {
         let instance: usize = instance_id % self.threshold;
-        let rep = instance_id/self.threshold;
+        let rep = instance_id / self.threshold;
 
-        if secret.is_none(){
+        if secret.is_none() {
             // Completed sharing
-            let msg = (instance, rep, None);
-            let status = self.out_asks_values.send(msg).await;
-            log::info!("Sent result back to original channel {:?}", status);
-        }
-        else{
+            let msg: (usize, usize, Option<BigInt>) = (instance, rep, None);
+            // TODO: Uncomment later
+            // let status = self.out_asks_values.send(msg).await;
+            let cancel_handler = self
+                .sync_send
+                .send(
+                    0,
+                    SyncMsg {
+                        sender: self.myid,
+                        state: SyncState::COMPLETED,
+                        value: Vec::new(),
+                    },
+                )
+                .await;
+            self.add_cancel_handler(cancel_handler);
+
+            log::info!("Sent result back to original channel {:?}", "status");
+        } else {
+            let new_secret = secret.clone();
             // Completed reconstruction of the secret
-            let msg = (instance,rep, Some(secret.unwrap()));
-            let status = self.out_asks_values.send(msg).await;
-            log::info!("Sent result back to original channel {:?}", status);
+            let msg: (usize, usize, Option<BigInt>) = (instance, rep, Some(new_secret.unwrap()));
+            // TODO: Uncomment later
+            // let status = self.out_asks_values.send(msg).await;
+            // Convert the secret to bytes
+            let secret_bytes: Vec<u8> = secret.unwrap().to_bytes_be().1; // .1 extracts the actual bytes
+
+            // Send the message
+            let cancel_handler = self
+                .sync_send
+                .send(
+                    0,
+                    SyncMsg {
+                        sender: self.myid,
+                        state: SyncState::COMPLETED,
+                        value: secret_bytes,
+                    },
+                )
+                .await;
+            self.add_cancel_handler(cancel_handler);
+
+            log::info!("Sent result back to original channel {:?}", "status");
         }
     }
 }
