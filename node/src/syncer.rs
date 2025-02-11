@@ -128,14 +128,14 @@ impl Syncer {
                     )?;
                     match msg.state{
                         SyncState::ALIVE=>{
-                            log::debug!("Got ALIVE message from node {}",msg.sender);
+                            log::info!("Got ALIVE message from node {}",msg.sender);
                             self.alive.insert(msg.sender);
                             if self.alive.len() == self.num_nodes{
                                 self.ready_for_broadcast = true;
                             }
                         },
                         SyncState::STARTED=>{
-                            log::debug!("Node {} started the protocol",msg.sender);
+                            log::info!("Node {} started the protocol",msg.sender);
                         },
                         SyncState::COMPLETED=>{
                             log::info!("Got COMPLETED message from node {}",msg.sender);

@@ -159,7 +159,7 @@ impl Context {
                 .await;
             self.add_cancel_handler(cancel_handler);
 
-            log::info!("Sent result back to original channel {:?}", "status");
+            log::info!("Sent result back to original channel {:?}", self.myid);
         } else {
             let new_secret = secret.clone();
             // Completed reconstruction of the secret
@@ -183,7 +183,7 @@ impl Context {
                 .await;
             self.add_cancel_handler(cancel_handler);
 
-            log::info!("Sent result back to original channel {:?}", "status");
+            log::info!("Sent result back to original channel {:?}", self.myid);
         }
     }
 }
