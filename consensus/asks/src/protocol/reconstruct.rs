@@ -13,7 +13,7 @@ use lambdaworks_math::polynomial::Polynomial;
 use num_bigint_dig::{BigInt, Sign};
 use num_traits::cast::ToPrimitive;
 
-type LargeField = FieldElement<Stark252PrimeField>;
+type StarkField = FieldElement<Stark252PrimeField>;
 use types::{SyncMsg, SyncState, WrapperMsg};
 
 impl Context {
@@ -90,13 +90,13 @@ impl Context {
             let mut nonce_poly_shares = Vec::new();
 
             for rep in 0..self.num_nodes {
-                let x_val = LargeField::from(rep as u64) + LargeField::from(1u64);
+                let x_val = StarkField::from(rep as u64) + StarkField::from(1u64);
                 if asks_state.secret_shares.contains_key(&rep) {
                     let shares_party = asks_state.secret_shares.get(&rep).unwrap();
                     // share_poly_shares.push(LargeField::from(shares_party.0.clone()));
                     // nonce_poly_shares.push(LargeField::from(shares_party.1.clone()));
-                    share_poly_shares.push(LargeField::from(shares_party.0.to_u64().unwrap_or(0)));
-                    nonce_poly_shares.push(LargeField::from(shares_party.1.to_u64().unwrap_or(0)));
+                    share_poly_shares.push(StarkField::from(shares_party.0.to_u64().unwrap_or(0)));
+                    nonce_poly_shares.push(StarkField::from(shares_party.1.to_u64().unwrap_or(0)));
                 }
             }
 
@@ -108,8 +108,8 @@ impl Context {
             // let all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&share_poly_coeffs, val)).collect();
             // let nonce_all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&nonce_poly_coeffs, val)).collect();
 
-            let x_values: Vec<LargeField> = (1..=self.num_nodes)
-                .map(|x| LargeField::from(x as u64))
+            let x_values: Vec<StarkField> = (1..=self.num_nodes)
+                .map(|x| StarkField::from(x as u64))
                 .collect();
 
             // let share_poly = Polynomial::interpolate(&x_values, &share_poly_shares).unwrap();
@@ -124,11 +124,11 @@ impl Context {
 
             // interpolation DONE
             // eval
-            let all_shares: Vec<LargeField> = (1..=self.num_nodes)
-                .map(|val| share_poly.evaluate(&LargeField::from(val as u64)))
+            let all_shares: Vec<StarkField> = (1..=self.num_nodes)
+                .map(|val| share_poly.evaluate(&StarkField::from(val as u64)))
                 .collect();
-            let nonce_all_shares: Vec<LargeField> = (1..=self.num_nodes)
-                .map(|val| nonce_poly.evaluate(&LargeField::from(val as u64)))
+            let nonce_all_shares: Vec<StarkField> = (1..=self.num_nodes)
+                .map(|val| nonce_poly.evaluate(&StarkField::from(val as u64)))
                 .collect();
 
             // Compute and match commitments
@@ -152,7 +152,7 @@ impl Context {
             if !match_flag {
                 log::error!("Broadcasted and generated commitments do not match, the dealer did not use a degree-t polynomial for ASKS instance {}", instance_id);
                 // Invoke termination with Zero as secret.
-                secret = LargeField::from(0);
+                secret = StarkField::from(0);
             } else {
                 log::info!(
                     "Successfully reconstructed secret for ASKS instance {}",
@@ -171,13 +171,13 @@ impl Context {
     }
 
     // TODO: @sohamjog handle the terminate function
-    pub async fn terminate_reconstruct(&mut self, instance_id: usize, secret: Option<LargeField>) {
+    pub async fn terminate_reconstruct(&mut self, instance_id: usize, secret: Option<StarkField>) {
         let instance: usize = instance_id % self.threshold;
         let rep = instance_id / self.threshold;
 
         if secret.is_none() {
             // Completed sharing
-            let msg: (usize, usize, Option<LargeField>) = (instance, rep, None);
+            let msg: (usize, usize, Option<StarkField>) = (instance, rep, None);
             // TODO: Uncomment later
             // let status = self.out_asks_values.send(msg).await;
             let cancel_handler = self
@@ -197,7 +197,7 @@ impl Context {
         } else {
             let new_secret = secret.clone();
             // Completed reconstruction of the secret
-            let msg: (usize, usize, Option<LargeField>) =
+            let msg: (usize, usize, Option<StarkField>) =
                 (instance, rep, Some(new_secret.unwrap()));
             // TODO: Uncomment later
             // let status = self.out_asks_values.send(msg).await;

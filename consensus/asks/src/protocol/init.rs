@@ -27,7 +27,7 @@ use rand::Rng;
 
 use num_traits::cast::ToPrimitive;
 
-type LargeField = FieldElement<Stark252PrimeField>;
+type StarkField = FieldElement<Stark252PrimeField>;
 
 // impl From<BigInt> for LargeField {
 //     fn from(bigint: BigInt) -> Self {
@@ -55,19 +55,19 @@ impl Context {
         //     .collect();
         use num_bigint_dig::RandBigInt; // Ensure this is imported
 
-        let coefficients: Vec<LargeField> = (0..=self.num_faults)
+        let coefficients: Vec<StarkField> = (0..=self.num_faults)
             .map(|_| {
                 let random_bigint =
                     rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime);
-                LargeField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
+                    StarkField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
             })
             .collect();
 
-        let nonce_coefficients: Vec<LargeField> = (0..=self.num_faults)
+        let nonce_coefficients: Vec<StarkField> = (0..=self.num_faults)
             .map(|_| {
                 let random_bigint =
                     rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime);
-                LargeField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
+                    StarkField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
             })
             .collect();
 
@@ -92,12 +92,12 @@ impl Context {
         //     self.large_field_uv_sss.mod_evaluate_at(&nonce_coefficients, point))
         //     .collect();
 
-        let shares: Vec<LargeField> = (1..=self.num_nodes)
-            .map(|point| polynomial.evaluate(&LargeField::from(point as u64)))
+        let shares: Vec<StarkField> = (1..=self.num_nodes)
+            .map(|point| polynomial.evaluate(&StarkField::from(point as u64)))
             .collect();
 
-        let nonce_shares: Vec<LargeField> = (1..=self.num_nodes)
-            .map(|point| polynomial_nonce.evaluate(&LargeField::from(point as u64)))
+        let nonce_shares: Vec<StarkField> = (1..=self.num_nodes)
+            .map(|point| polynomial_nonce.evaluate(&StarkField::from(point as u64)))
             .collect();
 
         // h = [h1, h2, hn]
