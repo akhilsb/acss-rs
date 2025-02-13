@@ -19,15 +19,36 @@ use crate::{
 
 use super::state::ASKSState;
 
-use lambdaworks_math::{field::element::FieldElement, traits::ByteConversion};
-use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::{
+    MontgomeryConfigStark252PrimeField, Stark252PrimeField,
+};
+
 use lambdaworks_math::field::traits::IsField;
 use lambdaworks_math::polynomial::Polynomial;
+use lambdaworks_math::{
+    field::element::FieldElement, traits::ByteConversion, unsigned_integer::element::U256,
+};
+use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
+use rand::rngs::ThreadRng;
 use rand::Rng;
 
 use num_traits::cast::ToPrimitive;
+use rand::random;
 
 type StarkField = FieldElement<Stark252PrimeField>;
+
+pub fn rand_field_elements(order: usize) -> Vec<StarkField> {
+    let mut result = Vec::with_capacity(order);
+    for _ in 0..result.capacity() {
+        let rand_big = UnsignedInteger { limbs: random() };
+        result.push(StarkField::new(rand_big));
+    }
+    result
+}
+
+// pub fn rand_poly(order: u64) -> Polynomial<StarkField> {
+//     Polynomial::new(&rand_field_elements(order)[..])
+// }
 
 // impl From<BigInt> for LargeField {
 //     fn from(bigint: BigInt) -> Self {
@@ -53,23 +74,10 @@ impl Context {
         //     .into_iter()
         //     .map(|_| rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime))
         //     .collect();
-        use num_bigint_dig::RandBigInt; // Ensure this is imported
+        let mut rng = rand::thread_rng();
 
-        let coefficients: Vec<StarkField> = (0..=self.num_faults)
-            .map(|_| {
-                let random_bigint =
-                    rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime);
-                    StarkField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
-            })
-            .collect();
-
-        let nonce_coefficients: Vec<StarkField> = (0..=self.num_faults)
-            .map(|_| {
-                let random_bigint =
-                    rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime);
-                    StarkField::from(random_bigint.to_u64().unwrap_or(0)) // Convert BigInt → LargeField
-            })
-            .collect();
+        let coefficients: Vec<StarkField> = rand_field_elements(self.num_faults);
+        let nonce_coefficients: Vec<StarkField> = rand_field_elements(self.num_faults);
 
         // TODO: Figure out random element generation
 
