@@ -25,13 +25,14 @@ use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::{
 
 use lambdaworks_math::field::traits::IsField;
 use lambdaworks_math::polynomial::Polynomial;
+use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use lambdaworks_math::{
     field::element::FieldElement, traits::ByteConversion, unsigned_integer::element::U256,
 };
-use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 
+use lambdaworks_math::fft::polynomial;
 use num_traits::cast::ToPrimitive;
 use rand::random;
 
@@ -100,13 +101,25 @@ impl Context {
         //     self.large_field_uv_sss.mod_evaluate_at(&nonce_coefficients, point))
         //     .collect();
 
-        let shares: Vec<StarkField> = (1..=self.num_nodes)
-            .map(|point| polynomial.evaluate(&StarkField::from(point as u64)))
-            .collect();
+        // let shares: Vec<StarkField> = (1..=self.num_nodes)
+        //     .map(|point| polynomial.evaluate(&StarkField::from(point as u64)))
+        //     .collect();
 
-        let nonce_shares: Vec<StarkField> = (1..=self.num_nodes)
-            .map(|point| polynomial_nonce.evaluate(&StarkField::from(point as u64)))
-            .collect();
+        // let nonce_shares: Vec<StarkField> = (1..=self.num_nodes)
+        //     .map(|point| polynomial_nonce.evaluate(&StarkField::from(point as u64)))
+        //     .collect();
+
+        let offset = StarkField::one();
+        let blowup_factor = 1; // @akhilsb: Should I change this?
+        let domain_size = Some(self.num_nodes.next_power_of_two()); 
+
+        let shares =
+            Polynomial::evaluate_offset_fft(&polynomial, blowup_factor, domain_size, &offset)
+                .unwrap();
+
+        let nonce_shares =
+            Polynomial::evaluate_offset_fft(&polynomial_nonce, blowup_factor, domain_size, &offset)
+                .unwrap();
 
         // h = [h1, h2, hn]
         let commitments: Vec<Hash> = shares
