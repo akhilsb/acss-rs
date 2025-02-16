@@ -25,6 +25,14 @@ impl Context{
      * 5. Generate distributed ZK polynomial
      * 6. Encrypt shares and broadcast commitments.  
     */
+
+    /**
+     * TODO:
+     * 1. Replace the LargeField with the StarkField
+     * 2. Replace polynomial generation with Lambdaworks
+     * 3. Replace polynomial evaluation with Lambdaworks
+     * 5. Replace interpolation with Lambdaworks
+     */
     pub async fn init_verifiable_abort(self: &mut Context, secrets: Vec<LargeField>, instance_id: usize, _threshold: usize){
         
         let field_prime = self.large_field_bv_sss.prime.clone();
