@@ -191,21 +191,21 @@ impl Context {
 
         if secret.is_none() {
             // Completed sharing
-            let msg: (usize, usize, Option<StarkField>) = (instance, rep, None);
+            // let msg: (usize, usize, Option<StarkField>) = (instance, rep, None);
             // TODO: Uncomment later
             // let status = self.out_asks_values.send(msg).await;
-            let cancel_handler = self
-                .sync_send
-                .send(
-                    0,
-                    SyncMsg {
-                        sender: self.myid,
-                        state: SyncState::COMPLETED,
-                        value: Vec::new(),
-                    },
-                )
-                .await;
-            self.add_cancel_handler(cancel_handler);
+            // let cancel_handler = self
+            //     .sync_send
+            //     .send(
+            //         0,
+            //         SyncMsg {
+            //             sender: self.myid,
+            //             state: SyncState::COMPLETED,
+            //             value: Vec::new(),
+            //         },
+            //     )
+            //     .await;
+            // self.add_cancel_handler(cancel_handler);
 
             log::info!("Sent result back to original channel {:?}", self.myid);
         } else {
@@ -216,21 +216,21 @@ impl Context {
             // TODO: Uncomment later
             // let status = self.out_asks_values.send(msg).await;
             // Convert the secret to bytes
-            let secret_bytes: Vec<u8> = secret.unwrap().to_bytes_be().to_vec(); // .1 extracts the actual bytes
+            // let secret_bytes: Vec<u8> = secret.unwrap().to_bytes_be().to_vec(); // .1 extracts the actual bytes
 
             // Send the message
-            let cancel_handler = self
-                .sync_send
-                .send(
-                    0,
-                    SyncMsg {
-                        sender: self.myid,
-                        state: SyncState::COMPLETED,
-                        value: secret_bytes,
-                    },
-                )
-                .await;
-            self.add_cancel_handler(cancel_handler);
+            // let cancel_handler = self
+            //     .sync_send
+            //     .send(
+            //         0,
+            //         SyncMsg {
+            //             sender: self.myid,
+            //             state: SyncState::COMPLETED,
+            //             value: secret_bytes,
+            //         },
+            //     )
+            //     .await;
+            // self.add_cancel_handler(cancel_handler);
 
             log::info!("Sent result back to original channel {:?}", self.myid);
         }

@@ -22,8 +22,6 @@ use super::state::ASKSState;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::{
     MontgomeryConfigStark252PrimeField, Stark252PrimeField,
 };
-
-use lambdaworks_math::field::traits::IsField;
 use lambdaworks_math::polynomial::Polynomial;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use lambdaworks_math::{
@@ -62,7 +60,6 @@ pub fn rand_field_elements(order: usize) -> Vec<StarkField> {
 
 impl Context {
     pub async fn init_asks(&mut self, instance_id: usize) {
-        let zero = BigInt::from(0);
 
         // Sample secret polynomial first
 
@@ -75,7 +72,6 @@ impl Context {
         //     .into_iter()
         //     .map(|_| rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime))
         //     .collect();
-        let mut rng = rand::thread_rng();
 
         let coefficients: Vec<StarkField> = rand_field_elements(self.num_faults);
         let nonce_coefficients: Vec<StarkField> = rand_field_elements(self.num_faults);

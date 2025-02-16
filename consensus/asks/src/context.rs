@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Ok, Result};
 use std::{
     collections::HashMap,
     net::{SocketAddr, SocketAddrV4},
@@ -17,9 +16,9 @@ use tokio::sync::{
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
-use types::{Replica, SyncMsg, SyncState, WrapperMsg};
+use types::{Replica, WrapperMsg};
 
-use consensus::{LargeFieldSSS, SyncHandler};
+use consensus::LargeFieldSSS;
 
 use crypto::{aes_hash::HashState, LargeField};
 
@@ -60,9 +59,7 @@ pub struct Context {
     pub asks_state: HashMap<usize, ASKSState>,
 
     /// Input and output request channels
-    // pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
-    pub sync_send: TcpReliableSender<Replica, SyncMsg, Acknowledgement>,
-    pub sync_recv: UnboundedReceiver<SyncMsg>,
+    pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
     pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>,
 }
 
@@ -88,19 +85,6 @@ impl Context {
         TcpReceiver::<Acknowledgement, WrapperMsg<ProtMsg>, _>::spawn(
             my_address,
             Handler::new(tx_net_to_consensus),
-        );
-
-        let syncer_listen_port = config.client_port;
-        let syncer_l_address = to_socket_address("0.0.0.0", syncer_listen_port);
-
-        let (tx_net_to_client, rx_net_from_client) = unbounded_channel();
-        TcpReceiver::<Acknowledgement, SyncMsg, _>::spawn(
-            syncer_l_address,
-            SyncHandler::new(tx_net_to_client),
-        );
-
-        let sync_net = TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(
-            [(0, config.client_addr)].into_iter().collect(),
         );
 
         let consensus_net =
@@ -165,15 +149,11 @@ impl Context {
                 asks_state: HashMap::default(),
                 nonce_seed: 1,
 
-                // inp_asks_requests: input_reqs,
-                sync_send: sync_net,
-                sync_recv: rx_net_from_client,
-
+                inp_asks_requests: input_reqs,
                 out_asks_values: output_shares,
             };
 
             // Populate secret keys from config
-
             for (id, sk_data) in config.sk_map.clone() {
                 c.sec_key_map.insert(id, sk_data.clone());
             }
@@ -210,22 +190,10 @@ impl Context {
             self.net_send.send(replica, wrapper_msg).await;
         self.add_cancel_handler(cancel_handler);
     }
-    // TODO: Revert back to () when the protocol is tested
-    pub async fn run(&mut self) -> Result<()> {
+
+    pub async fn run(&mut self) {
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::ALIVE,
-                    value: "".to_string().into_bytes(),
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
         loop {
             tokio::select! {
                 // Receive exit handlers
@@ -238,59 +206,30 @@ impl Context {
                     log::trace!("Got a consensus message from the network: {:?}", msg);
                     if msg.is_none(){
                         log::error!("Got none from the consensus layer, most likely it closed");
-                        return Ok(());
+                        return;
                     }
                     self.process_msg(msg.unwrap()).await;
                 },
-                // TODO: Get back later
-                // req_msg = self.inp_asks_requests.recv() =>{
-                //     if req_msg.is_none(){
-                //         log::error!("Request channel closed");
-                //         return;
-                //     }
-                //     let req_msg = req_msg.unwrap();
-                //     if !req_msg.2{
-                //         let acss_inst_id = self.max_id + 1;
-                //         self.max_id = acss_inst_id;
+                req_msg = self.inp_asks_requests.recv() =>{
+                    if req_msg.is_none(){
+                        log::error!("Request channel closed");
+                        return;
+                    }
+                    let req_msg = req_msg.unwrap();
+                    if !req_msg.2{
+                        let acss_inst_id = self.max_id + 1;
+                        self.max_id = acss_inst_id;
 
-                //         self.init_asks(acss_inst_id).await;
-                //     }
-                //     else {
-                //         // Reconstruct this message
-                //         let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
-                //         self.reconstruct_asks(instance_id).await;
-                //     }
-                // },
-                sync_msg = self.sync_recv.recv() =>{
-                    let sync_msg = sync_msg.ok_or_else(|| {
-                        log::error!("Syncer channel closed");
-                        anyhow!("Syncer channel closed")
-                    })?;
-
-                    match sync_msg.state {
-                        SyncState::START => {
-                            log::info!("Starting ASKS protocol...");
-                            let acss_inst_id = self.max_id + 1;
-                            self.max_id = acss_inst_id;
-                            self.init_asks(acss_inst_id).await;
-                        },
-                        SyncState::STOP => {
-                            log::info!("Stopping ASKS protocol...");
-                            break;
-                        },
-                        SyncState::RECONSTRUCT(replica_id, instance_id) => {
-                            log::info!("Reconstructing ASKS for instance: {}", instance_id);
-                            let asks_instance_id = self.threshold * replica_id + instance_id;
-                            self.reconstruct_asks(asks_instance_id).await;
-                        },
-                        _ => {}
+                        self.init_asks(acss_inst_id).await;
+                    }
+                    else {
+                        // Reconstruct this message
+                        let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
+                        self.reconstruct_asks(instance_id).await;
                     }
                 },
-
-
             };
         }
-        Ok(())
     }
 }
 
