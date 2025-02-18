@@ -188,8 +188,8 @@ impl Context{
             }
             share_map.push((shares_batch,Vec::new()));
         }
-        // Reconstruct column polynomials and construct commitments
 
+        // Reconstruct column polynomials and construct commitments
         let mut batch_index = 0;
         for (eval_points_batch_wise, nonce_points_batch_wise) in verified_points.into_iter().zip(nonce_points.into_iter()){
             let nonce_interpolated_batch_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &nonce_points_batch_wise);
