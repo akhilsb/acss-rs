@@ -6,7 +6,6 @@ use crate::{
 };
 
 use super::ASKSState;
-use lambdaworks_math::fft::polynomial;
 use lambdaworks_math::polynomial::Polynomial;
 
 use lambdaworks_math::field::element::FieldElement;
@@ -114,13 +113,8 @@ impl Context {
                 .map(|x| StarkField::from(x as u64))
                 .collect();
 
-            // let share_poly = Polynomial::interpolate(&x_values, &share_poly_shares).unwrap();
-            // let nonce_poly = Polynomial::interpolate(&x_values, &nonce_poly_shares).unwrap();
-
-            let share_poly =
-                Polynomial::interpolate_fft::<Stark252PrimeField>(&share_poly_shares[..]).unwrap();
-            let nonce_poly =
-                Polynomial::interpolate_fft::<Stark252PrimeField>(&nonce_poly_shares[..]).unwrap();
+            let share_poly = Polynomial::interpolate(&x_values, &share_poly_shares).unwrap();
+            let nonce_poly = Polynomial::interpolate(&x_values, &nonce_poly_shares).unwrap();
 
             // Extract coefficients
             let share_poly_coeffs = share_poly.coefficients().to_vec();
@@ -128,22 +122,12 @@ impl Context {
 
             // interpolation DONE
             // eval
-            // let all_shares: Vec<StarkField> = (1..=self.num_nodes)
-            //     .map(|val| share_poly.evaluate(&StarkField::from(val as u64)))
-            //     .collect();
-            // let nonce_all_shares: Vec<StarkField> = (1..=self.num_nodes)
-            //     .map(|val| nonce_poly.evaluate(&StarkField::from(val as u64)))
-            //     .collect();
-            let offset = StarkField::one();
-            let blowup_factor = 1; // @akhilsb: Should I change this?
-            let domain_size = Some(self.num_nodes.next_power_of_two());
-
-            let all_shares =
-                Polynomial::evaluate_offset_fft(&share_poly, blowup_factor, domain_size, &offset)
-                    .unwrap();
-            let nonce_all_shares =
-                Polynomial::evaluate_offset_fft(&nonce_poly, blowup_factor, domain_size, &offset)
-                    .unwrap();
+            let all_shares: Vec<StarkField> = (1..=self.num_nodes)
+                .map(|val| share_poly.evaluate(&StarkField::from(val as u64)))
+                .collect();
+            let nonce_all_shares: Vec<StarkField> = (1..=self.num_nodes)
+                .map(|val| nonce_poly.evaluate(&StarkField::from(val as u64)))
+                .collect();
 
             // Compute and match commitments
             let all_commitments: Vec<Hash> = all_shares
