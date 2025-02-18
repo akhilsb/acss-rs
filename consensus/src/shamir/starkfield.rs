@@ -38,8 +38,8 @@ impl ShamirSecretSharing {
     pub fn generating_shares(&self, polynomial: Polynomial<StarkField>) -> Vec<StarkField> {
         let mut shares: Vec<StarkField> = Vec::new();
 
-        for _ in 0..self.share_amount {
-            let x = StarkField::zero();
+        for i in 0..self.share_amount {
+            let x = StarkField::from(i as u64);
             let y = polynomial.evaluate(&x);
             shares.push(y);
         }
