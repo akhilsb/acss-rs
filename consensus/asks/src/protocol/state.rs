@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash};
+use consensus::ShamirSecretSharing::LargeField;
+use crypto::hash::Hash;
 use ctrbc::RBCState;
 use types::Replica;
 
@@ -13,32 +14,32 @@ pub struct ASKSState {
     pub secret_shares: HashMap<Replica, (LargeField, LargeField)>,
 
     pub secret: Option<LargeField>,
-    
+
     pub verified_hash: Option<Hash>,
 
     pub echo_sent: bool,
     pub ready_sent: bool,
     pub terminated: bool,
 
-    pub rbc_state: RBCState
+    pub rbc_state: RBCState,
 }
 
-impl ASKSState{
-    pub fn new(origin: Replica) -> ASKSState{
-        ASKSState { 
-            origin: origin, 
-            share: None, 
-            nonce_share: None, 
-            secret: None, 
-            
-            secret_shares: HashMap::default(), 
+impl ASKSState {
+    pub fn new(origin: Replica) -> ASKSState {
+        ASKSState {
+            origin: origin,
+            share: None,
+            nonce_share: None,
+            secret: None,
 
-            verified_hash: None, 
-            echo_sent: false, 
-            ready_sent: false, 
+            secret_shares: HashMap::default(),
+
+            verified_hash: None,
+            echo_sent: false,
+            ready_sent: false,
             terminated: false,
-            
-            rbc_state: RBCState::new(origin)
+
+            rbc_state: RBCState::new(origin),
         }
     }
 }

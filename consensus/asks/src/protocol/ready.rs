@@ -1,7 +1,9 @@
 use consensus::reconstruct_data;
-use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
+use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree};
 use ctrbc::CTRBCMsg;
 use types::Replica;
+
+use consensus::ShamirSecretSharing::LargeField;
 
 use crate::{context::Context, protocol::ASKSState, msg::ProtMsg};
 
