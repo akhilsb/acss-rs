@@ -10,7 +10,7 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::BigInt;
+use num_bigint_dig::{BigInt};
 use tokio::sync::{
     mpsc::{unbounded_channel, Receiver, Sender, UnboundedReceiver},
     oneshot,
@@ -19,7 +19,6 @@ use tokio::sync::{
 use types::{Replica, WrapperMsg};
 
 use consensus::ShamirSecretSharing;
-use consensus::ShamirSecretSharing::LargeField;
 
 use crypto::aes_hash::HashState;
 
@@ -61,14 +60,16 @@ pub struct Context {
 
     /// Input and output request channels
     pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
-    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>,
+    // TODO: Change back to LargeField afterwards
+    pub out_asks_values: Sender<(usize, Replica, Option<BigInt>)>,
 }
 
 impl Context {
     pub fn spawn(
         config: Node,
         input_reqs: Receiver<(usize, Option<usize>, bool)>,
-        output_shares: Sender<(usize, Replica, Option<LargeField>)>,
+        // TODO: Change back to LargeField afterwards
+        output_shares: Sender<(usize, Replica, Option<BigInt>)>,
         byz: bool,
     ) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service.
@@ -104,7 +105,7 @@ impl Context {
         let threshold: usize = 10000;
         let rbc_start_id = threshold * config.id;
 
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(
+        let _large_field_prime_bv: BigInt = BigInt::parse_bytes(
             b"57896044618658097711785492504343953926634992332820282019728792003956564819949",
             10,
         )
@@ -116,7 +117,7 @@ impl Context {
         // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
-        let file_path_lt =
+        let _file_path_lt =
             file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
         // let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(

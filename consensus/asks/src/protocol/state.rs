@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 use crypto::hash::Hash;
 use ctrbc::RBCState;
 use types::Replica;

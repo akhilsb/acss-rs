@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::ASKSState;
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 
 impl Context {
     pub async fn reconstruct_asks(&mut self, instance_id: usize) {
@@ -75,23 +75,37 @@ impl Context {
             .insert(share_sender, (deser_share.share, deser_share.nonce_share));
         if asks_state.secret_shares.len() == self.num_faults + 1 {
             // Interpolate polynomial shares and coefficients
+
+            // Storing the evaluations along with x coordinates
             let mut share_poly_shares = Vec::new();
+
             let mut nonce_poly_shares = Vec::new();
+            let mut x_coords = Vec::new();
 
             for rep in 0..self.num_nodes {
                 if asks_state.secret_shares.contains_key(&rep) {
                     let shares_party = asks_state.secret_shares.get(&rep).unwrap();
-                    share_poly_shares.push((LargeField::from(rep + 1), shares_party.0.clone()));
-                    nonce_poly_shares.push((LargeField::from(rep + 1), shares_party.1.clone()));
+                    share_poly_shares.push(shares_party.0.clone());
+                    nonce_poly_shares.push(shares_party.1.clone());
+                    x_coords.push(LargeField::from((rep + 1) as u64));
                 }
             }
 
-            // Interpolate polynomial
-            // let share_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&share_poly_shares);
-            // let nonce_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_poly_shares);
+            // Interpolate polynomial to get the polynomial object (i.e coefficients array)
+            let share_poly_coeffs = self
+                .large_field_uv_sss
+                .reconstructing(&x_coords, &share_poly_shares);
+            let nonce_poly_coeffs = self
+                .large_field_uv_sss
+                .reconstructing(&x_coords, &nonce_poly_shares);
 
-            // let all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&share_poly_coeffs, val)).collect();
-            // let nonce_all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&nonce_poly_coeffs, val)).collect();
+            // Reconstruct all evaluations
+            let all_shares: Vec<LargeField> = self
+                .large_field_uv_sss
+                .generating_shares(&share_poly_coeffs);
+            let nonce_all_shares: Vec<LargeField> = self
+                .large_field_uv_sss
+                .generating_shares(&nonce_poly_coeffs);
 
             // Compute and match commitments
             let all_commitments: Vec<Hash> = all_shares
@@ -99,8 +113,8 @@ impl Context {
                 .zip(nonce_all_shares.into_iter())
                 .map(|(share, nonce)| {
                     let mut appended_vec = Vec::new();
-                    appended_vec.extend(share.to_signed_bytes_be());
-                    appended_vec.extend(nonce.to_signed_bytes_be());
+                    appended_vec.extend(share.to_bytes_be());
+                    appended_vec.extend(nonce.to_bytes_be());
                     return do_hash(appended_vec.as_slice());
                 })
                 .collect();
@@ -120,7 +134,7 @@ impl Context {
                     "Successfully reconstructed secret for ASKS instance {}",
                     instance_id
                 );
-                secret = share_poly_coeffs[0].clone();
+                secret = share_poly_coeffs.coefficients()[0].clone()
                 // Invoke termination with
             }
             log::info!(

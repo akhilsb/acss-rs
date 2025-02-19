@@ -1,5 +1,5 @@
 use consensus::get_shards;
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 use crypto::{
     aes_hash::MerkleTree,
     decrypt, encrypt,
@@ -7,7 +7,6 @@ use crypto::{
 };
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use num_bigint_dig::RandBigInt;
 use types::{Replica, WrapperMsg};
 
 use crate::{
@@ -26,10 +25,10 @@ impl Context {
         let coefficients = self.large_field_uv_sss.sample_polynomial(zero);
         let nonce_coefficients = self.large_field_uv_sss.sample_polynomial(zero);
 
-        let shares = self.large_field_uv_sss.generating_shares(coefficients);
+        let shares = self.large_field_uv_sss.generating_shares(&coefficients);
         let nonce_shares = self
             .large_field_uv_sss
-            .generating_shares(nonce_coefficients);
+            .generating_shares(&nonce_coefficients);
 
         let commitments: Vec<Hash> = shares
             .clone()
@@ -37,8 +36,8 @@ impl Context {
             .zip(nonce_shares.clone().into_iter())
             .map(|(share, nonce)| {
                 let mut appended_vec = Vec::new();
-                appended_vec.extend(share.to_signed_bytes_be());
-                appended_vec.extend(nonce.to_signed_bytes_be());
+                appended_vec.extend(share.to_bytes_be());
+                appended_vec.extend(nonce.to_bytes_be());
                 return do_hash(appended_vec.as_slice());
             })
             .collect();

@@ -1,12 +1,13 @@
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::polynomial::Polynomial;
+use lambdaworks_math::traits::ByteConversion;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
-pub use num_bigint;
+use num_bigint_dig::BigInt;
 use rand;
 use rand::random;
 
-type LargeField = FieldElement<Stark252PrimeField>;
+pub type LargeField = FieldElement<Stark252PrimeField>;
 
 #[derive(Clone, Debug)]
 pub struct ShamirSecretSharing {
@@ -28,7 +29,6 @@ impl ShamirSecretSharing {
         LargeField::new(rand_big)
     }
 
-
     /// Generates coefficients for a polynomial of degree `threshold - 1` such that the constant term is the secret.
     pub fn sample_polynomial(&self, secret: LargeField) -> Polynomial<LargeField> {
         let threshold = self.threshold;
@@ -43,10 +43,10 @@ impl ShamirSecretSharing {
     }
 
     // Generating vector of starkfield elements rather than shares for now since we aren't generating random X values
-    pub fn generating_shares(&self, polynomial: Polynomial<LargeField>) -> Vec<LargeField> {
+    pub fn generating_shares(&self, polynomial: &Polynomial<LargeField>) -> Vec<LargeField> {
         let mut shares: Vec<LargeField> = Vec::new();
 
-        for i in 0..self.share_amount+1 {
+        for i in 0..self.share_amount + 1 {
             let x = LargeField::from(i as u64);
             let y = polynomial.evaluate(&x);
             shares.push(y);
@@ -54,12 +54,27 @@ impl ShamirSecretSharing {
         shares
     }
 
-    pub fn reconstructing(&self, x: Vec<LargeField>, y: Vec<LargeField>) -> Polynomial<LargeField> {
+    pub fn reconstructing(
+        &self,
+        x: &Vec<LargeField>,
+        y: &Vec<LargeField>,
+    ) -> Polynomial<LargeField> {
         Polynomial::interpolate(&x, &y).unwrap()
     }
 
     pub fn recover(&self, polynomial: &Polynomial<LargeField>) -> LargeField {
         polynomial.coefficients()[0].clone()
+    }
+
+    /// Temporary functions to convert a large field element to a BigInt. Get rid of this once the whole library is using Lambdaworks Math.
+    pub fn lf_to_bigint(field_elem: &LargeField) -> BigInt {
+        let bytes = field_elem.to_bytes_be();
+        BigInt::from_signed_bytes_be(&bytes)
+    }
+
+    pub fn bigint_to_lf(bigint: &BigInt) -> LargeField {
+        let bytes = bigint.to_signed_bytes_be();
+        FieldElement::<Stark252PrimeField>::from_bytes_be(&bytes).unwrap()
     }
 }
 
@@ -83,7 +98,7 @@ mod tests {
         };
 
         let polynomial = sss.sample_polynomial(secret);
-        let shares = sss.generating_shares(polynomial.clone());
+        let shares = sss.generating_shares(&polynomial);
 
         let shares_to_use_x = vec![
             LargeField::new(UnsignedInteger::from(1u64)),
@@ -91,7 +106,7 @@ mod tests {
             LargeField::new(UnsignedInteger::from(4u64)),
         ];
         let shares_to_use_y = vec![shares[1], shares[3], shares[4]];
-        let poly_2 = sss.reconstructing(shares_to_use_x, shares_to_use_y);
+        let poly_2 = sss.reconstructing(&shares_to_use_x, &shares_to_use_y);
         let secret_recovered = sss.recover(&poly_2);
         assert_eq!(secret, secret_recovered);
     }
