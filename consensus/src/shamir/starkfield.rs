@@ -66,6 +66,10 @@ impl ShamirSecretSharing {
         polynomial.coefficients()[0].clone()
     }
 
+    pub fn evaluate_at(&self, polynomial: &Polynomial<LargeField>, x: LargeField) -> LargeField {
+        polynomial.evaluate(&x)
+    }
+
     /// Temporary functions to convert a large field element to a BigInt. Get rid of this once the whole library is using Lambdaworks Math.
     pub fn lf_to_bigint(field_elem: &LargeField) -> BigInt {
         let bytes = field_elem.to_bytes_be();

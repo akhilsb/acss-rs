@@ -11,25 +11,25 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::{BigInt};
+use num_bigint_dig::BigInt;
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
+    mpsc::{unbounded_channel, Receiver, Sender, UnboundedReceiver},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use crate::{Handler, ACSSVAState};
-use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext};
+use crate::{ACSSVAState, Handler};
+use consensus::{FoldingDZKContext, ShamirSecretSharing, SmallFieldSSS};
 
-use super::{ProtMsg};
-use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
+use super::ProtMsg;
+use crypto::{aes_hash::HashState, hash::Hash, LargeFieldSer};
 
 pub struct Context {
     /// Networking context
     pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
     pub net_recv: UnboundedReceiver<WrapperMsg<ProtMsg>>,
-    
+
     /// Data context
     pub num_nodes: usize,
     pub myid: usize,
@@ -49,21 +49,21 @@ pub struct Context {
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
-    
-    // Each Reliable Broadcast instance is associated with a Unique Identifier. 
+
+    // Each Reliable Broadcast instance is associated with a Unique Identifier.
     //pub avid_context: HashMap<usize, ACSSState>,
 
-    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
-    pub threshold: usize, 
+    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service.
+    pub threshold: usize,
 
-    pub max_id: usize, 
+    pub max_id: usize,
 
     /// Shamir secret sharing states
     pub small_field_sss: SmallFieldSSS,
-    pub large_field_sss: LargeFieldSSS,
+    pub large_field_sss: ShamirSecretSharing,
 
-    pub large_field_bv_sss: LargeFieldSSS,
-    pub large_field_uv_sss: LargeFieldSSS,
+    pub large_field_bv_sss: ShamirSecretSharing,
+    pub large_field_uv_sss: ShamirSecretSharing,
 
     /// DZK Proof context
     pub folding_dzk_context: FoldingDZKContext,
@@ -73,15 +73,17 @@ pub struct Context {
 
     /// Input and output request channels
     pub inp_acss_requests: Receiver<(usize, Vec<LargeFieldSer>)>,
-    pub out_acss_shares: Sender<(usize, usize, Hash, Vec<LargeFieldSer>)>
+    pub out_acss_shares: Sender<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 }
 
 impl Context {
-    pub fn spawn(config: Node, 
+    pub fn spawn(
+        config: Node,
         inp_req_channel: Receiver<(usize, Vec<LargeFieldSer>)>,
         out_shares_channel: Sender<(usize, usize, Hash, Vec<LargeFieldSer>)>,
-        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
-        // Add a separate configuration for RBC service. 
+        byz: bool,
+    ) -> anyhow::Result<oneshot::Sender<()>> {
+        // Add a separate configuration for RBC service.
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         for (replica, address) in config.net_map.iter() {
@@ -100,9 +102,10 @@ impl Context {
             Handler::new(tx_net_to_consensus),
         );
 
-        let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
-            consensus_addrs.clone(),
-        );
+        let consensus_net =
+            TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
+                consensus_addrs.clone(),
+            );
         let (exit_tx, exit_rx) = oneshot::channel();
 
         // Keyed AES ciphers
@@ -112,14 +115,22 @@ impl Context {
         let hashstate = HashState::new(key0.clone(), key1.clone(), key2.clone());
         let hashstate2 = HashState::new(key0, key1, key2);
 
-        let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
+        let threshold: usize = 10000;
+        let rbc_start_id = threshold * config.id;
 
-        let small_field_prime:u64 = 4294967291;
-        let large_field_prime: BigInt = BigInt::parse_bytes(b"115792088158918333131516597762172392628570465465856793992332884130307292657121",10).unwrap();
-        
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
+        let small_field_prime: u64 = 4294967291;
+        let large_field_prime: BigInt = BigInt::parse_bytes(
+            b"115792088158918333131516597762172392628570465465856793992332884130307292657121",
+            10,
+        )
+        .unwrap();
+
+        let large_field_prime_bv: BigInt = BigInt::parse_bytes(
+            b"57896044618658097711785492504343953926634992332820282019728792003956564819949",
+            10,
+        )
+        .unwrap();
+
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
         // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
@@ -127,32 +138,28 @@ impl Context {
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
         let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
+        let file_path_lt =
+            file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
-        let smallfield_ss = SmallFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes, 
-            small_field_prime
-        );
+        let smallfield_ss =
+            SmallFieldSSS::new(config.num_faults + 1, config.num_nodes, small_field_prime);
         // Blinding and Nonce polynomials
-        let largefield_ss = LargeFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes, 
-            large_field_prime.clone()
+        let largefield_ss = ShamirSecretSharing::new(
+            config.num_faults + 1,
+            config.num_nodes,
+            // large_field_prime.clone(),
         );
 
-        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
-            2*config.num_faults +1, 
+        let lf_bv_sss = ShamirSecretSharing::new(
+            config.num_faults + 1,
             config.num_nodes,
-            file_path,
-            large_field_prime_bv.clone()
+            // large_field_prime.clone(),
         );
 
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
-            config.num_faults +1,
+        let lf_uv_sss = ShamirSecretSharing::new(
+            config.num_faults + 1,
             config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
+            // large_field_prime.clone(),
         );
 
         // Prepare dZK context for halving degrees
@@ -161,31 +168,30 @@ impl Context {
         let mut ss_contexts = HashMap::default();
         while start_degree > 0 {
             let split_point;
-            if start_degree % 2 == 0{
-                split_point = start_degree/2;
-            }
-            else{
-                split_point = (start_degree+1)/2;
+            if start_degree % 2 == 0 {
+                split_point = start_degree / 2;
+            } else {
+                split_point = (start_degree + 1) / 2;
             }
             start_degree = start_degree - split_point;
-            ss_contexts.insert(start_degree,split_point);
+            ss_contexts.insert(start_degree, split_point);
         }
         //ss_contexts.insert(start_degree, lf_dzk_sss);
 
         // Folding context
-        let folding_context = FoldingDZKContext{
+        let folding_context = FoldingDZKContext {
             large_field_uv_sss: lf_uv_sss.clone(),
             hash_context: hashstate2,
             poly_split_evaluation_map: ss_contexts,
-            evaluation_points: (1..config.num_nodes+1).into_iter().collect(),
-            recon_threshold: config.num_faults+1,
+            evaluation_points: (1..config.num_nodes + 1).into_iter().collect(),
+            recon_threshold: config.num_faults + 1,
             end_degree_threshold: end_degree,
         };
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
                 net_recv: rx_net_to_consensus,
-                
+
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
@@ -194,14 +200,14 @@ impl Context {
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
-                
+
                 small_field_prime: small_field_prime,
                 large_field_prime: large_field_prime,
 
                 //avid_context:HashMap::default(),
                 threshold: 10000,
 
-                max_id: rbc_start_id, 
+                max_id: rbc_start_id,
 
                 small_field_sss: smallfield_ss,
                 large_field_sss: largefield_ss,
@@ -214,7 +220,7 @@ impl Context {
                 acss_state: HashMap::default(),
 
                 inp_acss_requests: inp_req_channel,
-                out_acss_shares: out_shares_channel
+                out_acss_shares: out_shares_channel,
             };
 
             // Populate secret keys from config
@@ -283,7 +289,7 @@ impl Context {
                     let acss_inst_id = self.myid*self.threshold + acss_msg.0;
                     let acss_share_msgs_ser = acss_msg.1;
                     let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
-                    
+
                     self.init_verifiable_abort(acss_lf_secrets, acss_inst_id, 2*self.num_faults+1).await;
                 }
             };
