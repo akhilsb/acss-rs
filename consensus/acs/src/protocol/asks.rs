@@ -9,6 +9,7 @@ use super::VABAState;
 
 impl Context{
     pub async fn process_asks_termination(&mut self, instance: usize, sender: Replica, value: Option<LargeField>){
+        log::info!("Received termination message from {} for ASKS instance {}", sender, instance);
         if !self.acs_state.vaba_states.contains_key(&instance){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(instance, vaba_context);
@@ -28,6 +29,7 @@ impl Context{
         else{
             vaba_context.reconstructed_values.insert(sender, value.unwrap());
         }
+        let _status = self.asks_req.send((instance, Some(sender), true)).await;
     }
 
     pub async fn init_asks_reconstruction(&mut self, instance: usize){
@@ -78,7 +80,7 @@ impl Context{
     }
 
     pub async fn process_asks_reconstruction_result(&mut self, instance: usize, secret_preparer_rep: usize, recon_result: LargeField){
-        log::info!("Received reconstruction result from ASKS for instance {} and Replica {}", instance, secret_preparer_rep);
+        log::info!("Received reconstruction result from ASKS for instance {} and Replica {} with result {}", instance, secret_preparer_rep,recon_result);
         // Compute Rank of reconstruction
         if !self.acs_state.vaba_states.contains_key(&instance){
             let vaba_context = VABAState::new_without_pre_justify();

@@ -1,5 +1,5 @@
+use consensus::ShamirSecretSharing;
 use consensus::get_shards;
-use consensus::LargeField;
 use crypto::{
     aes_hash::MerkleTree,
     decrypt, encrypt,
@@ -18,12 +18,11 @@ use super::state::ASKSState;
 
 impl Context {
     pub async fn init_asks(&mut self, instance_id: usize) {
-        let zero = LargeField::from(0 as u64);
-
+        let rand_elem = ShamirSecretSharing::rand_field_element();
         // Sample secret polynomial first
 
-        let coefficients = self.large_field_uv_sss.sample_polynomial(zero);
-        let nonce_coefficients = self.large_field_uv_sss.sample_polynomial(zero);
+        let coefficients = self.large_field_uv_sss.sample_polynomial(rand_elem);
+        let nonce_coefficients = self.large_field_uv_sss.sample_polynomial(rand_elem);
 
         let shares = self.large_field_uv_sss.generating_shares(&coefficients);
         let nonce_shares = self

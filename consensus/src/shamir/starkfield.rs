@@ -46,7 +46,7 @@ impl ShamirSecretSharing {
     pub fn generating_shares(&self, polynomial: &Polynomial<LargeField>) -> Vec<LargeField> {
         let mut shares: Vec<LargeField> = Vec::new();
 
-        for i in 0..self.share_amount + 1 {
+        for i in 1..self.share_amount + 1 {
             let x = LargeField::from(i as u64);
             let y = polynomial.evaluate(&x);
             shares.push(y);
