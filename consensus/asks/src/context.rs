@@ -12,23 +12,23 @@ use network::{
 };
 use num_bigint_dig::{BigInt};
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
+    mpsc::{unbounded_channel, Receiver, Sender, UnboundedReceiver},
     oneshot,
 };
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use consensus::{LargeFieldSSS};
+use consensus::ShamirSecretSharing;
 
-use crypto::{aes_hash::HashState, LargeField};
+use crypto::aes_hash::HashState;
 
-use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
+use crate::{handlers::Handler, msg::ProtMsg, protocol::ASKSState};
 
 pub struct Context {
     /// Networking context
     pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
     pub net_recv: UnboundedReceiver<WrapperMsg<ProtMsg>>,
-    
+
     /// Data context
     pub num_nodes: usize,
     pub myid: usize,
@@ -44,13 +44,13 @@ pub struct Context {
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
-    
-    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
-    pub threshold: usize, 
+
+    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service.
+    pub threshold: usize,
 
     pub max_id: usize,
 
-    pub large_field_uv_sss: LargeFieldSSS,
+    pub large_field_uv_sss: ShamirSecretSharing,
 
     /// Constants for PRF seeding
     pub nonce_seed: usize,
@@ -60,15 +60,19 @@ pub struct Context {
 
     /// Input and output request channels
     pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
-    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
+    // TODO: Change back to LargeField afterwards
+    pub out_asks_values: Sender<(usize, Replica, Option<BigInt>)>,
 }
 
 impl Context {
-    pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize, Option<usize>,bool)>, 
-        output_shares: Sender<(usize,Replica,Option<LargeField>)>,
-        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
-        // Add a separate configuration for RBC service. 
+    pub fn spawn(
+        config: Node,
+        input_reqs: Receiver<(usize, Option<usize>, bool)>,
+        // TODO: Change back to LargeField afterwards
+        output_shares: Sender<(usize, Replica, Option<BigInt>)>,
+        byz: bool,
+    ) -> anyhow::Result<oneshot::Sender<()>> {
+        // Add a separate configuration for RBC service.
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         for (replica, address) in config.net_map.iter() {
@@ -85,10 +89,11 @@ impl Context {
             Handler::new(tx_net_to_consensus),
         );
 
-        let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
-            consensus_addrs.clone(),
-        );
-        
+        let consensus_net =
+            TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
+                consensus_addrs.clone(),
+            );
+
         let (exit_tx, exit_rx) = oneshot::channel();
 
         // Keyed AES ciphers
@@ -97,32 +102,37 @@ impl Context {
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
 
-        let threshold:usize = 10000;
-        let rbc_start_id = threshold*config.id;
+        let threshold: usize = 10000;
+        let rbc_start_id = threshold * config.id;
 
-        
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
+        let _large_field_prime_bv: BigInt = BigInt::parse_bytes(
+            b"57896044618658097711785492504343953926634992332820282019728792003956564819949",
+            10,
+        )
+        .unwrap();
+
         //let small_field_prime = 37;
         //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
 
         // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
+        let _file_path_lt =
+            file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
-            config.num_faults +1,
-            config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
-        );
+        // let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
+        //     config.num_faults + 1,
+        //     config.num_nodes,
+        //     file_path_lt,
+        //     large_field_prime_bv.clone(),
+        // );
+        let lf_uv_sss = ShamirSecretSharing::new(config.num_faults + 1, config.num_nodes);
 
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
                 net_recv: rx_net_to_consensus,
-                
+
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
@@ -131,11 +141,11 @@ impl Context {
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
-                
+
                 //avid_context:HashMap::default(),
                 threshold: 10000,
 
-                max_id: rbc_start_id, 
+                max_id: rbc_start_id,
 
                 large_field_uv_sss: lf_uv_sss,
 
@@ -143,7 +153,7 @@ impl Context {
                 nonce_seed: 1,
 
                 inp_asks_requests: input_reqs,
-                out_asks_values: output_shares
+                out_asks_values: output_shares,
             };
 
             // Populate secret keys from config
@@ -184,7 +194,7 @@ impl Context {
         self.add_cancel_handler(cancel_handler);
     }
 
-    pub async fn run(&mut self){
+    pub async fn run(&mut self) {
         // The process starts listening to messages in this process.
         // First, the node sends an alive message
         loop {
@@ -212,7 +222,7 @@ impl Context {
                     if !req_msg.2{
                         let acss_inst_id = self.max_id + 1;
                         self.max_id = acss_inst_id;
-                        
+
                         self.init_asks(acss_inst_id).await;
                     }
                     else {
