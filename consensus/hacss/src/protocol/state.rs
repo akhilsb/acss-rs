@@ -5,7 +5,7 @@ use ctrbc::RBCState;
 use types::Replica;
 
 use consensus::PointBV;
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 
 pub struct ACSSVAState {
     pub origin: Replica,

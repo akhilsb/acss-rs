@@ -10,7 +10,7 @@ use types::{Replica, WrapperMsg};
 
 use crate::{ACSSVAState, Context, ProtMsg, VACommitment};
 use consensus::PointBV;
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 
 impl Context {
     pub async fn process_ready_vf(

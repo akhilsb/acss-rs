@@ -10,7 +10,7 @@ use types::{Replica, WrapperMsg};
 
 use crate::context::Context;
 use crate::{Commitment, ProtMsg, Shares, VSSCommitments};
-use ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 
 impl Context {
     /**

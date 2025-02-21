@@ -151,7 +151,7 @@ impl Context {
         );
 
         let lf_bv_sss = ShamirSecretSharing::new(
-            config.num_faults + 1,
+            2*config.num_faults + 1,
             config.num_nodes,
             // large_field_prime.clone(),
         );

@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use consensus::{get_shards, LargeFieldSSS};
+use consensus::{get_shards, LargeFieldSSS, ShamirSecretSharing};
 use crypto::aes_hash::{MerkleTree, Proof};
 use crypto::hash::{do_hash, Hash};
 use crypto::{decrypt, encrypt, LargeFieldSer};
@@ -12,7 +12,7 @@ use num_bigint_dig::RandBigInt;
 use types::{Replica, WrapperMsg};
 
 use crate::{ACSSVAState, Context, ProtMsg, VACommitment, VAShare};
-use consensus::ShamirSecretSharing::LargeField;
+use consensus::LargeField;
 use consensus::{DZKProof, PointBV};
 
 impl Context {
@@ -51,6 +51,7 @@ impl Context {
 
         let num_cores = 4;
         let chunk_size = secrets.len() / num_cores;
+        // Break down secrets into batches
         let secret_batches: Vec<Vec<LargeField>> = secrets
             .chunks(chunk_size)
             .into_iter()
@@ -58,6 +59,7 @@ impl Context {
             .collect();
         let mut handles = Vec::new();
         for secret_batch in secret_batches {
+            // Parallelizing the share generation
             handles.push(tokio::spawn(Self::generate_shares(
                 self.large_field_uv_sss.clone(),
                 self.large_field_bv_sss.clone(),
@@ -452,8 +454,8 @@ impl Context {
     }
 
     async fn generate_shares(
-        large_field_uv_sss: LargeFieldSSS,
-        large_field_bv_sss: LargeFieldSSS,
+        large_field_uv_sss: ShamirSecretSharing,
+        large_field_bv_sss: ShamirSecretSharing,
         secrets: Vec<LargeField>,
         num_nodes: usize,
         num_faults: usize,
@@ -470,25 +472,12 @@ impl Context {
             // Sample bivariate polynomial
             // degree-2t row polynomial and degree-t column polynomial
             // Sample degree-t polynomial
-            let mut secret_poly_y_deg_t: Vec<BigInt> = Vec::new();
-            secret_poly_y_deg_t.push(secret.clone());
-            secret_poly_y_deg_t.extend(
-                large_field_uv_sss
-                    .split(secret.clone())
-                    .into_iter()
-                    .map(|tup| tup.1),
-            );
+            // Sample secret polynomial
+            let mut secret_poly_y_deg_t = large_field_bv_sss.sample_polynomial(secret.clone());
             //assert!(self.large_field_uv_sss.verify_degree(&mut secret_poly_y_deg_t));
 
             // Fill polynomial on x-axis as well
-            let mut secret_poly_x_deg_2t = Vec::new();
-            secret_poly_x_deg_2t.push(secret.clone());
-            secret_poly_x_deg_2t.extend(
-                large_field_bv_sss
-                    .split(secret)
-                    .into_iter()
-                    .map(|tup| tup.1),
-            );
+            let mut secret_poly_x_deg_2t = large_field_bv_sss.sample_polynomial(secret.clone());
             //assert!(self.large_field_bv_sss.verify_degree(&mut secret_poly_x_deg_2t));
 
             // polys_x_deg_2t and polys_y_deg_t have structure (n+1*n) points.
