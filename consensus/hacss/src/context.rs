@@ -20,11 +20,11 @@ use tokio::sync::{
 use types::{Replica, WrapperMsg};
 
 use crate::{ACSSVAState, Handler};
-use consensus::{FoldingDZKContext, ShamirSecretSharing, SmallFieldSSS};
+use consensus::{FoldingDZKContext, LargeField, ShamirSecretSharing, SmallFieldSSS};
 
 use super::ProtMsg;
 use crypto::{aes_hash::HashState, hash::Hash, LargeFieldSer};
-
+use lambdaworks_math::traits::ByteConversion;
 pub struct Context {
     /// Networking context
     pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
@@ -151,7 +151,7 @@ impl Context {
         );
 
         let lf_bv_sss = ShamirSecretSharing::new(
-            2*config.num_faults + 1,
+            2 * config.num_faults + 1,
             config.num_nodes,
             // large_field_prime.clone(),
         );
@@ -288,8 +288,11 @@ impl Context {
                     )?;
                     let acss_inst_id = self.myid*self.threshold + acss_msg.0;
                     let acss_share_msgs_ser = acss_msg.1;
-                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
-
+                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser
+                    .into_iter()
+                    .map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()) // Ensure unwrap() if needed
+                    .collect();
+                
                     self.init_verifiable_abort(acss_lf_secrets, acss_inst_id, 2*self.num_faults+1).await;
                 }
             };
