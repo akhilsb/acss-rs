@@ -40,4 +40,8 @@ byteorder = "1.4.3"
 # bincode = "2.0.0-rc.3"
 
 itertools = "0.14.0"
-
+lambdaworks-crypto = "0.11.0"
+lambdaworks-math = "0.11.0"
+sha2 = "0.10"
+base16ct = "0.2.0"
+base64ct = "1.6.0"

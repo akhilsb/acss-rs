@@ -42,4 +42,6 @@ pub enum ProtMsg {
     FxShareMessage(Msg, Replica),
     ReconstructedPointMessage(Msg, Replica),
     HashBroadcastMessage(Msg, Replica),
+
+    GroupReconstructionMessage(Msg, Replica)
 }

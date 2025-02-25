@@ -1,8 +1,9 @@
 use std::{sync::Arc};
-
+use std::collections::HashMap;
 use crypto::hash::{verf_mac};
 use types::{{WrapperMsg, ProtMsg}, SyncMsg, SyncState};
 use crate::context::Context;
+use crate::serialize::WeakShareMultiplicationResult;
 
 impl Context{
     // This function verifies the Message Authentication Code (MAC) of a sent message
@@ -32,13 +33,13 @@ impl Context{
                     log::info!("Received FxShare from node : {:?}", rep);
                     self.handle_fx_share_message(main_msg).await;
                 }
+                ProtMsg::GroupReconstructionMessage(main_msg, rep) => {
+                    log::info!("Received FxShare from node : {:?}", rep);
+                    self.handle_reconstruction_result_message(main_msg).await;
+                }
                 ProtMsg::HashBroadcastMessage(main_msg, rep) => {
                     log::info!("Received HashBroadcast from node : {:?}", rep);
-                    self.handle_hash_broadcast_message(main_msg).await;
-                }
-                ProtMsg::ReconstructedPointMessage(main_msg, rep) => {
-                    log::info!("Received ReconstructedPoint from node : {:?}", rep);
-                    self.handle_reconstructed_point_message(main_msg).await;
+                    self.handle_Z_hash_broadcast_message(main_msg).await;
                 }
 
                 _ => todo!("")
@@ -58,10 +59,10 @@ impl Context{
     // }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data:Vec<u8>){
+    pub async fn terminate(&mut self, data: Vec<u8>){
         // Note: can use deserialize_hashmap_results function in protocol.rs to deserialize the data back to a HashMap
         let cancel_handler = self.sync_send.send(0,
-            SyncMsg { sender: self.myid, state: SyncState::COMPLETED, value:data}
+            SyncMsg { sender: self.myid, state: SyncState::COMPLETED, value:data} // TODO: value is of type Vec<u8>, change SyncMsg to allow HashMap<usize, WeakShareMultiplicationResult>?
         ).await;
         self.add_cancel_handler(cancel_handler);
     }

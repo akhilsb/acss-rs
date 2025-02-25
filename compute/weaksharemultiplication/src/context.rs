@@ -13,6 +13,7 @@ use std::collections::{HashSet};
 
 use crate::sync_handler::SyncHandler;
 use crate::handler::Handler;
+use crate::serialize::WeakShareMultiplicationResult;
 
 impl Context {
     pub fn spawn(
@@ -66,23 +67,40 @@ impl Context {
 
                 inp_message:message,
 
+                //grouped_shares: Vec::new(),
+                // akhilsb: We choose a prime modulus that can fit within 64-bits.
+                //sharings: Vec::new(),
+                //shares_a: Vec::new(),
+                //shares_b: Vec::new(),
+                //shares_r: Vec::new(),
+                //expanded_o_shares_for_group: Vec::new(),
+                //o_shares_for_group: Vec::new(),
+                // received_fx_share_messages: HashMap::new(),
+
                 evaluation_point: HashMap::new(),
-
-                grouped_shares: Vec::new(),
                 modulus: 97, // TODO: where do I get the modulus from?
-                // akhilsb: We choose a prime modulus that can fit within 64-bits. 
+                N: 100,
+                a_vec_shares: Vec::new(),
+                b_vec_shares: Vec::new(),
+                r_shares: Vec::new(),
+                o_shares: Vec::new(),
 
-                sharings: Vec::new(),
+                a_vec_shares_grouped: Vec::new(),
+                b_vec_shares_grouped: Vec::new(),
+                r_shares_grouped: Vec::new(),
+                o_shares_grouped: Vec::new(),
 
-                shares_a: Vec::new(),
-                shares_b: Vec::new(),
-                shares_r: Vec::new(),
+                received_fx_shares: HashMap::new(),
+                received_reconstruction_shares: HashMap::new(),
 
-                expanded_o_shares_for_group: Vec::new(),
-                o_shares_for_group: Vec::new(),
+                Z: HashMap::new(),
+                coefficients_z: HashMap::new(),
+                received_Z: HashMap::new(),
+                result: HashMap::new(),
+                zs: Vec::new(),
+                cs: Vec::new(),
 
-                received_fx_share_messages: HashMap::new(),
-
+                reconstruction_result: HashMap::new(),
             };
             for (id, sk_data) in config.sk_map.clone() {
                 c.sec_key_map.insert(id, sk_data.clone());
@@ -212,7 +230,6 @@ pub struct Context {
     /// Secret Key map
     pub sec_key_map:HashMap<Replica, Vec<u8>>,
 
-
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64,Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
@@ -220,21 +237,38 @@ pub struct Context {
     //
     // Public Weak Reconstruction
     //
-    pub shares_a: Vec<Option<i64>>,
-    pub shares_b: Vec<Option<i64>>,
-    pub shares_r: Vec<Option<i64>>,
-    pub o_shares_for_group: Vec<Vec<Option<i64>>>,
-    pub grouped_shares: Vec<Vec<Option<i64>>>,
+    // pub shares_a: Vec<Option<i64>>,
+    // pub shares_b: Vec<Option<i64>>,
+    // pub shares_r: Vec<Option<i64>>,
+    // pub o_shares_for_group: Vec<Vec<Option<i64>>>,
+    // pub grouped_shares: Vec<Vec<Option<i64>>>,
+    //pub expanded_o_shares_for_group: Vec<Vec<i64>>,
+    // pub received_fx_share_messages: HashMap<usize, Option<i64>>,
+    // pub sharings: Vec<Option<i64>>,
 
-    pub expanded_o_shares_for_group: Vec<Vec<i64>>,
+    pub a_vec_shares: Vec<Vec<Option<i64>>>,
+    pub b_vec_shares: Vec<Vec<Option<i64>>>,
+    pub r_shares: Vec<Option<i64>>,
+    pub o_shares: Vec<i64>,
 
-    // TODO: the following fields may need to be changed in the final implementation
+    pub a_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
+    pub b_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
+    pub r_shares_grouped: Vec<Vec<Option<i64>>>,
+    pub o_shares_grouped: Vec<Vec<Option<i64>>>,
+
+    pub reconstruction_result: HashMap<usize, Option<i64>>,
+    pub received_fx_shares: HashMap<usize, Vec<(i64, Option<i64>)>>,
+    pub received_reconstruction_shares: HashMap<usize, HashMap<usize, Option<i64>>>,
+    pub Z: HashMap<usize, Vec<u8>>,
+    pub coefficients_z: HashMap<usize, Vec<i64>>,
+    pub received_Z: HashMap<usize, Vec<Option<Vec<u8>>>>,
+    pub result: HashMap<usize, WeakShareMultiplicationResult>,
+    pub zs: Vec<Vec<i64>>,
+    pub cs: Vec<Vec<Option<i64>>>,
+
+    pub N: usize,
     pub modulus: i64,
-    pub sharings: Vec<Option<i64>>,
     pub evaluation_point: HashMap<usize, i64>,
-
-    pub received_fx_share_messages: HashMap<i64, Option<i64>>,
-
 }
 
 pub fn to_socket_address(
