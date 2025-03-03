@@ -517,7 +517,7 @@ impl Context {
                 coefficients_y_deg_t.push(coeffs.clone());
 
                 // Evaluations
-                large_field_uv_sss.fil_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
+                large_field_uv_sss.fill_evaluation_at_all_points(&mut polys_y_deg_t[rep]);
                 //assert!(self.large_field_uv_sss.verify_degree(&mut polys_y_deg_t[rep]));
             }
 

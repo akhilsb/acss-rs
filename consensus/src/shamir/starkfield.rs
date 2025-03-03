@@ -1,3 +1,4 @@
+use crypto::LargeFieldSer;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::polynomial::Polynomial;
@@ -6,6 +7,8 @@ use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use num_bigint_dig::BigInt;
 use rand;
 use rand::random;
+use std::fs::File;
+use std::io::Read;
 
 pub type LargeField = FieldElement<Stark252PrimeField>;
 
@@ -15,6 +18,7 @@ pub struct ShamirSecretSharing {
     pub threshold: usize,
     /// the total number of shares to generate from the secret.
     pub share_amount: usize,
+    pub vandermonde_matrix: Vec<Vec<LargeField>>,
 }
 
 impl ShamirSecretSharing {
@@ -22,69 +26,44 @@ impl ShamirSecretSharing {
         ShamirSecretSharing {
             threshold,
             share_amount,
+            vandermonde_matrix: Vec::new(),
         }
     }
-    pub fn rand_field_element() -> LargeField {
-        let rand_big = UnsignedInteger { limbs: random() };
-        LargeField::new(rand_big)
-    }
 
-    /// Generates coefficients for a polynomial of degree `threshold - 1` such that the constant term is the secret.
-    pub fn sample_polynomial(&self, secret: LargeField) -> Polynomial<LargeField> {
-        let threshold = self.threshold;
-        let mut coefficients: Vec<LargeField> = Vec::new();
-        // first element is the secret
-        coefficients.push(secret);
-        for _ in 0..threshold - 1 {
-            coefficients.push(Self::rand_field_element());
+    pub fn new_with_vandermonde(
+        threshold: usize,
+        share_amount: usize,
+        vandermonde_matrix_file: String,
+        prime: LargeField,
+    ) -> ShamirSecretSharing {
+        let mut file = File::open(vandermonde_matrix_file).expect("Failed to open file.");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .expect("Failed to read file.");
+
+        let loaded_matrix: Vec<Vec<LargeFieldSer>> =
+            serde_json::from_str(&contents).expect("Failed to deserialize matrix.");
+
+            let load_matrix_bigint: Vec<Vec<LargeField>> = loaded_matrix
+            .into_iter()
+            .map(|el| {
+                el.into_iter()
+                    .map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()) // Force unwrap
+                    .collect()
+            })
+            .collect();
+         
+
+        ShamirSecretSharing {
+            threshold: threshold,
+            share_amount: share_amount,
+            vandermonde_matrix: load_matrix_bigint,
         }
-
-        Polynomial::new(&coefficients[..])
-    }
-
-    // Generating vector of starkfield elements rather than shares for now since we aren't generating random X values
-    pub fn generating_shares(&self, polynomial: &Polynomial<LargeField>) -> Vec<LargeField> {
-        let mut shares: Vec<LargeField> = Vec::new();
-
-        for i in 1..self.share_amount + 1 {
-            let x = LargeField::from(i as u64);
-            let y = polynomial.evaluate(&x);
-            shares.push(y);
-        }
-        shares
-    }
-
-    pub fn split(&self, secret: LargeField) -> Vec<LargeField> {
-        let polynomial = self.sample_polynomial(secret);
-        self.generating_shares(&polynomial)
-    }
-
-    /*
-    1. Implement the verify_degree function
-    2. Implement the fill_evaluation_at_all_points function
-    3. Implement the sum function for polynomials
-    4. Implement the product function for polynomials (see if you can find a pattern and then create a funciton)
-    5. Unit test all above functions
-     */
-
-    pub fn reconstructing(
-        &self,
-        x: &Vec<LargeField>,
-        y: &Vec<LargeField>,
-    ) -> Polynomial<LargeField> {
-        Polynomial::interpolate(&x, &y).unwrap()
-    }
-
-    pub fn recover(&self, polynomial: &Polynomial<LargeField>) -> LargeField {
-        polynomial.coefficients()[0].clone()
-    }
-
-    pub fn evaluate_at(&self, polynomial: &Polynomial<LargeField>, x: LargeField) -> LargeField {
-        polynomial.evaluate(&x)
     }
 }
 
 // Conversion functions
+
 impl ShamirSecretSharing {
     /// Temporary functions to convert a large field element to a BigInt. Get rid of this once the whole library is using Lambdaworks Math.
     pub fn lf_to_bigint(field_elem: &LargeField) -> BigInt {
@@ -130,6 +109,66 @@ impl ShamirSecretSharing {
     }
 }
 
+// Functions related to Vandermonde matrix and functions that use Vandermonde matrix to optimize for the range 0..t+1
+impl ShamirSecretSharing {
+    /// Constructs the Vandermonde matrix for a given set of x-values.
+    pub fn vandermonde_matrix(&self, x_values: &Vec<LargeField>) -> Vec<Vec<LargeField>> {
+        let n = x_values.len();
+        let mut matrix = vec![vec![LargeField::zero(); n]; n];
+
+        for (row, x) in x_values.iter().enumerate() {
+            let mut value = LargeField::one();
+            for col in 0..n {
+                matrix[row][col] = value.clone();
+                value = value * x;
+            }
+        }
+        matrix
+    }
+
+    /// Computes the inverse of a Vandermonde matrix modulo prime using Gaussian elimination.
+    pub fn inverse_vandermonde(&self, matrix: Vec<Vec<LargeField>>) -> Vec<Vec<LargeField>> {
+        let n = matrix.len();
+        let mut augmented = matrix.clone();
+
+        // Extend the matrix with an identity matrix on the right
+        for i in 0..n {
+            augmented[i].extend((0..n).map(|j| {
+                if i == j {
+                    LargeField::one()
+                } else {
+                    LargeField::zero()
+                }
+            }));
+        }
+
+        // Perform Gaussian elimination
+        for col in 0..n {
+            // Normalize pivot row
+            let inv = augmented[col][col].inv();
+            for k in col..2 * n {
+                augmented[col][k] = augmented[col][k] * inv;
+            }
+
+            // Eliminate other rows
+            for row in 0..n {
+                if row != col {
+                    let factor = augmented[row][col].clone();
+                    for k in col..2 * n {
+                        augmented[row][k] = augmented[row][k] - (factor * augmented[col][k]);
+                    }
+                }
+            }
+        }
+
+        // Extract the right half as the inverse
+        augmented
+            .into_iter()
+            .map(|row| row[n..2 * n].to_vec())
+            .collect()
+    }
+}
+
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod tests {
@@ -144,10 +183,7 @@ mod tests {
         type LargeField = FieldElement<Stark252PrimeField>; // Alias for LargeField
         let secret = LargeField::new(UnsignedInteger::from(1234u64));
 
-        let sss = ShamirSecretSharing {
-            share_amount: 6,
-            threshold: 3,
-        };
+        let sss = ShamirSecretSharing::new(6, 3);
 
         let polynomial = sss.sample_polynomial(secret);
         let shares = sss.generating_shares(&polynomial);
@@ -168,10 +204,7 @@ mod tests {
         type LargeField = FieldElement<Stark252PrimeField>; // Alias for LargeField
         let secret = LargeField::new(UnsignedInteger::from(1234u64));
 
-        let sss = ShamirSecretSharing {
-            share_amount: 6,
-            threshold: 3,
-        };
+        let sss = ShamirSecretSharing::new(6, 3);
 
         // generate polynomial, generate shares, then create a new vector with the first t+1 shares and the secret, and then verify that its equal to the shares polynomial after fill evals at all points
         let polynomial = sss.sample_polynomial(secret);
@@ -188,8 +221,6 @@ mod tests {
         assert_eq!(shares_to_use, shares);
     }
 }
-
-
 
 // TODO: @sohamjog uncomment
 // #[cfg(test)]
