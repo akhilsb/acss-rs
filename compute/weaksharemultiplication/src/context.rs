@@ -9,8 +9,9 @@ use tokio::sync::{oneshot, mpsc::{unbounded_channel, UnboundedReceiver}};
 use types::{{WrapperMsg, Replica, ProtMsg}, SyncMsg, SyncState};
 
 use std::collections::{HashSet};
-
-
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use crypto::LargeField;
 use crate::sync_handler::SyncHandler;
 use crate::handler::Handler;
 use crate::serialize::WeakShareMultiplicationResult;
@@ -67,19 +68,9 @@ impl Context {
 
                 inp_message:message,
 
-                //grouped_shares: Vec::new(),
-                // akhilsb: We choose a prime modulus that can fit within 64-bits.
-                //sharings: Vec::new(),
-                //shares_a: Vec::new(),
-                //shares_b: Vec::new(),
-                //shares_r: Vec::new(),
-                //expanded_o_shares_for_group: Vec::new(),
-                //o_shares_for_group: Vec::new(),
-                // received_fx_share_messages: HashMap::new(),
-
                 evaluation_point: HashMap::new(),
-                modulus: 97, // TODO: where do I get the modulus from?
-                N: 100,
+                // modulus: 97,
+                N: 100, // TODO
                 a_vec_shares: Vec::new(),
                 b_vec_shares: Vec::new(),
                 r_shares: Vec::new(),
@@ -246,28 +237,27 @@ pub struct Context {
     // pub received_fx_share_messages: HashMap<usize, Option<i64>>,
     // pub sharings: Vec<Option<i64>>,
 
-    pub a_vec_shares: Vec<Vec<Option<i64>>>,
-    pub b_vec_shares: Vec<Vec<Option<i64>>>,
-    pub r_shares: Vec<Option<i64>>,
-    pub o_shares: Vec<i64>,
+    pub a_vec_shares: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
+    pub b_vec_shares: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
+    pub r_shares: Vec<Option<FieldElement<Stark252PrimeField>>>,
+    pub o_shares: Vec<FieldElement<Stark252PrimeField>>,
 
     pub a_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
     pub b_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
-    pub r_shares_grouped: Vec<Vec<Option<i64>>>,
+    pub r_shares_grouped: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
     pub o_shares_grouped: Vec<Vec<Option<i64>>>,
 
-    pub reconstruction_result: HashMap<usize, Option<i64>>,
-    pub received_fx_shares: HashMap<usize, Vec<(i64, Option<i64>)>>,
-    pub received_reconstruction_shares: HashMap<usize, HashMap<usize, Option<i64>>>,
+    pub reconstruction_result: HashMap<usize, Option<FieldElement<Stark252PrimeField>>>,
+    pub received_fx_shares: HashMap<usize, Vec<(FieldElement<Stark252PrimeField>, Option<FieldElement<Stark252PrimeField>>)>>,
+    pub received_reconstruction_shares: HashMap<usize, HashMap<FieldElement<Stark252PrimeField>, Option<FieldElement<Stark252PrimeField>>>>,
     pub Z: HashMap<usize, Vec<u8>>,
-    pub coefficients_z: HashMap<usize, Vec<i64>>,
+    pub coefficients_z: HashMap<usize, Vec<FieldElement<Stark252PrimeField>>>,
     pub received_Z: HashMap<usize, Vec<Option<Vec<u8>>>>,
     pub result: HashMap<usize, WeakShareMultiplicationResult>,
-    pub zs: Vec<Vec<i64>>,
-    pub cs: Vec<Vec<Option<i64>>>,
+    pub zs: Vec<Vec<FieldElement<Stark252PrimeField>>>,
+    pub cs: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
 
     pub N: usize,
-    pub modulus: i64,
     pub evaluation_point: HashMap<usize, i64>,
 }
 

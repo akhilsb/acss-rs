@@ -1,3 +1,6 @@
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+
 /// Groups elements from a vector into a specified number of subgroups.
 ///
 /// This function takes a vector of elements of type T and divides them into
@@ -62,19 +65,18 @@ pub(crate) fn group_elements_by_count<T: Clone>(mut elements: Vec<T>, num_groups
 
 
 
-pub(crate) fn hash_vec_u8(input: Vec<i64>) -> Vec<u8> {
+pub(crate) fn hash_vec_u8(input: Vec<FieldElement<Stark252PrimeField>>) -> Vec<u8> {
     use sha2::{Sha256, Digest};
     let mut hasher = Sha256::new();
-    for i in input {
-        hasher.update(i.to_le_bytes());
-        hasher.update(b";")
+    for element in input {
+        hasher.update(element.to_bytes_le());
+        hasher.update(b";");
     }
     let hash = hasher.finalize();
-    let hash_vec: Vec<u8> = hash.to_vec();
-    hash_vec
+    hash.to_vec()
 }
 
-pub(crate) fn contains_only_some(values: &Vec<Option<i64>>) -> bool {
+pub(crate) fn contains_only_some<T>(values: &Vec<Option<T>>) -> bool {
     values.iter().all(|value| value.is_some())
 }
 

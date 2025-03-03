@@ -1,4 +1,11 @@
-pub(crate) fn matrix_vector_mul(matrix: &Vec<Vec<i64>>, vector: &Vec<i64>, modulus: i64) -> Vec<i64> {
+use std::ops::MulAssign;
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+
+pub(crate) fn matrix_vector_mul(
+    matrix: &Vec<Vec<FieldElement<Stark252PrimeField>>>,
+    vector: &Vec<FieldElement<Stark252PrimeField>>,
+) -> Vec<FieldElement<Stark252PrimeField>> {
     // Check if the matrix is empty
     assert!(!matrix.is_empty(), "Matrix cannot be empty");
 
@@ -15,21 +22,24 @@ pub(crate) fn matrix_vector_mul(matrix: &Vec<Vec<i64>>, vector: &Vec<i64>, modul
         .map(|row| {
             row.iter()
                 .zip(vector.iter())
-                .map(|(&a, &b)| (a * b) % modulus)
-                .fold(0, |acc, x| (acc + x) % modulus)
+                .map(|(a, b)| *a * *b)
+                .fold(FieldElement::<Stark252PrimeField>::zero(), |acc, x| acc + x)
         })
         .collect()
 }
 
-pub(crate) fn dot_product(a: &Vec<i64>, b: &Vec<i64>) -> i64 {
+pub(crate) fn dot_product(
+    a: &Vec<FieldElement<Stark252PrimeField>>,
+    b: &Vec<FieldElement<Stark252PrimeField>>,
+) -> FieldElement<Stark252PrimeField> {
     // Assert that the vectors have the same length
     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
 
     // Compute the dot product
     a.iter()
         .zip(b.iter())
-        .map(|(&x, &y)| x * y)
-        .sum()
+        .map(|(x, y)| *x * *y)
+        .fold(FieldElement::<Stark252PrimeField>::zero(), |acc, x| acc + x)
 }
 
 /// Evaluates a polynomial at a given point using modular arithmetic.
@@ -55,13 +65,16 @@ pub(crate) fn dot_product(a: &Vec<i64>, b: &Vec<i64>) -> i64 {
 /// let result = evaluate_polynomial_from_coefficients_at_position(coefficients, evaluation_point, modulus);
 /// assert_eq!(result, 9);  // (1 + 2*5 + 3*5^2) % 1000 = 86
 /// ```
-pub(crate) fn evaluate_polynomial_from_coefficients_at_position(coefficients: Vec<i64>, evaluation_point: i64, modulus: i64) -> i64 {
-    let mut result = 0;
-    let mut x_power = 1;
+pub(crate) fn evaluate_polynomial_from_coefficients_at_position(
+    coefficients: Vec<FieldElement<Stark252PrimeField>>,
+    evaluation_point: FieldElement<Stark252PrimeField>,
+) -> FieldElement<Stark252PrimeField> {
+    let mut result = FieldElement::<Stark252PrimeField>::zero();
+    let mut x_power = FieldElement::<Stark252PrimeField>::one();
 
     for coefficient in coefficients {
-        result = (result + coefficient * x_power).rem_euclid(modulus);
-        x_power = (x_power * evaluation_point).rem_euclid(modulus);
+        result = result + coefficient * x_power;
+        x_power = x_power * evaluation_point;
     }
 
     result
@@ -78,10 +91,10 @@ pub(crate) fn evaluate_polynomial_from_coefficients_at_position(coefficients: Ve
 /// # Returns
 ///
 /// `true` if the interpolated polynomial is at most of degree t, `false` otherwise.
-pub(crate) fn is_degree_t_consistent(degree: i64, shares: Vec<(i64, i64)>, modulus: i64) -> bool {
-    let coeffs = interpolate_polynomial(shares, modulus);
-    coeffs.len() as i64 - 1 <= degree
-}
+// pub(crate) fn is_degree_t_consistent(degree: i64, shares: Vec<(i64, i64)>, modulus: i64) -> bool {
+//     let coeffs = interpolate_polynomial(shares, modulus);
+//     coeffs.len() as i64 - 1 <= degree
+// }
 
 /// Computes the modular multiplicative inverse using the extended Euclidean algorithm.
 pub(crate) fn mod_inverse(a: i64, m: i64) -> i64 {
@@ -112,18 +125,20 @@ pub(crate) fn mod_inverse(a: i64, m: i64) -> i64 {
 /// # Returns
 ///
 /// A vector of coefficients of the interpolated polynomial, from lowest to highest degree.
-pub(crate) fn interpolate_polynomial(shares: Vec<(i64, i64)>, modulus: i64) -> Vec<i64> {
+pub(crate) fn interpolate_polynomial(
+    shares: Vec<(FieldElement<Stark252PrimeField>, FieldElement<Stark252PrimeField>)>,
+) -> Vec<FieldElement<Stark252PrimeField>> {
     let n = shares.len();
-    let mut matrix = vec![vec![0i64; n + 1]; n];
+    let mut matrix = vec![vec![FieldElement::<Stark252PrimeField>::zero(); n + 1]; n];
 
     // Populate the matrix
     for (i, &(x, y)) in shares.iter().enumerate() {
-        let mut x_power = 1i64;
+        let mut x_power = FieldElement::<Stark252PrimeField>::one();
         for j in 0..n {
-            matrix[i][j] = x_power.rem_euclid(modulus);
-            x_power = (x_power * x).rem_euclid(modulus);
+            matrix[i][j] = x_power;
+            x_power = x_power * x;
         }
-        matrix[i][n] = y.rem_euclid(modulus);
+        matrix[i][n] = y;
     }
 
     // Perform Gaussian elimination
@@ -131,7 +146,7 @@ pub(crate) fn interpolate_polynomial(shares: Vec<(i64, i64)>, modulus: i64) -> V
         // Find pivot
         let mut pivot_row = i;
         for j in i + 1..n {
-            if matrix[j][i] != 0 {
+            if matrix[j][i] != FieldElement::<Stark252PrimeField>::zero() {
                 pivot_row = j;
                 break;
             }
@@ -143,11 +158,11 @@ pub(crate) fn interpolate_polynomial(shares: Vec<(i64, i64)>, modulus: i64) -> V
         }
 
         let pivot = matrix[i][i];
-        let pivot_inv = mod_inverse(pivot, modulus);
+        let pivot_inv = pivot.inv().unwrap(); // Unwrap the Result
 
         // Normalize pivot row
         for j in i..=n {
-            matrix[i][j] = (matrix[i][j] * pivot_inv).rem_euclid(modulus);
+            matrix[i][j] = matrix[i][j] * pivot_inv;
         }
 
         // Eliminate in other rows
@@ -155,17 +170,17 @@ pub(crate) fn interpolate_polynomial(shares: Vec<(i64, i64)>, modulus: i64) -> V
             if k != i {
                 let factor = matrix[k][i];
                 for j in i..=n {
-                    matrix[k][j] = (matrix[k][j] - factor * matrix[i][j]).rem_euclid(modulus);
+                    matrix[k][j] = matrix[k][j] - factor * matrix[i][j];
                 }
             }
         }
     }
 
     // Extract solution
-    let mut result: Vec<i64> = matrix.iter().map(|row| row[n]).collect();
+    let mut result: Vec<FieldElement<Stark252PrimeField>> = matrix.iter().map(|row| row[n]).collect();
 
     // Remove leading zero coefficients
-    while result.len() > 1 && result.last() == Some(&0) {
+    while result.len() > 1 && result.last() == Some(&FieldElement::<Stark252PrimeField>::zero()) {
         result.pop();
     }
 
@@ -184,13 +199,15 @@ pub(crate) fn interpolate_polynomial(shares: Vec<(i64, i64)>, modulus: i64) -> V
 /// # Returns
 ///
 /// A 2D vector representing the vandermonde matrix.
-pub(crate) fn generate_vandermonde_matrix(rows: usize, cols: usize, modulus: i64) -> Vec<Vec<i64>> {
+
+
+pub(crate) fn generate_vandermonde_matrix(rows: usize, cols: usize) -> Vec<Vec<FieldElement<Stark252PrimeField>>> {
     (0..rows)
         .map(|i| {
             (0..cols)
                 .map(|j| {
-                    let base = i as i64 + 1; // Using row index + 1 as the base.
-                    base.pow(j as u32).rem_euclid(modulus)
+                    let base = FieldElement::<Stark252PrimeField>::from(i as u64 + 1); // Using row index + 1 as the base.
+                    base.pow(j as u64)
                 })
                 .collect()
         })

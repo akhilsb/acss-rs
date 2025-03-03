@@ -1,4 +1,7 @@
 use byteorder::LittleEndian;
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::traits::ByteConversion;
 
 pub(crate) struct GroupValue {
     group: usize,
@@ -6,8 +9,8 @@ pub(crate) struct GroupValue {
 }
 
 pub(crate) struct GroupValueOption {
-    pub(crate) group: usize,
-    pub(crate) value: Option<i64>,
+    pub group: usize,
+    pub value: Option<FieldElement<Stark252PrimeField>>,
 }
 
 pub(crate) struct GroupHashValueOption {
@@ -75,7 +78,7 @@ pub(crate) fn serialize_group_value_option(value: GroupValueOption) -> Vec<u8> {
     match value.value {
         Some(v) => {
             result.push(1);
-            result.extend_from_slice(&v.to_be_bytes());
+            result.extend_from_slice(&v.to_bytes_be());
         }
         None => {
             result.push(0);
@@ -89,7 +92,7 @@ pub(crate) fn deserialize_group_value_option(data: &[u8]) -> GroupValueOption {
     if data[size_of::<usize>()] == 0 {
         GroupValueOption { group, value: None }
     } else {
-        let value = i64::from_be_bytes(data[size_of::<usize>() + 1..].try_into().unwrap());
+        let value = FieldElement::from_bytes_be(data[size_of::<usize>() + 1..].try_into().unwrap()).unwrap();
         GroupValueOption {
             group,
             value: Some(value),
