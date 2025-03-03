@@ -87,7 +87,7 @@ impl Context {
                     let shares_party = asks_state.secret_shares.get(&rep).unwrap();
                     share_poly_shares.push(shares_party.0.clone());
                     nonce_poly_shares.push(shares_party.1.clone());
-                    x_coords.push(LargeField::from((rep + 1) as u64));
+                    x_coords.push((rep + 1) as u64);
                 }
             }
 
