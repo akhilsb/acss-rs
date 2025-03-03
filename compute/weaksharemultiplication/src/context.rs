@@ -5,7 +5,6 @@ use config::Node;
 use fnv::FnvHashMap;
 use network::{plaintcp::{TcpReceiver, TcpReliableSender, CancelHandler}, Acknowledgement};
 use tokio::sync::{oneshot, mpsc::{unbounded_channel, UnboundedReceiver}};
-// use tokio_util::time::DelayQueue;
 use types::{{WrapperMsg, Replica, ProtMsg}, SyncMsg, SyncState};
 
 use std::collections::{HashSet};
@@ -76,10 +75,10 @@ impl Context {
                 r_shares: Vec::new(),
                 o_shares: Vec::new(),
 
-                a_vec_shares_grouped: Vec::new(),
-                b_vec_shares_grouped: Vec::new(),
+                // a_vec_shares_grouped: Vec::new(),
+                // b_vec_shares_grouped: Vec::new(),
                 r_shares_grouped: Vec::new(),
-                o_shares_grouped: Vec::new(),
+                // o_shares_grouped: Vec::new(),
 
                 received_fx_shares: HashMap::new(),
                 received_reconstruction_shares: HashMap::new(),
@@ -228,24 +227,12 @@ pub struct Context {
     //
     // Public Weak Reconstruction
     //
-    // pub shares_a: Vec<Option<i64>>,
-    // pub shares_b: Vec<Option<i64>>,
-    // pub shares_r: Vec<Option<i64>>,
-    // pub o_shares_for_group: Vec<Vec<Option<i64>>>,
-    // pub grouped_shares: Vec<Vec<Option<i64>>>,
-    //pub expanded_o_shares_for_group: Vec<Vec<i64>>,
-    // pub received_fx_share_messages: HashMap<usize, Option<i64>>,
-    // pub sharings: Vec<Option<i64>>,
 
     pub a_vec_shares: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
     pub b_vec_shares: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
     pub r_shares: Vec<Option<FieldElement<Stark252PrimeField>>>,
     pub o_shares: Vec<FieldElement<Stark252PrimeField>>,
-
-    pub a_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
-    pub b_vec_shares_grouped: Vec<Vec<Vec<Option<i64>>>>,
     pub r_shares_grouped: Vec<Vec<Option<FieldElement<Stark252PrimeField>>>>,
-    pub o_shares_grouped: Vec<Vec<Option<i64>>>,
 
     pub reconstruction_result: HashMap<usize, Option<FieldElement<Stark252PrimeField>>>,
     pub received_fx_shares: HashMap<usize, Vec<(FieldElement<Stark252PrimeField>, Option<FieldElement<Stark252PrimeField>>)>>,

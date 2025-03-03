@@ -1,21 +1,17 @@
 use std::vec::Vec;
 use crate::context::Context;
-use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use types::{Msg, ProtMsg, Replica, WrapperMsg};
-use std::convert::TryInto;
 use itertools::Itertools;
-use byteorder::{ByteOrder, LittleEndian};
 use std::clone::Clone;
-use std::mem::size_of;
 use std::ops::{Add, Sub};
-use base64ct::{Base64, Encoding};
+
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use crate::helper::{contains_only_some, group_elements_by_count, hash_vec_u8};
-use crate::serialize::{GroupValue, GroupValueOption, GroupHashValueOption, serialize_group_value_option, deserialize_group_value_option, serialize_group_hash_value_option, deserialize_group_hash_value_option, WeakShareMultiplicationResult};
+use crate::serialize::{GroupValueOption, GroupHashValueOption, serialize_group_value_option, deserialize_group_value_option, serialize_group_hash_value_option, deserialize_group_hash_value_option, WeakShareMultiplicationResult};
 use crate::math::{interpolate_polynomial, generate_vandermonde_matrix, matrix_vector_mul, dot_product, evaluate_polynomial_from_coefficients_at_position};
-
+use rayon::prelude::*;
 
 impl Context {
 
