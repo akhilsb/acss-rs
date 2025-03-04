@@ -155,6 +155,13 @@ impl ShamirSecretSharing{
     ) -> Polynomial<LargeField> {
         poly1 * poly2
     }
+    
+
+    // TODO: Rename later
+    pub fn mod_pow(base: &LargeField, exp: u64) -> LargeField {
+        base.pow(exp)
+    }
+
 }
 
 // Functions that require a Vandermonde Matrix. TODO: Add actual vandermonde functionality after you precompute vandermonde values for roots of unity
@@ -169,6 +176,21 @@ impl ShamirSecretSharing {
             x.push(self.roots_of_unity[i].representative().limbs[0]);
         }
         self.reconstructing(&x, &poly_eval_points)
+    }
+
+    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(&self, poly_eval_points: &Vec<LargeField>) -> Polynomial<LargeField> {
+        // generate vector of u64 from 0...poly_eval_points.size()
+        let mut x = Vec::new();
+        x.push(0);
+        for i in 1..poly_eval_points.len() {
+            // ith root of unity as u64
+            x.push(self.roots_of_unity[i].representative().limbs[0]);
+        }
+        self.reconstructing(&x, &poly_eval_points)
+    }
+
+    pub fn scale_polynomial( poly: &Polynomial<LargeField>, scalar: &LargeField) -> Polynomial<LargeField> {
+        poly * scalar
     }
 }
 

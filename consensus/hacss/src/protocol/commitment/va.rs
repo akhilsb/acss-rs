@@ -1,5 +1,6 @@
 use crypto::{LargeFieldSer, aes_hash::{Proof, MerkleTree}, hash::{Hash, do_hash}};
-use num_bigint_dig::BigInt;
+//use num_bigint_dig::BigInt;
+use consensus::LargeField;
 
 use crate::Context;
 
@@ -56,7 +57,7 @@ impl Context{
         true
     }
 
-    pub fn verify_column_share_commitments(self: &Context, shares: &Vec<Vec<BigInt>>, nonces: &Vec<BigInt>, root: Hash)-> bool{
+    pub fn verify_column_share_commitments(self: &Context, shares: &Vec<Vec<LargeField>>, nonces: &Vec<LargeField>, root: Hash)-> bool{
         let mut commitments = Vec::new();
         let mut appended_share_vec = Vec::new();
 
@@ -86,7 +87,7 @@ impl Context{
         true
     }
 
-    pub fn verify_blinding_column_commitments(self: &Context, shares: &Vec<BigInt>, nonces: &Vec<BigInt>, root: Hash)-> bool{
+    pub fn verify_blinding_column_commitments(self: &Context, shares: &Vec<LargeField>, nonces: &Vec<LargeField>, root: Hash)-> bool{
         let mut commitments = Vec::new();
         for rep in 0..self.num_nodes{
             let mut app_share = Vec::new();

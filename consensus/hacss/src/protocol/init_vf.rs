@@ -251,7 +251,7 @@ impl Context {
             .zip(blinding_coeffs_y_deg_t.into_iter())
             .zip(column_wise_roots.clone().into_iter())
         {
-            let column_root = LargeField::from_bytes_be(column_mr.as_slice()).unwrap();
+            let column_root = LargeField::from_bytes_be(column_mr.as_slice()).unwrap().collect();
 
             // dzk_poly = coefficient_vec + column_root * blinding_coefficient_vec
             let scaled_blinding_poly = Self::multiply_polynomials(
@@ -598,7 +598,7 @@ impl Context {
         for share_poly in shares.column_poly.0 {
             let mut col_shares = share_poly
                 .into_iter()
-                .map(|el| LargeField::from_bytes_be(el.as_slice())).collect();
+                .map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
             self.large_field_uv_sss
                 .fill_evaluation_at_all_points(&mut col_shares);
             columns.push(col_shares);
@@ -615,10 +615,10 @@ impl Context {
             .into_iter()
             .zip(shares.blinding_column_poly.into_iter())
         {
-            column_nonces.push(LargeField::from_bytes_be(nonce.as_slice()));
+            column_nonces.push(LargeField::from_bytes_be(nonce.as_slice()).unwrap());
 
-            blinding_shares.push(LargeField::from_bytes_be(bshare.as_slice()));
-            blinding_nonces.push(LargeField::from_bytes_be(bnonce.as_slice()));
+            blinding_shares.push(LargeField::from_bytes_be(bshare.as_slice()).unwrap());
+            blinding_nonces.push(LargeField::from_bytes_be(bnonce.as_slice()).unwrap());
         }
 
         self.large_field_uv_sss
