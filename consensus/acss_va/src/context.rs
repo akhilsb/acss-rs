@@ -180,7 +180,7 @@ impl Context {
 
         // Folding context
         let folding_context = FoldingDZKContext{
-            large_field_uv_sss: lf_uv_sss.clone(),
+            large_field_uv_sss: lf_uv_sss.get_fft_sss(),
             hash_context: hashstate2,
             poly_split_evaluation_map: ss_contexts,
             evaluation_points: (1..config.num_nodes+1).into_iter().collect(),

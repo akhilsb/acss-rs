@@ -251,7 +251,9 @@ impl Context {
             .zip(blinding_coeffs_y_deg_t.into_iter())
             .zip(column_wise_roots.clone().into_iter())
         {
-            let column_root = LargeField::from_bytes_be(column_mr.as_slice()).unwrap().collect();
+            let column_root = LargeField::from_bytes_be(column_mr.as_slice())
+                .unwrap()
+                .collect();
 
             // dzk_poly = coefficient_vec + column_root * blinding_coefficient_vec
             let scaled_blinding_poly = Self::multiply_polynomials(
@@ -598,7 +600,8 @@ impl Context {
         for share_poly in shares.column_poly.0 {
             let mut col_shares = share_poly
                 .into_iter()
-                .map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
+                .map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap())
+                .collect();
             self.large_field_uv_sss
                 .fill_evaluation_at_all_points(&mut col_shares);
             columns.push(col_shares);
@@ -705,13 +708,18 @@ impl Context {
         let mut row_secret_shares = Vec::new();
         for row in row_shares {
             let mut poly = Vec::new();
+            let mut xs = Vec::new();
             for (rep, share) in (1..2 * self.num_faults + 2)
                 .into_iter()
                 .zip(row.into_iter())
             {
-                poly.push((rep, share));
+                poly.push(share);
+                xs.push(rep as u64);
             }
-            row_secret_shares.push(self.large_field_bv_sss.recover(&poly));
+            row_secret_shares.push({
+                let recon_poly = self.large_field_bv_sss.reconstructing(&xs, &poly);
+                self.large_field_bv_sss.recover(&recon_poly)
+            });
         }
         let secret_shares = columns.iter().map(|col| col[0].clone()).collect();
 
@@ -764,7 +772,7 @@ impl Context {
                 (
                     row_share
                         .into_iter()
-                        .map(|el| el.to_signed_bytes_be())
+                        .map(|el| el.to_bytes_be().to_vec())
                         .collect(),
                     shares.row_poly.1[rep].clone(),
                     shares.row_poly.2[rep].clone(),
@@ -819,7 +827,7 @@ impl Context {
         //     aggregated_coefficients.push(shares_app);
         // }
 
-        // root_mul_lf = (0..column_wise_roots.len())
+        // root_mul_lf = (0..column&_wise_roots.len())
         //     .into_iter()
         //     .map(|_| LargeField::from(1))
         //     .collect();

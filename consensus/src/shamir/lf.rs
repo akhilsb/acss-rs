@@ -13,6 +13,8 @@ use rand::{self};
 
 use crypto::LargeField;
 
+use super::ShamirSecretSharing;
+
 /// The `ShamirSecretSharing` stores threshold, share_amount and the prime of finite field.
 #[derive(Clone, Debug)]
 pub struct LargeFieldSSS {
@@ -31,6 +33,9 @@ pub struct LargeFieldSSS {
 // 64-bit variant of shamir SS mainly because of efficiency
 impl LargeFieldSSS {
 
+    pub fn get_fft_sss(&self) -> ShamirSecretSharing{
+        ShamirSecretSharing::new(self.threshold, self.share_amount)
+    }
     pub fn new(threshold: usize, share_amount: usize, prime: LargeField)-> LargeFieldSSS{
 
         let lag_coeffs = Self::lagrange_coefficients(prime.clone(), threshold, share_amount);
