@@ -1,12 +1,13 @@
 use consensus::reconstruct_data;
 use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree, decrypt};
 use ctrbc::CTRBCMsg;
+use lambdaworks_math::polynomial::Polynomial;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 
 use types::{Replica, WrapperMsg};
 
 use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
-use consensus::PointBV;
+use consensus::{PointBV, LargeField};
 
 impl Context{
     pub async fn process_echo(self: &mut Context, ctrbcmsg: CTRBCMsg, encrypted_share: Vec<u8>, echo_sender: Replica, instance_id: usize){
@@ -149,13 +150,13 @@ impl Context{
                     // Fill up column shares
                     for rep in 0..self.num_nodes{
                         if !acss_va_state.column_shares.contains_key(&rep){
-                            let column_shares = poly_coeffs.iter().map(|poly| self.large_field_uv_sss.evaluate_at(poly, rep+1)).collect();
+                            let column_shares = poly_coeffs.iter().map(|poly| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&poly[..]), LargeField::from((rep+1) as u64))).collect();
                             acss_va_state.column_shares.insert(rep, 
                                 (column_shares,
-                                self.large_field_uv_sss.evaluate_at(&nonce_coeffs, rep+1)));
+                                self.large_field_uv_sss.evaluate_at(&Polynomial::new(&nonce_coeffs[..]), LargeField::from((rep+1) as u64))));
                             acss_va_state.bcolumn_shares.insert(rep, 
-                                (self.large_field_uv_sss.evaluate_at(&bpoly_coeffs, rep+1),
-                            self.large_field_uv_sss.evaluate_at(&bnonce_poly_coeffs, rep+1)));
+                                (self.large_field_uv_sss.evaluate_at(&Polynomial::new(&bpoly_coeffs[..]),  LargeField::from((rep+1) as u64)),
+                            self.large_field_uv_sss.evaluate_at(&Polynomial::new(&bnonce_poly_coeffs[..]), LargeField::from((rep+1) as u64))));
                         }
                     }
                     log::info!("Sending Ready message");

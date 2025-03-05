@@ -11,6 +11,7 @@ use types::{Replica, WrapperMsg};
 use crate::{ACSSVAState, Context, ProtMsg, VACommitment};
 use consensus::PointBV;
 use consensus::LargeField;
+use lambdaworks_math::{polynomial::Polynomial, traits::ByteConversion};
 
 impl Context {
     pub async fn process_ready_vf(
@@ -138,23 +139,23 @@ impl Context {
                         if !acss_va_state.column_shares.contains_key(&rep) {
                             let column_shares = poly_coeffs
                                 .iter()
-                                .map(|poly| self.large_field_uv_sss.mod_evaluate_at(poly, rep + 1))
+                                .map(|poly| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&poly[..]), LargeField::from((rep + 1) as u64)))
                                 .collect();
                             acss_va_state.column_shares.insert(
                                 rep,
                                 (
                                     column_shares,
                                     self.large_field_uv_sss
-                                        .mod_evaluate_at(&nonce_coeffs, rep + 1),
+                                        .evaluate_at(&Polynomial::new(&nonce_coeffs[..]), LargeField::from((rep + 1) as u64)),
                                 ),
                             );
                             acss_va_state.bcolumn_shares.insert(
                                 rep,
                                 (
                                     self.large_field_uv_sss
-                                        .mod_evaluate_at(&bpoly_coeffs, rep + 1),
+                                        .evaluate_at(&Polynomial::new(&bpoly_coeffs[..]), LargeField::from((rep + 1) as u64)),
                                     self.large_field_uv_sss
-                                        .mod_evaluate_at(&bnonce_coeffs, rep + 1),
+                                        .evaluate_at(&Polynomial::new(&bnonce_coeffs[..]), LargeField::from((rep + 1) as u64)),
                                 ),
                             );
                         }
@@ -219,7 +220,7 @@ impl Context {
 
         let shares_ser = shares
             .into_iter()
-            .map(|share| share.to_signed_bytes_be())
+            .map(|share| share.to_bytes_be().to_vec())
             .collect();
         let _status = self
             .out_acss_shares

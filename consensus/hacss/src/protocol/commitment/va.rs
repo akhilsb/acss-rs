@@ -1,7 +1,7 @@
 use crypto::{LargeFieldSer, aes_hash::{Proof, MerkleTree}, hash::{Hash, do_hash}};
 //use num_bigint_dig::BigInt;
 use consensus::LargeField;
-
+use lambdaworks_math::traits::ByteConversion;
 use crate::Context;
 
 impl Context{
@@ -68,11 +68,11 @@ impl Context{
 
         for col_poly in shares{
             for (index, point) in (0..self.num_nodes+1).zip(col_poly.into_iter()){
-                appended_share_vec[index].extend(point.to_signed_bytes_be());
+                appended_share_vec[index].extend(point.to_bytes_be().to_vec());
             }
         }
         for (app_share_vec, nonce_vec) in appended_share_vec.iter_mut().zip(nonces.into_iter()){
-            app_share_vec.extend(nonce_vec.to_signed_bytes_be());
+            app_share_vec.extend(nonce_vec.to_bytes_be().to_vec());
         }
 
         for rep in 0..self.num_nodes{
@@ -91,8 +91,8 @@ impl Context{
         let mut commitments = Vec::new();
         for rep in 0..self.num_nodes{
             let mut app_share = Vec::new();
-            app_share.extend(shares[rep+1].clone().to_signed_bytes_be());
-            app_share.extend(nonces[rep+1].clone().to_signed_bytes_be());
+            app_share.extend(shares[rep+1].clone().to_bytes_be().to_vec());
+            app_share.extend(nonces[rep+1].clone().to_bytes_be().to_vec());
             commitments.push(do_hash(app_share.as_slice()));
         }
         // Construct Merkle Tree

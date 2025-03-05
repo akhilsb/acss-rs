@@ -43,12 +43,12 @@ impl Context {
 
         let lt_indices: Vec<LargeField> = (0..self.num_faults + 1)
             .into_iter()
-            .map(|el| LargeField::from(el))
+            .map(|el| LargeField::from(el as u64))
             .collect();
-        let vandermonde_matrix_lt = self.large_field_uv_sss.vandermonde_matrix(&lt_indices);
-        let inverse_vandermonde = self
-            .large_field_uv_sss
-            .inverse_vandermonde(vandermonde_matrix_lt);
+        //let vandermonde_matrix_lt = self.large_field_uv_sss.vandermonde_matrix(&lt_indices);
+        // let inverse_vandermonde =self
+        //     .large_field_uv_sss
+        //     .inverse_vandermonde(vandermonde_matrix_lt);
 
         let num_cores = 4;
         let chunk_size = secrets.len() / num_cores;
@@ -67,7 +67,7 @@ impl Context {
                 secret_batch,
                 self.num_nodes,
                 self.num_faults,
-                inverse_vandermonde.clone(),
+                //inverse_vandermonde.clone(),
             )));
         }
 
@@ -463,7 +463,7 @@ impl Context {
         secrets: Vec<LargeField>,
         num_nodes: usize,
         num_faults: usize,
-        inverse_vandermonde: Vec<Vec<LargeField>>,
+        //inverse_vandermonde: Vec<Vec<LargeField>>,
     ) -> (
         Vec<Vec<Vec<LargeField>>>,
         Vec<Vec<Vec<LargeField>>>,
