@@ -7,8 +7,6 @@ use crypto::{decrypt, encrypt, LargeFieldSer};
 use ctrbc::CTRBCMsg;
 use network::plaintcp::CancelHandler;
 use network::Acknowledgement;
-use num_bigint_dig::BigInt;
-use num_bigint_dig::RandBigInt;
 use types::{Replica, WrapperMsg};
 
 use crate::{ACSSVAState, Context, ProtMsg, VACommitment, VAShare};
@@ -34,14 +32,14 @@ impl Context {
         _threshold: usize,
     ) {
         // let field_prime = self.large_field_bv_sss.prime.clone();
-        let zero = BigInt::from(0);
+        // let zero = BigInt::from(0);
 
         let mut row_polynomials = Vec::new();
         let mut col_polynomials = Vec::new();
         // specify Vec<Vec<Polynomial<LargeField>>>
         let mut coeff_polynomials_y: Vec<Vec<Polynomial<LargeField>>> = Vec::new();
 
-        let lt_indices: Vec<LargeField> = (0..self.num_faults + 1)
+        let _lt_indices: Vec<LargeField> = (0..self.num_faults + 1)
             .into_iter()
             .map(|el| LargeField::from(el as u64))
             .collect();
@@ -114,8 +112,8 @@ impl Context {
             let bsecret = ShamirSecretSharing::rand_field_element();
 
             // Share filling
-            let shares: Vec<LargeField> = self.large_field_uv_sss.split(secret.clone()).collect();
-            let bshares: Vec<LargeField> = self.large_field_uv_sss.split(bsecret.clone()).collect();
+            let shares: Vec<LargeField> = self.large_field_uv_sss.split(secret.clone());
+            let bshares: Vec<LargeField> = self.large_field_uv_sss.split(bsecret.clone());
 
             // Polynomial filling
             nonce_poly_y_deg_t.push(secret);
@@ -146,7 +144,7 @@ impl Context {
         for shares_y_deg_t in col_polynomials.clone() {
             for (index, share_poly) in (0..self.num_nodes).zip(shares_y_deg_t.into_iter()) {
                 for (l2_index, share) in (0..self.num_nodes + 1).zip(share_poly.into_iter()) {
-                    appended_shares[index][l2_index].extend(share.to_signed_bytes_be());
+                    appended_shares[index][l2_index].extend(share.to_bytes_be());
                 }
             }
         }
@@ -163,12 +161,12 @@ impl Context {
             {
                 let mut appended = Vec::new();
                 appended.extend(share_eval_val);
-                appended.extend(nonce_y_deg_t[rep].clone().to_signed_bytes_be());
+                appended.extend(nonce_y_deg_t[rep].clone().to_bytes_be().to_vec());
                 comm_y_deg_t.push(do_hash(appended.as_slice()));
 
                 let mut appended = Vec::new();
-                appended.extend(blinding_y_deg_t[rep].clone().to_signed_bytes_be());
-                appended.extend(bnonce_y_deg_t[rep].clone().to_signed_bytes_be());
+                appended.extend(blinding_y_deg_t[rep].clone().to_bytes_be().to_vec());
+                appended.extend(bnonce_y_deg_t[rep].clone().to_bytes_be().to_vec());
                 bcomm_y_deg_t.push(do_hash(appended.as_slice()));
             }
             comm_y_deg_t.remove(0);
@@ -252,15 +250,14 @@ impl Context {
             .zip(column_wise_roots.clone().into_iter())
         {
             let column_root = LargeField::from_bytes_be(column_mr.as_slice())
-                .unwrap()
-                .collect();
+                .unwrap();
 
             // dzk_poly = coefficient_vec + column_root * blinding_coefficient_vec
-            let scaled_blinding_poly = Self::multiply_polynomials(
+            let scaled_blinding_poly = ShamirSecretSharing::multiply_polynomials(
                 &Polynomial::new(&[column_root]),
                 &blinding_coefficient_vec,
             );
-            let dzk_poly = Self::add_polynomials(&coefficient_vec, &scaled_blinding_poly);
+            let dzk_poly = ShamirSecretSharing::add_polynomials(&coefficient_vec, &scaled_blinding_poly);
 
             dzk_share_polynomials.push(dzk_poly.clone());
 
@@ -296,9 +293,9 @@ impl Context {
             // Reliably broadcast these coefficients
             let coeffs_const_size: Vec<Vec<u8>> = self
                 .folding_dzk_context
-                .gen_dzk_proof(&mut eval_points, &mut trees, coefficients, iteration, root)
+                .gen_dzk_proof(&mut eval_points, &mut trees, coefficients.coefficients, iteration, root)
                 .into_iter()
-                .map(|x| x.to_signed_bytes_be())
+                .map(|x| x.to_bytes_be().to_vec())
                 .collect();
 
             for tree in trees.iter() {
@@ -324,12 +321,12 @@ impl Context {
                         .get_mut(rep)
                         .unwrap()
                         .g_0_x
-                        .push(g.0.to_signed_bytes_be());
+                        .push(g.0.to_bytes_be().to_vec());
                     dzk_proofs_all_nodes
                         .get_mut(rep)
                         .unwrap()
                         .g_1_x
-                        .push(g.1.to_signed_bytes_be());
+                        .push(g.1.to_bytes_be().to_vec());
                     dzk_proofs_all_nodes
                         .get_mut(rep)
                         .unwrap()
@@ -383,13 +380,13 @@ impl Context {
                 col_polys_party.push(
                     col_poly_party
                         .into_iter()
-                        .map(|el| el.to_signed_bytes_be())
+                        .map(|el| el.to_bytes_be().to_vec())
                         .collect(),
                 );
                 row_polys_party.push(
                     row_poly_party
                         .into_iter()
-                        .map(|el| el.to_signed_bytes_be())
+                        .map(|el| el.to_bytes_be().to_vec())
                         .collect(),
                 );
             }
@@ -398,7 +395,7 @@ impl Context {
             let mut proofs_row_poly = Vec::new();
 
             for index in 0..self.num_nodes {
-                nonce_row_poly.push(nonce_polys[index][rep + 1].clone().to_signed_bytes_be());
+                nonce_row_poly.push(nonce_polys[index][rep + 1].clone().to_bytes_be().to_vec());
                 proofs_row_poly.push(mts[index].gen_proof(rep))
             }
             // polys_y_deg_t[rep].truncate(self.num_faults+1);
@@ -410,7 +407,7 @@ impl Context {
                 col_polys_party,
                 nonce_polys[rep]
                     .iter()
-                    .map(|el| el.to_signed_bytes_be())
+                    .map(|el| el.to_bytes_be().to_vec())
                     .collect(),
             );
 
@@ -420,10 +417,10 @@ impl Context {
                     (
                         blinding_y_deg_t[index][rep + 1]
                             .clone()
-                            .to_signed_bytes_be(),
+                            .to_bytes_be().to_vec(),
                         blinding_nonce_polys[index][rep + 1]
                             .clone()
-                            .to_signed_bytes_be(),
+                            .to_bytes_be().to_vec(),
                         blinding_mts[index].gen_proof(rep),
                     )
                 })
@@ -431,7 +428,7 @@ impl Context {
             let blinding_column_poly: Vec<(LargeFieldSer, LargeFieldSer)> = blinding_y_deg_t[rep]
                 .iter()
                 .zip(blinding_nonce_polys[rep].iter())
-                .map(|(share, nonce)| (share.to_signed_bytes_be(), nonce.to_signed_bytes_be()))
+                .map(|(share, nonce)| (share.to_bytes_be().to_vec(), nonce.to_bytes_be().to_vec()))
                 .collect();
 
             let msg = VAShare {
@@ -498,7 +495,7 @@ impl Context {
                 poly_x_deg_2t.push(share.clone());
                 if rep <= num_faults - 1 {
                     poly_x_deg_2t
-                        .extend(large_field_bv_sss.split(share).into_iter().map(|tup| tup.1));
+                        .extend(large_field_bv_sss.split(share));
                 }
                 polys_x_deg_2t.push(poly_x_deg_2t);
             }
@@ -811,11 +808,11 @@ impl Context {
         coefficients: Vec<Vec<Polynomial<LargeField>>>,
         column_wise_roots: Vec<Hash>,
     ) -> Vec<Polynomial<LargeField>> {
-        let mut root_mul_lf: Vec<LargeField> = column_wise_roots
+        let root_mul_lf: Vec<LargeField> = column_wise_roots
             .iter()
-            .map(|root| LargeField::from_bytes_be(root))
+            .map(|root| LargeField::from_bytes_be(root).unwrap())
             .collect();
-        let roots_original = root_mul_lf.clone();
+        let _roots_original = root_mul_lf.clone();
 
         // let mut aggregated_coefficients = Vec::new();
 

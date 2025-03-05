@@ -245,7 +245,7 @@ impl FoldingDZKContext {
         blinding_row_share: LargeField,
         evaluation_point: usize,
     ) -> bool {
-        let zero = LargeField::from(0);
+        // let zero = LargeField::from(0);
 
         // Verify dzk proof finally
         // Start from the lowest level
@@ -254,7 +254,7 @@ impl FoldingDZKContext {
         let mut rev_roots: Vec<Hash> = Vec::new();
 
         let root_bint = LargeField::from_bytes_be(column_root.as_slice()).unwrap();
-        let mut dzk_share =
+        let dzk_share =
             blinding_row_share + root_bint * row_share;
 
         // First root comes from the share and blinding polynomials
@@ -300,7 +300,7 @@ impl FoldingDZKContext {
             // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
             let root = LargeField::from_bytes_be(rev_agg_roots[index].as_slice()).unwrap();
 
-            let mut fiat_shamir_hs_point = &g_0 + &root * &g_1;
+            let fiat_shamir_hs_point = &g_0 + &root * &g_1;
             if point != fiat_shamir_hs_point {
                 log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
                 return false;
@@ -315,7 +315,7 @@ impl FoldingDZKContext {
 
             let pt_bigint = LargeField::from(evaluation_point as u64);
             let pow_bigint = ShamirSecretSharing::mod_pow(&pt_bigint, split_point as u64);
-            let mut agg_point = &g_0 + &pow_bigint * &g_1;
+            let agg_point = &g_0 + &pow_bigint * &g_1;
             point = agg_point;
             // update degree of the current polynomial
             degree_poly = degree_poly + split_point;
@@ -363,7 +363,7 @@ impl FoldingDZKContext {
         blinding_row_shares: Vec<LargeField>,
         evaluation_point: usize,
     ) -> bool {
-        let zero = LargeField::from(0);
+        // let zero = LargeField::from(0);
 
         // Verify dzk proof finally
         // Start from the lowest level
@@ -378,7 +378,7 @@ impl FoldingDZKContext {
                 .zip(row_shares.into_iter().zip(blinding_row_shares.into_iter()))
         {
             let root_bint = LargeField::from_bytes_be(first_root.as_slice()).unwrap();
-            let mut dzk_share = blinding + root_bint * share;
+            let dzk_share = blinding + root_bint * share;
             dzk_shares.push(dzk_share);
             // First root comes from the share and blinding polynomials
             let mut agg_root = first_root;
@@ -430,7 +430,7 @@ impl FoldingDZKContext {
                 // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
                 let root = LargeField::from_bytes_be(rev_agg_root_vec[index].as_slice()).unwrap();
 
-                let mut fiat_shamir_hs_point =
+                let fiat_shamir_hs_point =
                     &g_0 + &root * &g_1;
               
                 if point != fiat_shamir_hs_point {
@@ -447,7 +447,7 @@ impl FoldingDZKContext {
 
                 let pt_bigint = LargeField::from(evaluation_point as u64);
                 let pow_bigint = ShamirSecretSharing::mod_pow(&pt_bigint, split_point as u64);
-                let mut agg_point = &g_0 + &pow_bigint * &g_1 ;
+                let agg_point = &g_0 + &pow_bigint * &g_1 ;
                
                 point = agg_point;
                 // update degree of the current polynomial

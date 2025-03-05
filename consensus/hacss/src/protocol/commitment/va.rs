@@ -1,7 +1,6 @@
 use crypto::{LargeFieldSer, aes_hash::{Proof, MerkleTree}, hash::{Hash, do_hash}};
 //use num_bigint_dig::BigInt;
 use consensus::LargeField;
-use lambdaworks_math::traits::ByteConversion;
 use crate::Context;
 
 impl Context{

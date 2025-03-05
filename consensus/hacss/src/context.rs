@@ -125,7 +125,7 @@ impl Context {
         )
         .unwrap();
 
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(
+        let _large_field_prime_bv: BigInt = BigInt::parse_bytes(
             b"57896044618658097711785492504343953926634992332820282019728792003956564819949",
             10,
         )
@@ -137,8 +137,8 @@ impl Context {
         let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
-        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-        let file_path_lt =
+        let _file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
+        let _file_path_lt =
             file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
         let smallfield_ss =
