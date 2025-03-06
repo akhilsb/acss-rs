@@ -38,6 +38,15 @@ impl ShamirSecretSharing {
         LargeField::new(rand_big)
     }
 
+    /// Returns the corresponding evaluation index for party x
+    pub fn get_evaluation_point_from_u64(&self, x: u64) -> LargeField {
+        if x == 0 {
+            LargeField::zero()
+        } else {
+            self.roots_of_unity[(x - 1) as usize].clone()
+        }
+    }
+
     pub fn gen_roots_of_unity(n: usize) -> Vec<LargeField> {
         let len = n.next_power_of_two();
         let order = len.trailing_zeros();
@@ -74,11 +83,7 @@ impl ShamirSecretSharing {
         y: &Vec<LargeField>,
     ) -> Polynomial<LargeField> {
         let mapped_x: Vec<LargeField> = x.iter()
-        .map(|xi| if *xi == 0 {
-            LargeField::zero()
-        } else {
-            self.roots_of_unity[(*xi - 1) as usize].clone()  
-        })
+        .map(|xi| self.get_evaluation_point_from_u64(*xi))
         .collect();
 
         Polynomial::interpolate(&mapped_x, &y).unwrap()
@@ -88,8 +93,9 @@ impl ShamirSecretSharing {
         polynomial.coefficients()[0].clone()
     }
 
-    pub fn evaluate_at(&self, polynomial: &Polynomial<LargeField>, x: LargeField) -> LargeField {
-        polynomial.evaluate(&x)
+    pub fn evaluate_at(&self, polynomial: &Polynomial<LargeField>, x: u64) -> LargeField {
+        let evaluation_point = self.get_evaluation_point_from_u64(x);
+        polynomial.evaluate(&evaluation_point)
     }
 }
 
@@ -155,7 +161,10 @@ impl ShamirSecretSharing{
     ) -> Polynomial<LargeField> {
         poly1 * poly2
     }
-    
+
+    pub fn scale_polynomial( poly: &Polynomial<LargeField>, scalar: &LargeField) -> Polynomial<LargeField> {
+        poly * scalar
+    }    
 
     // TODO: Rename later
     pub fn mod_pow(base: &LargeField, exp: u64) -> LargeField {
@@ -189,9 +198,7 @@ impl ShamirSecretSharing {
         self.reconstructing(&x, &poly_eval_points)
     }
 
-    pub fn scale_polynomial( poly: &Polynomial<LargeField>, scalar: &LargeField) -> Polynomial<LargeField> {
-        poly * scalar
-    }
+
 }
 
 #[cfg(test)]

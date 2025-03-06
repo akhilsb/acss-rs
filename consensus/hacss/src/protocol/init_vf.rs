@@ -249,15 +249,15 @@ impl Context {
             .zip(blinding_coeffs_y_deg_t.into_iter())
             .zip(column_wise_roots.clone().into_iter())
         {
-            let column_root = LargeField::from_bytes_be(column_mr.as_slice())
-                .unwrap();
+            let column_root = LargeField::from_bytes_be(column_mr.as_slice()).unwrap();
 
             // dzk_poly = coefficient_vec + column_root * blinding_coefficient_vec
             let scaled_blinding_poly = ShamirSecretSharing::multiply_polynomials(
                 &Polynomial::new(&[column_root]),
                 &blinding_coefficient_vec,
             );
-            let dzk_poly = ShamirSecretSharing::add_polynomials(&coefficient_vec, &scaled_blinding_poly);
+            let dzk_poly =
+                ShamirSecretSharing::add_polynomials(&coefficient_vec, &scaled_blinding_poly);
 
             dzk_share_polynomials.push(dzk_poly.clone());
 
@@ -293,7 +293,13 @@ impl Context {
             // Reliably broadcast these coefficients
             let coeffs_const_size: Vec<Vec<u8>> = self
                 .folding_dzk_context
-                .gen_dzk_proof(&mut eval_points, &mut trees, coefficients.coefficients, iteration, root)
+                .gen_dzk_proof(
+                    &mut eval_points,
+                    &mut trees,
+                    coefficients.coefficients,
+                    iteration,
+                    root,
+                )
                 .into_iter()
                 .map(|x| x.to_bytes_be().to_vec())
                 .collect();
@@ -417,10 +423,12 @@ impl Context {
                     (
                         blinding_y_deg_t[index][rep + 1]
                             .clone()
-                            .to_bytes_be().to_vec(),
+                            .to_bytes_be()
+                            .to_vec(),
                         blinding_nonce_polys[index][rep + 1]
                             .clone()
-                            .to_bytes_be().to_vec(),
+                            .to_bytes_be()
+                            .to_vec(),
                         blinding_mts[index].gen_proof(rep),
                     )
                 })
@@ -494,8 +502,7 @@ impl Context {
                 let mut poly_x_deg_2t = Vec::new();
                 poly_x_deg_2t.push(share.clone());
                 if rep <= num_faults - 1 {
-                    poly_x_deg_2t
-                        .extend(large_field_bv_sss.split(share));
+                    poly_x_deg_2t.extend(large_field_bv_sss.split(share));
                 }
                 polys_x_deg_2t.push(poly_x_deg_2t);
             }
@@ -808,59 +815,42 @@ impl Context {
         coefficients: Vec<Vec<Polynomial<LargeField>>>,
         column_wise_roots: Vec<Hash>,
     ) -> Vec<Polynomial<LargeField>> {
-        let root_mul_lf: Vec<LargeField> = column_wise_roots
+        let mut root_mul_lf: Vec<LargeField> = column_wise_roots
             .iter()
             .map(|root| LargeField::from_bytes_be(root).unwrap())
             .collect();
-        let _roots_original = root_mul_lf.clone();
-
-        // let mut aggregated_coefficients = Vec::new();
-
-        // for _ in 0..self.num_nodes {
-        //     let mut shares_app = Vec::new();
-        //     for _ in 0..self.num_faults + 1 {
-        //         shares_app.push(LargeField::from(0));
-        //     }
-        //     aggregated_coefficients.push(shares_app);
-        // }
-
-        // root_mul_lf = (0..column&_wise_roots.len())
-        //     .into_iter()
-        //     .map(|_| LargeField::from(1))
-        //     .collect();
-        // for bv_coeff_vec in coefficients {
-        //     for (index, (share_poly, root_lf)) in
-        //         (0..self.num_nodes).zip(bv_coeff_vec.into_iter().zip(root_mul_lf.iter()))
-        //     {
-        //         for (l2_index, share) in (0..self.num_faults + 1).zip(share_poly.into_iter()) {
-        //             aggregated_coefficients[index][l2_index] +=
-        //                 (root_lf * share) % &self.large_field_uv_sss.prime;
-        //             if aggregated_coefficients[index][l2_index] < LargeField::from(0) {
-        //                 aggregated_coefficients[index][l2_index] += &self.large_field_uv_sss.prime;
-        //             }
-        //         }
-        //     }
-        //     for index in 0..self.num_nodes {
-        //         root_mul_lf[index] = &root_mul_lf[index] * &roots_original[index];
-        //     }
-        // }
-        // aggregated_coefficients
-
-        let mut aggregated_coefficients: Vec<Polynomial<LargeField>> =
-            vec![Polynomial::zero(); self.large_field_sss.share_amount];
-
-        for bv_coeff_vec in coefficients {
-            for (index, (share_poly, root_lf)) in (0..self.large_field_sss.share_amount).zip(
-                bv_coeff_vec
-                    .into_iter()
-                    .zip(self.large_field_sss.roots_of_unity.iter()),
-            ) {
-                let root_factor = Polynomial::new(&[*root_lf]);
-                aggregated_coefficients[index] =
-                    &aggregated_coefficients[index] + &(share_poly * root_factor);
+        let roots_original = root_mul_lf.clone();
+        let mut aggregated_coefficients = Vec::new();
+        for _ in 0..self.num_nodes {
+            let mut shares_app = Vec::new();
+            for _ in 0..self.num_faults + 1 {
+                shares_app.push(LargeField::from(0));
             }
+            aggregated_coefficients.push(shares_app);
         }
 
-        aggregated_coefficients
+        root_mul_lf = (0..column_wise_roots.len())
+            .into_iter()
+            .map(|_| LargeField::from(1))
+            .collect();
+        for bv_coeff_vec in coefficients {
+            for (index, (share_poly, root_lf)) in
+                (0..self.num_nodes).zip(bv_coeff_vec.into_iter().zip(root_mul_lf.iter()))
+            {
+                for (l2_index, share) in (0..self.num_faults + 1).zip(share_poly.coefficients.into_iter()) {
+                    aggregated_coefficients[index][l2_index] += root_lf * share;
+                }
+            }
+            for index in 0..self.num_nodes {
+                root_mul_lf[index] = &root_mul_lf[index] * &roots_original[index];
+            }
+        }
+        //aggregated_coefficients
+        // create vector of polymomials based on aggreagated coeffiecients where the ith polymomial is Polynomial::new)aggregated_coefficients at the ith index)
+        let mut polys = Vec::new();
+        for coeff_vec in aggregated_coefficients {
+            polys.push(Polynomial::new(&coeff_vec[..]));
+        }
+        polys
     }
 }

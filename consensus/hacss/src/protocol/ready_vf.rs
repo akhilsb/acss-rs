@@ -142,7 +142,7 @@ impl Context {
                                 .map(|poly| {
                                     self.large_field_uv_sss.evaluate_at(
                                         &Polynomial::new(&poly[..]),
-                                        LargeField::from((rep + 1) as u64),
+                                        (rep + 1) as u64,
                                     )
                                 })
                                 .collect();
@@ -152,7 +152,7 @@ impl Context {
                                     column_shares,
                                     self.large_field_uv_sss.evaluate_at(
                                         &Polynomial::new(&nonce_coeffs[..]),
-                                        LargeField::from((rep + 1) as u64),
+                                        (rep + 1) as u64,
                                     ),
                                 ),
                             );
@@ -161,11 +161,11 @@ impl Context {
                                 (
                                     self.large_field_uv_sss.evaluate_at(
                                         &Polynomial::new(&bpoly_coeffs[..]),
-                                        LargeField::from((rep + 1) as u64),
+                                        (rep + 1) as u64,
                                     ),
                                     self.large_field_uv_sss.evaluate_at(
                                         &Polynomial::new(&bnonce_coeffs[..]),
-                                        LargeField::from((rep + 1) as u64),
+                                        (rep + 1) as u64,
                                     ),
                                 ),
                             );

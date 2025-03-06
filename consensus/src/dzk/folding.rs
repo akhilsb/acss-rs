@@ -39,10 +39,8 @@ impl FoldingDZKContext {
             .clone()
             .into_iter()
             .map(|x| {
-                self.large_field_uv_sss.evaluate_at(
-                    &Polynomial::new(&coefficients[..]),
-                    LargeField::from(x as u64),
-                )
+                self.large_field_uv_sss
+                    .evaluate_at(&Polynomial::new(&coefficients[..]), x as u64)
             })
             .collect();
         let hashes: Vec<Hash> = evaluations
@@ -72,14 +70,10 @@ impl FoldingDZKContext {
             .into_iter()
             .map(|rep: usize| {
                 (
-                    self.large_field_uv_sss.evaluate_at(
-                        &Polynomial::new(&first_half_coeff[..]),
-                        LargeField::from(rep as u64),
-                    ),
-                    self.large_field_uv_sss.evaluate_at(
-                        &Polynomial::new(&second_half_coeff[..]),
-                        LargeField::from(rep as u64),
-                    ),
+                    self.large_field_uv_sss
+                        .evaluate_at(&Polynomial::new(&first_half_coeff[..]), rep as u64),
+                    self.large_field_uv_sss
+                        .evaluate_at(&Polynomial::new(&second_half_coeff[..]), rep as u64),
                 )
             })
             .collect();
@@ -90,12 +84,14 @@ impl FoldingDZKContext {
 
         // 4.a. Compute updated Merkle root
         let next_root = self.hash_context.hash_two(root, next_root);
-        let root_bint = LargeField::from_bytes_be(next_root.as_slice())
-            .unwrap();
+        let root_bint = LargeField::from_bytes_be(next_root.as_slice()).unwrap();
 
         // Scaling...
-        let mut poly_folded: Vec<LargeField> = ShamirSecretSharing::scale_polynomial(&Polynomial::new(&second_half_coeff[..]), &root_bint)
-            .coefficients;
+        let mut poly_folded: Vec<LargeField> = ShamirSecretSharing::scale_polynomial(
+            &Polynomial::new(&second_half_coeff[..]),
+            &root_bint,
+        )
+        .coefficients;
         // let mut poly_folded: Vec<LargeField> = second_half_coeff
         //     .into_iter()
         //     .map(|coeff| (coeff * &root_bint) )
@@ -215,7 +211,8 @@ impl FoldingDZKContext {
             .into_iter()
             .map(|poly| {
                 self.large_field_uv_sss
-                    .polynomial_coefficients_with_vandermonde_matrix(&poly).coefficients
+                    .polynomial_coefficients_with_vandermonde_matrix(&poly)
+                    .coefficients
             })
             .collect();
         //let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&column_evaluation_points);
@@ -232,7 +229,12 @@ impl FoldingDZKContext {
             .large_field_uv_sss
             .polynomial_coefficients_with_precomputed_vandermonde_matrix(&blinding_nonce_points);
 
-        return Some((poly_coeffs, nonce_coeffs.coefficients, bpoly_coeffs.coefficients, bnonce_coeffs.coefficients));
+        return Some((
+            poly_coeffs,
+            nonce_coeffs.coefficients,
+            bpoly_coeffs.coefficients,
+            bnonce_coeffs.coefficients,
+        ));
     }
 
     pub fn verify_dzk_proof(
@@ -254,8 +256,7 @@ impl FoldingDZKContext {
         let mut rev_roots: Vec<Hash> = Vec::new();
 
         let root_bint = LargeField::from_bytes_be(column_root.as_slice()).unwrap();
-        let dzk_share =
-            blinding_row_share + root_bint * row_share;
+        let dzk_share = blinding_row_share + root_bint * row_share;
 
         // First root comes from the share and blinding polynomials
         let mut agg_root = column_root;
@@ -276,7 +277,7 @@ impl FoldingDZKContext {
         // Evaluate points according to this polynomial
         let mut point = self
             .large_field_uv_sss
-            .evaluate_at(&Polynomial::new(&first_poly[..]), LargeField::from(evaluation_point as u64));
+            .evaluate_at(&Polynomial::new(&first_poly[..]), evaluation_point as u64);
 
         let g_0_pts: Vec<LargeField> = dzk_proof
             .g_0_x
@@ -406,7 +407,7 @@ impl FoldingDZKContext {
             // Evaluate points according to this polynomial
             let mut point = self
                 .large_field_uv_sss
-                .evaluate_at(&Polynomial::new(&first_poly[..]), LargeField::from(evaluation_point as u64));
+                .evaluate_at(&Polynomial::new(&first_poly[..]), evaluation_point as u64);
 
             let g_0_pts: Vec<LargeField> = dzk_proof
                 .g_0_x
@@ -430,9 +431,8 @@ impl FoldingDZKContext {
                 // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
                 let root = LargeField::from_bytes_be(rev_agg_root_vec[index].as_slice()).unwrap();
 
-                let fiat_shamir_hs_point =
-                    &g_0 + &root * &g_1;
-              
+                let fiat_shamir_hs_point = &g_0 + &root * &g_1;
+
                 if point != fiat_shamir_hs_point {
                     log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
                     return false;
@@ -447,8 +447,8 @@ impl FoldingDZKContext {
 
                 let pt_bigint = LargeField::from(evaluation_point as u64);
                 let pow_bigint = ShamirSecretSharing::mod_pow(&pt_bigint, split_point as u64);
-                let agg_point = &g_0 + &pow_bigint * &g_1 ;
-               
+                let agg_point = &g_0 + &pow_bigint * &g_1;
+
                 point = agg_point;
                 // update degree of the current polynomial
                 degree_poly = degree_poly + split_point;
