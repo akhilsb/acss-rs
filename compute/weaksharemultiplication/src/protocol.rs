@@ -5,7 +5,6 @@ use types::{Msg, ProtMsg, Replica, WrapperMsg};
 use itertools::Itertools;
 use std::clone::Clone;
 use std::ops::{Add, Sub};
-
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use crate::helper::{contains_only_some, group_elements_by_count, hash_vec_u8};
@@ -114,7 +113,6 @@ impl Context {
         let group: usize = deserialized_content.group;
         let share: Option<FieldElement<Stark252PrimeField>> = deserialized_content.value;
 
-        // self.received_fx_shares.insert(group, (evaluation_point, share));
         self.received_fx_shares.entry(group).or_insert_with(Vec::new).push((FieldElement::from(evaluation_point as u64), share));
 
         if self.reconstruction_result.contains_key(&group) {
