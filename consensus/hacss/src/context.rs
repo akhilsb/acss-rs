@@ -290,7 +290,7 @@ impl Context {
                     let acss_share_msgs_ser = acss_msg.1;
                     let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser
                     .into_iter()
-                    .map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()) // Ensure unwrap() if needed
+                    .map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap())
                     .collect();
                 
                     self.init_verifiable_abort(acss_lf_secrets, acss_inst_id, 2*self.num_faults+1).await;

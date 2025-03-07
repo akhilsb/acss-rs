@@ -8,6 +8,8 @@ use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use num_bigint_dig::BigInt;
 use rand;
 use rand::random;
+
+use super::LargeFieldSSS;
 pub type LargeField = FieldElement<Stark252PrimeField>;
 
 /**
@@ -82,9 +84,10 @@ impl ShamirSecretSharing {
         x: &Vec<u64>, // Parties
         y: &Vec<LargeField>,
     ) -> Polynomial<LargeField> {
-        let mapped_x: Vec<LargeField> = x.iter()
-        .map(|xi| self.get_evaluation_point_from_u64(*xi))
-        .collect();
+        let mapped_x: Vec<LargeField> = x
+            .iter()
+            .map(|xi| self.get_evaluation_point_from_u64(*xi))
+            .collect();
 
         Polynomial::interpolate(&mapped_x, &y).unwrap()
     }
@@ -115,7 +118,7 @@ impl ShamirSecretSharing {
 
 // Functions that will be needed for HACSS (High threshold asyncronous complete secret sharing)
 
-impl ShamirSecretSharing{
+impl ShamirSecretSharing {
     // Note that we expect polynomial_evaluations at points 0, w^0, w^1, ... w^(t), and not 0... t like we did before
     // We return the polynomial evaluations at points 0, w^0, w^1, ... w^(n) where n is the share amount
     // Note that we can only use this function when t+1 = 2^m
@@ -124,15 +127,16 @@ impl ShamirSecretSharing{
         all_values.push(polynomial_evals[0]);
         polynomial_evals.remove(0);
         let coeffs = Polynomial::interpolate_fft::<Stark252PrimeField>(&polynomial_evals).unwrap();
-        let evals = Polynomial::evaluate_fft::<Stark252PrimeField>(&coeffs, 1, Some(self.share_amount)).unwrap();
+        let evals =
+            Polynomial::evaluate_fft::<Stark252PrimeField>(&coeffs, 1, Some(self.share_amount))
+                .unwrap();
         all_values.extend(evals);
 
-        while all_values.len() > self.share_amount+1 {
+        while all_values.len() > self.share_amount + 1 {
             all_values.pop();
         }
-        *polynomial_evals = all_values; 
+        *polynomial_evals = all_values;
     }
-
 
     pub fn fill_evaluation_at_all_points(&self, polynomial_evals: &mut Vec<LargeField>) {
         let mut all_values = Vec::new();
@@ -162,21 +166,26 @@ impl ShamirSecretSharing{
         poly1 * poly2
     }
 
-    pub fn scale_polynomial( poly: &Polynomial<LargeField>, scalar: &LargeField) -> Polynomial<LargeField> {
+    pub fn scale_polynomial(
+        poly: &Polynomial<LargeField>,
+        scalar: &LargeField,
+    ) -> Polynomial<LargeField> {
         poly * scalar
-    }    
+    }
 
     // TODO: Rename later
     pub fn mod_pow(base: &LargeField, exp: u64) -> LargeField {
         base.pow(exp)
     }
-
 }
 
 // Functions that require a Vandermonde Matrix. TODO: Add actual vandermonde functionality after you precompute vandermonde values for roots of unity
 impl ShamirSecretSharing {
     // TODO: Also take in the inverse vandrmonde when you precompute
-    pub fn polynomial_coefficients_with_vandermonde_matrix(&self, poly_eval_points: &Vec<LargeField>) -> Polynomial<LargeField> {
+    pub fn polynomial_coefficients_with_vandermonde_matrix(
+        &self,
+        poly_eval_points: &Vec<LargeField>,
+    ) -> Polynomial<LargeField> {
         // generate vector of u64 from 0...poly_eval_points.size()
         let mut x = Vec::new();
         x.push(0);
@@ -187,7 +196,10 @@ impl ShamirSecretSharing {
         self.reconstructing(&x, &poly_eval_points)
     }
 
-    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(&self, poly_eval_points: &Vec<LargeField>) -> Polynomial<LargeField> {
+    pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(
+        &self,
+        poly_eval_points: &Vec<LargeField>,
+    ) -> Polynomial<LargeField> {
         // generate vector of u64 from 0...poly_eval_points.size()
         let mut x = Vec::new();
         x.push(0);
@@ -198,7 +210,67 @@ impl ShamirSecretSharing {
         self.reconstructing(&x, &poly_eval_points)
     }
 
+    /// Constructs the Vandermonde matrix for a given set of x-values. Note that the x-values are parties and are converted to the ith root of unity for the evaluation
+    pub fn vandermonde_matrix(&self, x_values: &Vec<u64>) -> Vec<Vec<LargeField>> {
+        let xs: Vec<LargeField> = x_values
+            .iter()
+            .map(|x| self.get_evaluation_point_from_u64(*x))
+            .collect();
+        let n = x_values.len();
+        let mut matrix = vec![vec![LargeField::zero(); n]; n];
 
+        for (row, x) in xs.iter().enumerate() {
+            let mut value = LargeField::one();
+            for col in 0..n {
+                matrix[row][col] = value.clone();
+                value = value * x;
+            }
+        }
+
+        matrix
+    }
+
+    /// Computes the inverse of a Vandermonde matrix using Gaussian elimination.
+    pub fn inverse_vandermonde(&self, matrix: Vec<Vec<LargeField>>) -> Vec<Vec<LargeField>> {
+        let n = matrix.len();
+        let mut augmented = matrix.clone();
+
+        // Extend the matrix with an identity matrix on the right
+        for i in 0..n {
+            augmented[i].extend((0..n).map(|j| {
+                if i == j {
+                    LargeField::one()
+                } else {
+                    LargeField::zero()
+                }
+            }));
+        }
+
+        // Perform Gaussian elimination
+        for col in 0..n {
+            // Normalize pivot row
+            let inv = augmented[col][col].inv().unwrap();
+            for k in col..2 * n {
+                augmented[col][k] = augmented[col][k] * inv;
+            }
+
+            // Eliminate other rows
+            for row in 0..n {
+                if row != col {
+                    let factor = augmented[row][col].clone();
+                    for k in col..2 * n {
+                        augmented[row][k] = &augmented[row][k] - factor * &augmented[col][k];
+                    }
+                }
+            }
+        }
+
+        // Extract the right half as the inverse
+        augmented
+            .into_iter()
+            .map(|row| row[n..2 * n].to_vec())
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -236,7 +308,7 @@ mod tests {
         type LargeField = FieldElement<Stark252PrimeField>; // Alias for LargeField
         let secret = LargeField::new(UnsignedInteger::from(1234u64));
 
-        let sss = ShamirSecretSharing{
+        let sss = ShamirSecretSharing {
             share_amount: 32,
             threshold: 16,
             roots_of_unity: ShamirSecretSharing::gen_roots_of_unity(32),
