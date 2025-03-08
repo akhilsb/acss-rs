@@ -10,4 +10,5 @@ members = [
     # "comm", (WIP: Do not enable unless testing)
     # RBC module
     "node",
+    "compute/triplecompression",
 ]
