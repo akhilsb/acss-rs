@@ -24,7 +24,7 @@ impl Context {
         assert_eq!(self.a_vec_shares.len(), self.b_vec_shares.len());
         assert_eq!(self.b_vec_shares.len(), self.r_shares.len());
         assert_eq!(self.r_shares.len(), self.N);
-        assert_eq!(self.o_shares.len(), (self.num_faults * self.N) / (2 * self.num_faults + 1));
+        assert_eq!(self.o_shares.len(), (self.num_faults * self.N) / (2 * self.num_faults + 1)); // TODO: this seems to have been changed in a new version of the paper.
 
         // Initialize
         self.cs = vec![vec![Some(FieldElement::zero()); 2*self.num_faults + 1]; self.N / (2 * self.num_faults + 1)];
