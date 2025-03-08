@@ -206,6 +206,7 @@ impl Context {
             }
         }
 
+        // TODO: add self.cs to self.result
         if self.result.len() == 2*self.num_faults+1 && self.result.iter().all(|x| matches!(x.1, WeakShareMultiplicationResult::FAIL) || matches!(x.1, WeakShareMultiplicationResult::SUCCESS(_, _))) {
             // TODO: uncomment terminate call; signature needs to be fixed
             // self.terminate(self.result.clone()).await;
