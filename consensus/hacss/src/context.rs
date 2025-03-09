@@ -137,8 +137,8 @@ impl Context {
         let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
         let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
         // // Save to file
-        let _file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-        let _file_path_lt =
+        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
+        let file_path_lt =
             file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
 
         let smallfield_ss =
@@ -150,16 +150,16 @@ impl Context {
             // large_field_prime.clone(),
         );
 
-        let lf_bv_sss = ShamirSecretSharing::new(
+        let lf_bv_sss = ShamirSecretSharing::new_with_vandermonde(
             2 * config.num_faults + 1,
             config.num_nodes,
-            // large_field_prime.clone(),
+            file_path
         );
 
-        let lf_uv_sss = ShamirSecretSharing::new(
+        let lf_uv_sss = ShamirSecretSharing::new_with_vandermonde(
             config.num_faults + 1,
             config.num_nodes,
-            // large_field_prime.clone(),
+            file_path_lt
         );
 
         // Prepare dZK context for halving degrees

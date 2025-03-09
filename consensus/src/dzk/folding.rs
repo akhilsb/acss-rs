@@ -202,23 +202,23 @@ impl FoldingDZKContext {
 
         // Interpolate column
         // Compute Vandermonde matrix here once. No other choice but to compute. If we have to interpolate the entire column, then it must cost O(n^3) operations
-        // let vandermonde_matrix_lt = self.large_field_uv_sss.vandermonde_matrix(&valid_indices);
-        // let inverse_vandermonde = self
-        //     .large_field_uv_sss
-        //     .inverse_vandermonde(vandermonde_matrix_lt);
+        let vandermonde_matrix_lt = self.large_field_uv_sss.vandermonde_matrix(&valid_indices);
+        let inverse_vandermonde = self
+            .large_field_uv_sss
+            .inverse_vandermonde(vandermonde_matrix_lt);
 
         let poly_coeffs: Vec<Vec<LargeField>> = column_evaluation_points
             .into_iter()
             .map(|poly| {
                 self.large_field_uv_sss
-                    .polynomial_coefficients_with_vandermonde_matrix(&poly)
+                    .polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly)
                     .coefficients
             })
             .collect();
         //let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&column_evaluation_points);
         let nonce_coeffs = self
             .large_field_uv_sss
-            .polynomial_coefficients_with_vandermonde_matrix(&nonce_evaluation_points);
+            .polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &nonce_evaluation_points);
 
         let bpoly_coeffs = self
             .large_field_uv_sss

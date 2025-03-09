@@ -8,9 +8,11 @@ use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use num_bigint_dig::BigInt;
 use rand;
 use rand::random;
+use std::fs::File;
+use std::io::Read;
 
 pub type LargeField = FieldElement<Stark252PrimeField>;
-
+use crypto::LargeFieldSer;
 /**
  * Shamir's Secret Sharing Scheme using Fast Fourier Transform
  * Send evaluation at P(w^i-1) to party i
@@ -24,6 +26,7 @@ pub struct ShamirSecretSharing {
     /// the total number of shares to generate from the secret.
     pub share_amount: usize,
     pub roots_of_unity: Vec<LargeField>,
+    pub vandermonde_matrix: Vec<Vec<LargeField>>,
 }
 
 impl ShamirSecretSharing {
@@ -32,6 +35,7 @@ impl ShamirSecretSharing {
             threshold,
             share_amount,
             roots_of_unity: Self::gen_roots_of_unity(share_amount),
+            vandermonde_matrix: Vec::new(),
         }
     }
     pub fn rand_field_element() -> LargeField {
@@ -180,45 +184,76 @@ impl ShamirSecretSharing {
 
 // Functions that require a Vandermonde Matrix. TODO: Add actual vandermonde functionality after you precompute vandermonde values for roots of unity
 impl ShamirSecretSharing {
+    pub fn new_with_vandermonde(
+        threshold: usize,
+        share_amount: usize,
+        vandermonde_matrix_file: String,
+    ) -> ShamirSecretSharing {
+        let mut file = File::open(vandermonde_matrix_file).expect("Failed to open file.");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .expect("Failed to read file.");
+
+        let loaded_matrix: Vec<Vec<LargeFieldSer>> =
+            serde_json::from_str(&contents).expect("Failed to deserialize matrix.");
+
+        let load_matrix_lf: Vec<Vec<LargeField>> = loaded_matrix
+            .into_iter()
+            .map(|el| {
+                el.into_iter()
+                    .map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap())
+                    .collect()
+            })
+            .collect();
+
+        ShamirSecretSharing {
+            threshold: threshold,
+            share_amount: share_amount,
+            roots_of_unity: Self::gen_roots_of_unity(share_amount),
+            vandermonde_matrix: load_matrix_lf,
+        }
+    }
+
+
+
+    /// Multiply a matrix by a vector in a prime field
+    pub fn matrix_vector_multiply(
+        matrix: &Vec<Vec<LargeField>>,
+        vector: &Vec<LargeField>,
+    ) -> Vec<LargeField> {
+        matrix
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .zip(vector)
+                    .fold(LargeField::zero(), |sum, (a, b)| sum + (a* b))
+            })
+            .collect()
+    }
+
+
     // TODO: Also take in the inverse vandrmonde when you precompute
     pub fn polynomial_coefficients_with_vandermonde_matrix(
         &self,
-        poly_eval_points: &Vec<LargeField>,
+        matrix: &Vec<Vec<LargeField>>,
+        y_values: &Vec<LargeField>,
     ) -> Polynomial<LargeField> {
-        // generate vector of u64 from 0...poly_eval_points.size()
-        let mut x = Vec::new();
-        x.push(0);
-        for i in 1..poly_eval_points.len() {
-            // ith root of unity as u64
-            x.push(self.roots_of_unity[i].representative().limbs[0]);
-        }
-        self.reconstructing(&x, &poly_eval_points)
+        Polynomial::new(&Self::matrix_vector_multiply(matrix, y_values)[..])
     }
 
     pub fn polynomial_coefficients_with_precomputed_vandermonde_matrix(
         &self,
-        poly_eval_points: &Vec<LargeField>,
+        y_values: &Vec<LargeField>,
     ) -> Polynomial<LargeField> {
-        // generate vector of u64 from 0...poly_eval_points.size()
-        let mut x = Vec::new();
-        x.push(0);
-        for i in 1..poly_eval_points.len() {
-            // ith root of unity as u64
-            x.push(self.roots_of_unity[i].representative().limbs[0]);
-        }
-        self.reconstructing(&x, &poly_eval_points)
+        Polynomial::new( &Self::matrix_vector_multiply(&self.vandermonde_matrix, y_values)[..])
     }
 
     /// Constructs the Vandermonde matrix for a given set of x-values. Note that the x-values are parties and are converted to the ith root of unity for the evaluation
-    pub fn vandermonde_matrix(&self, x_values: &Vec<u64>) -> Vec<Vec<LargeField>> {
-        let xs: Vec<LargeField> = x_values
-            .iter()
-            .map(|x| self.get_evaluation_point_from_u64(*x))
-            .collect();
+    pub fn vandermonde_matrix(&self, x_values: &Vec<LargeField>) -> Vec<Vec<LargeField>> {
         let n = x_values.len();
         let mut matrix = vec![vec![LargeField::zero(); n]; n];
 
-        for (row, x) in xs.iter().enumerate() {
+        for (row, x) in x_values.iter().enumerate() {
             let mut value = LargeField::one();
             for col in 0..n {
                 matrix[row][col] = value.clone();
@@ -290,6 +325,7 @@ mod tests {
             share_amount: 6,
             threshold: 3,
             roots_of_unity: ShamirSecretSharing::gen_roots_of_unity(6),
+            vandermonde_matrix: Vec::new(),
         };
 
         let polynomial = sss.sample_polynomial(secret);
@@ -311,6 +347,7 @@ mod tests {
             share_amount: 32,
             threshold: 16,
             roots_of_unity: ShamirSecretSharing::gen_roots_of_unity(32),
+            vandermonde_matrix: Vec::new(),
         };
 
         // generate polynomial, generate shares, then create a new vector with the first t+1 shares and the secret, and then verify that its equal to the shares polynomial after fill evals at all points
