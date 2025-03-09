@@ -9,7 +9,6 @@ use num_bigint_dig::BigInt;
 use rand;
 use rand::random;
 
-use super::LargeFieldSSS;
 pub type LargeField = FieldElement<Stark252PrimeField>;
 
 /**

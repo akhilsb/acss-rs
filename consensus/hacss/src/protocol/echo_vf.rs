@@ -7,7 +7,7 @@ use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
 
 use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
-use consensus::{PointBV, LargeField};
+use consensus::PointBV;
 
 impl Context{
     pub async fn process_echo(self: &mut Context, ctrbcmsg: CTRBCMsg, encrypted_share: Vec<u8>, echo_sender: Replica, instance_id: usize){
