@@ -1,8 +1,8 @@
 use std::collections::{HashSet, HashMap};
 
-use consensus::LargeFieldSSS;
-use crypto::{LargeField, pseudorandom_lf, hash::Hash};
-use num_bigint_dig::RandBigInt;
+use consensus::{ShamirSecretSharing, LargeField};
+use crypto::hash::Hash;
+use crypto::pseudorandom_lw;
 use types::Replica;
 
 use crate::{Context, msg::{Commitment, PointsBV}};
@@ -17,7 +17,7 @@ impl Context{
         num_faults: usize,
         num_nodes:usize, 
         sec_key_map: HashMap<Replica, Vec<u8>>,
-        large_field_uv_sss: LargeFieldSSS,
+        large_field_uv_sss: ShamirSecretSharing,
         secret_poly_coeffs: Option<Vec<LargeField>>, 
         evaluation_pts: Vec<LargeField>, 
         prf_seed: Vec<u8>
@@ -33,22 +33,14 @@ impl Context{
             let mut sec_key = sec_key_map.get(&rep).unwrap().clone();
             sec_key.extend(prf_seed.clone());
             
-            let sampled_coefficients: Vec<LargeField> = pseudorandom_lf(sec_key.as_slice(), 2*num_faults+1).into_iter().map(
-                |elem|{
-                    let mut mod_elem = elem%&large_field_uv_sss.prime;
-                    if mod_elem < LargeField::from(0){
-                        mod_elem+=&large_field_uv_sss.prime;
-                    }
-                    mod_elem
-                }
-            ).collect();
+            let sampled_coefficients: Vec<LargeField> = pseudorandom_lw(sec_key.as_slice(), 2*num_faults+1);
             row_coefficients.push(sampled_coefficients);
         }
         if !secret_encoded{
             // First polynomial must be randomly sampled
             let mut first_poly = Vec::new();
             for _ in 0..2*num_faults+1{
-                first_poly.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &large_field_uv_sss.prime));
+                first_poly.push(large_field_uv_sss.rand_field_element());
             }
             row_coefficients.push(first_poly);
         }
@@ -72,7 +64,7 @@ impl Context{
 
     pub fn generate_row_column_evaluations(coefficients: &Vec<Vec<LargeField>>, 
             eval_points: Vec<LargeField>, 
-            large_field_shamir_context: &LargeFieldSSS,
+            large_field_shamir_context: &ShamirSecretSharing,
             fill_columns: bool
         )->(Vec<Vec<LargeField>>,Vec<Vec<LargeField>>){
         let mut row_evaluations = Vec::new();
@@ -102,7 +94,7 @@ impl Context{
     pub fn sample_univariate_polynomial(&self) -> Vec<LargeField>{
         let mut coeffs = Vec::new();
         for _ in 0..self.num_faults+1{
-            coeffs.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &self.large_field_bv_sss.prime));
+            coeffs.push(self.large_field_uv_sss.rand_field_element());
         }
         coeffs
     }

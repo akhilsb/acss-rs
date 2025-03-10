@@ -1,5 +1,5 @@
-use consensus::reconstruct_data;
-use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, decrypt, encrypt, LargeField};
+use consensus::{reconstruct_data, LargeField};
+use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, decrypt, encrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 

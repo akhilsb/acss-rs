@@ -19,9 +19,9 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica,WrapperMsg};
 
-use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
+use consensus::{SmallFieldSSS, ShamirSecretSharing, LargeField, FoldingDZKContext};
 
-use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
+use crypto::{aes_hash::HashState, LargeFieldSer, hash::Hash};
 
 use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
 
@@ -60,10 +60,10 @@ pub struct Context {
 
     /// Shamir secret sharing states
     pub small_field_sss: SmallFieldSSS,
-    pub large_field_sss: LargeFieldSSS,
+    pub large_field_sss: ShamirSecretSharing,
 
-    pub large_field_bv_sss: LargeFieldSSS,
-    pub large_field_uv_sss: LargeFieldSSS,
+    pub large_field_bv_sss: ShamirSecretSharing,
+    pub large_field_uv_sss: ShamirSecretSharing,
 
     /// DZK Proof context
     pub folding_dzk_context: FoldingDZKContext,
@@ -141,24 +141,21 @@ impl Context {
             small_field_prime
         );
         // Blinding and Nonce polynomials
-        let largefield_ss = LargeFieldSSS::new(
+        let largefield_ss = ShamirSecretSharing::new(
             config.num_faults+1, 
             config.num_nodes, 
-            large_field_prime.clone()
         );
 
-        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
+        let lf_bv_sss = ShamirSecretSharing::new_with_vandermonde(
             2*config.num_faults +1, 
             config.num_nodes,
             file_path,
-            large_field_prime_bv.clone(),
         );
 
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
+        let lf_uv_sss = ShamirSecretSharing::new_with_vandermonde(
             config.num_faults +1,
             config.num_nodes,
             file_path_lt,
-            large_field_prime_bv.clone()
         );
 
         // Prepare dZK context for halving degrees
@@ -180,7 +177,7 @@ impl Context {
 
         // Folding context
         let folding_context = FoldingDZKContext{
-            large_field_uv_sss: lf_uv_sss.get_fft_sss(),
+            large_field_uv_sss: lf_uv_sss,
             hash_context: hashstate2,
             poly_split_evaluation_map: ss_contexts,
             evaluation_points: (1..config.num_nodes+1).into_iter().collect(),

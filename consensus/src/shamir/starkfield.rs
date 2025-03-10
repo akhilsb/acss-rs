@@ -10,14 +10,17 @@ use rand;
 use rand::random;
 use std::fs::File;
 use std::io::Read;
+use rand::{SeedableRng, RngCore};
 
 pub type LargeField = FieldElement<Stark252PrimeField>;
-use crypto::LargeFieldSer;
+
+use crypto::{hash::do_hash, aes_hash::HASH_SIZE, LargeFieldSer};
 /**
  * Shamir's Secret Sharing Scheme using Fast Fourier Transform
  * Send evaluation at P(w^i-1) to party i
  * Secret stored at P(0)
  */
+
 
 #[derive(Clone, Debug)]
 pub struct ShamirSecretSharing {

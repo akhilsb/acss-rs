@@ -1,5 +1,5 @@
-use consensus::reconstruct_data;
-use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt, LargeField};
+use consensus::{reconstruct_data, LargeField};
+use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
@@ -177,30 +177,26 @@ impl Context{
                     let blinding_commitment = batch_blinding_commitments[self.myid].clone();
                     let blinding_root = MerkleTree::new(batch_blinding_commitments, &self.hash_context).root();
                     let master_root_batch = self.hash_context.hash_two(dzk_root, blinding_root);
-                    let mut master_root_lf = LargeField::from_signed_bytes_be(master_root_batch.as_slice())%&self.large_field_uv_sss.prime;
-                    if master_root_lf < LargeField::from(0){
-                        master_root_lf += &self.large_field_uv_sss.prime;
-                    }
+                    let mut master_root_lf = LargeField::from_bytes_be(master_root_batch.as_slice()).unwrap();
+            
                     // Generate DZK polynomial
                     let mut agg_value = LargeField::from(0);
                     let polys_in_batch = commitment.batch_count;
                     let mut master_root_lf_mul= master_root_lf.clone();
                     for poly_index in 0..polys_in_batch{
                         for eval_index in 0..eval_points_len{
-                            agg_value += (shares[eval_index].0[batch][poly_index].clone()*&master_root_lf_mul)%&self.large_field_uv_sss.prime;
-                            master_root_lf_mul = (&master_root_lf_mul*&master_root_lf)%&self.large_field_uv_sss.prime;
+                            agg_value += shares[eval_index].0[batch][poly_index].clone()*&master_root_lf_mul;
+                            master_root_lf_mul = &master_root_lf_mul*&master_root_lf;
                         }
                     }
 
                     
-                    let dzk_poly_point = LargeField::from_signed_bytes_be(dzk_poly[self.myid+1].clone().as_slice());
-                    let mut sub_point = (dzk_poly_point - agg_value)%&self.large_field_uv_sss.prime;
-                    if sub_point< LargeField::from(0){
-                        sub_point += &self.large_field_uv_sss.prime;
-                    }
+                    let dzk_poly_point = LargeField::from_bytes_be(dzk_poly[self.myid+1].clone().as_slice()).collect();
+                    let mut sub_point = dzk_poly_point - agg_value;
+              
 
                     let mut appended_poly = Vec::new();
-                    appended_poly.extend(sub_point.to_signed_bytes_be());
+                    appended_poly.extend(sub_point.to_bytes_be().to_vec());
                     appended_poly.extend(blinding_nonces[self.myid].clone());
                     let hash_blinding = do_hash(&appended_poly);
 
