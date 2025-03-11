@@ -1,10 +1,11 @@
-use consensus::reconstruct_data;
-use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt, LargeField};
+use consensus::{reconstruct_data, LargeField};
+use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
 
 use crate::{Context, msg::{PointsBV, PointsBVSer, ProtMsg, Commitment}, protocol::BatchACSSState};
+use lambdaworks_math::traits::ByteConversion;
 
 impl Context{
     pub async fn process_ready(self: &mut Context, ctrbc_msg: CTRBCMsg, enc_share: Vec<u8>, ready_sender: Replica, instance_id: usize){
@@ -147,7 +148,7 @@ impl Context{
 
                 // Sample F(x,0) polynomial next
                 let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
-                let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+                let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index as u64)).collect();
                 eval_point_indices_lf.reverse();
                 let eval_points_len = eval_point_indices_lf.len();
 
@@ -177,30 +178,26 @@ impl Context{
                     let blinding_commitment = batch_blinding_commitments[self.myid].clone();
                     let blinding_root = MerkleTree::new(batch_blinding_commitments, &self.hash_context).root();
                     let master_root_batch = self.hash_context.hash_two(dzk_root, blinding_root);
-                    let mut master_root_lf = LargeField::from_signed_bytes_be(master_root_batch.as_slice())%&self.large_field_uv_sss.prime;
-                    if master_root_lf < LargeField::from(0){
-                        master_root_lf += &self.large_field_uv_sss.prime;
-                    }
+                    let mut master_root_lf = LargeField::from_bytes_be(master_root_batch.as_slice()).unwrap();
+            
                     // Generate DZK polynomial
                     let mut agg_value = LargeField::from(0);
                     let polys_in_batch = commitment.batch_count;
                     let mut master_root_lf_mul= master_root_lf.clone();
                     for poly_index in 0..polys_in_batch{
                         for eval_index in 0..eval_points_len{
-                            agg_value += (shares[eval_index].0[batch][poly_index].clone()*&master_root_lf_mul)%&self.large_field_uv_sss.prime;
-                            master_root_lf_mul = (&master_root_lf_mul*&master_root_lf)%&self.large_field_uv_sss.prime;
+                            agg_value += shares[eval_index].0[batch][poly_index].clone()*&master_root_lf_mul;
+                            master_root_lf_mul = &master_root_lf_mul*&master_root_lf;
                         }
                     }
 
                     
-                    let dzk_poly_point = LargeField::from_signed_bytes_be(dzk_poly[self.myid+1].clone().as_slice());
-                    let mut sub_point = (dzk_poly_point - agg_value)%&self.large_field_uv_sss.prime;
-                    if sub_point< LargeField::from(0){
-                        sub_point += &self.large_field_uv_sss.prime;
-                    }
+                    let dzk_poly_point = LargeField::from_bytes_be(dzk_poly[self.myid+1].clone().as_slice()).unwrap();
+                    let mut sub_point = dzk_poly_point - agg_value;
+              
 
                     let mut appended_poly = Vec::new();
-                    appended_poly.extend(sub_point.to_signed_bytes_be());
+                    appended_poly.extend(sub_point.to_bytes_be().to_vec());
                     appended_poly.extend(blinding_nonces[self.myid].clone());
                     let hash_blinding = do_hash(&appended_poly);
 
@@ -243,7 +240,7 @@ impl Context{
         let sender_party = instance_id/self.threshold;
         log::info!("Terminating ACSS for instance id {}, true_inst_id: {}, sender_party: {}",instance_id, true_inst_id, sender_party);
 
-        let shares_ser = shares.into_iter().map(|share| share.to_signed_bytes_be()).collect();
+        let shares_ser = shares.into_iter().map(|share| share.to_bytes_be().to_vec()).collect();
         let _status = self.out_acss_shares.send((true_inst_id, sender_party, root_comm, shares_ser)).await;
     }
 }

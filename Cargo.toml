@@ -9,5 +9,5 @@ members = [
     "consensus",
     # "comm", (WIP: Do not enable unless testing)
     # RBC module
-    "node",
+    "node", "tools/genvandermonde",
 ]

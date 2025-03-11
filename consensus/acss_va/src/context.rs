@@ -3,6 +3,7 @@ use std::{
     net::{SocketAddr, SocketAddrV4},
 };
 
+use lambdaworks_math::traits::ByteConversion;
 use anyhow::{anyhow, Result};
 use config::Node;
 
@@ -19,9 +20,9 @@ use tokio::sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica,WrapperMsg};
 
-use consensus::{SmallFieldSSS, LargeFieldSSS, FoldingDZKContext};
+use consensus::{SmallFieldSSS, ShamirSecretSharing, LargeField, FoldingDZKContext};
 
-use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
+use crypto::{aes_hash::HashState, LargeFieldSer, hash::Hash};
 
 use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
 
@@ -60,10 +61,10 @@ pub struct Context {
 
     /// Shamir secret sharing states
     pub small_field_sss: SmallFieldSSS,
-    pub large_field_sss: LargeFieldSSS,
+    pub large_field_sss: ShamirSecretSharing,
 
-    pub large_field_bv_sss: LargeFieldSSS,
-    pub large_field_uv_sss: LargeFieldSSS,
+    pub large_field_bv_sss: ShamirSecretSharing,
+    pub large_field_uv_sss: ShamirSecretSharing,
 
     /// DZK Proof context
     pub folding_dzk_context: FoldingDZKContext,
@@ -141,24 +142,21 @@ impl Context {
             small_field_prime
         );
         // Blinding and Nonce polynomials
-        let largefield_ss = LargeFieldSSS::new(
+        let largefield_ss = ShamirSecretSharing::new(
             config.num_faults+1, 
             config.num_nodes, 
-            large_field_prime.clone()
         );
 
-        let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
+        let lf_bv_sss = ShamirSecretSharing::new_with_vandermonde(
             2*config.num_faults +1, 
             config.num_nodes,
             file_path,
-            large_field_prime_bv.clone(),
         );
 
-        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
+        let lf_uv_sss = ShamirSecretSharing::new_with_vandermonde(
             config.num_faults +1,
             config.num_nodes,
             file_path_lt,
-            large_field_prime_bv.clone()
         );
 
         // Prepare dZK context for halving degrees
@@ -288,7 +286,7 @@ impl Context {
                     )?;
                     let acss_inst_id = self.myid*self.threshold + acss_msg.0;
                     let acss_share_msgs_ser = acss_msg.1;
-                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
                     self.init_batch_acss_va(acss_lf_secrets, acss_inst_id).await;
                 }
             };

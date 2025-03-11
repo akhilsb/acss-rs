@@ -1,19 +1,20 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash, LargeFieldSer};
+use crypto::{hash::Hash, LargeFieldSer};
 use ctrbc::RBCState;
 use types::Replica;
 
 use consensus::PointBV;
+use consensus::LargeField;
 
-pub struct ACSSVAState{
+pub struct ACSSVAState {
     pub origin: Replica,
 
     pub row_shares: Vec<Vec<LargeField>>,
     pub blinding_row_shares: Vec<LargeField>,
-    
-    pub column_shares: HashMap<Replica,(Vec<LargeField>,LargeField)>,
-    pub bcolumn_shares: HashMap<Replica,(LargeField, LargeField)>,
+
+    pub column_shares: HashMap<Replica, (Vec<LargeField>, LargeField)>,
+    pub bcolumn_shares: HashMap<Replica, (LargeField, LargeField)>,
 
     // Merkle Roots
     pub column_roots: Vec<Hash>,
@@ -32,19 +33,19 @@ pub struct ACSSVAState{
 
     // Encrypted row polynomial shares
     pub encrypted_shares: Vec<(Replica, Vec<u8>)>,
-    
+
     pub rbc_state: RBCState,
     pub terminated: bool,
 }
 
-impl ACSSVAState{
-    pub fn new(origin: Replica)-> ACSSVAState{
+impl ACSSVAState {
+    pub fn new(origin: Replica) -> ACSSVAState {
         ACSSVAState {
-            origin: origin, 
-            
-            row_shares: Vec::new(), 
-            blinding_row_shares: Vec::new(), 
-            
+            origin: origin,
+
+            row_shares: Vec::new(),
+            blinding_row_shares: Vec::new(),
+
             column_shares: HashMap::default(),
             bcolumn_shares: HashMap::default(),
 

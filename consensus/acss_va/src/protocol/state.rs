@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash, aes_hash::MerkleTree};
+use crypto::{hash::Hash, aes_hash::MerkleTree};
 use ctrbc::RBCState;
 use types::Replica;
+use consensus::LargeField;
 
 use crate::msg::PointsBV;
 

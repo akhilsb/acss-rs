@@ -1,5 +1,6 @@
-use consensus::reconstruct_data;
-use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, decrypt, encrypt, LargeField};
+use consensus::{reconstruct_data, LargeField};
+use lambdaworks_math::traits::ByteConversion;
+use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, decrypt, encrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 
@@ -106,7 +107,7 @@ impl Context{
                     comm.clone(), 
                     bv_echo_points,
                     true,
-                    (1..self.num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect()
+                    (1..self.num_nodes+1).into_iter().map(|el| LargeField::from(el as u64)).collect()
                 );
                 if verf_status.is_none(){
                     log::error!("Error verifying column polynomials, abandoning ACSS instance {}",instance_id);

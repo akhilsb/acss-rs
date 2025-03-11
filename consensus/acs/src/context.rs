@@ -365,8 +365,9 @@ impl Context {
                             // Start your protocol from here
                             // Write a function to broadcast a message. We demonstrate an example with a PING function
                             // Dealer sends message to everybody. <M, init>
-                            for _ in 0..self.num_batches{
-                                self.start_acss(self.per_batch).await;
+                            for instance in 0..self.num_batches{
+                                //self.start_acss(self.per_batch).await;
+                                let _status = self.asks_req.send((instance, None, false)).await;
                             }
                         },
                         SyncState::STOP =>{
