@@ -13,6 +13,7 @@ use std::io::Read;
 use rand::{SeedableRng, RngCore};
 
 pub type LargeField = FieldElement<Stark252PrimeField>;
+use std::convert::TryInto;
 
 use crypto::{hash::do_hash, aes_hash::HASH_SIZE, LargeFieldSer};
 /**
@@ -48,10 +49,24 @@ impl ShamirSecretSharing {
 
     /// Returns the corresponding evaluation index for party x
     pub fn get_evaluation_point_from_u64(&self, x: u64) -> LargeField {
+
         if x == 0 {
             LargeField::zero()
         } else {
             self.roots_of_unity[(x - 1) as usize].clone()
+        }
+    }
+
+    pub fn get_evaluation_point_from_lf(&self, x: &LargeField) -> LargeField {
+        let bytes = x.to_bytes_be();
+        let reduced_bytes: [u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
+
+        
+        let eval_x =u64::from_be_bytes(reduced_bytes);
+        if eval_x == 0 {
+            LargeField::zero()
+        } else {
+            self.roots_of_unity[(eval_x - 1) as usize].clone()
         }
     }
 
@@ -104,6 +119,10 @@ impl ShamirSecretSharing {
 
     pub fn evaluate_at(&self, polynomial: &Polynomial<LargeField>, x: u64) -> LargeField {
         let evaluation_point = self.get_evaluation_point_from_u64(x);
+        polynomial.evaluate(&evaluation_point)
+    }
+    pub fn evaluate_at_lf(&self, polynomial: &Polynomial<LargeField>, x: &LargeField) -> LargeField {
+        let evaluation_point = self.get_evaluation_point_from_lf(x);
         polynomial.evaluate(&evaluation_point)
     }
 }
@@ -318,6 +337,7 @@ mod tests {
     use lambdaworks_math::field::element::FieldElement;
     use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
     use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
+    use std::convert::TryInto;
 
     #[test]
     fn shamir_secret_sharing_works() {
@@ -366,5 +386,22 @@ mod tests {
         shares_to_use.remove(0);
         // assert shares_to_use is equal to shares
         assert_eq!(shares_to_use, shares);
+    }
+
+    #[test]
+    fn test_lf_to_u64() {
+        type LargeField = FieldElement<Stark252PrimeField>; // Alias for LargeField
+        let sss = ShamirSecretSharing {
+            share_amount: 32,
+            threshold: 16,
+            roots_of_unity: ShamirSecretSharing::gen_roots_of_unity(32),
+            vandermonde_matrix: Vec::new(),
+        };
+
+        let lf = LargeField::new(UnsignedInteger::from(1234u64));
+        let bytes = lf.to_bytes_be();
+        let reduced_bytes: [u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
+        let u64_val = u64::from_be_bytes(reduced_bytes);
+        assert_eq!(u64_val, 1234u64);
     }
 }

@@ -3,6 +3,7 @@ use std::collections::{HashSet, HashMap};
 use consensus::{ShamirSecretSharing, LargeField};
 use crypto::hash::Hash;
 use crypto::pseudorandom_lw;
+use lambdaworks_math::polynomial::Polynomial;
 use types::Replica;
 
 use crate::{Context, msg::{Commitment, PointsBV}};
@@ -77,7 +78,7 @@ impl Context{
         }
         for (index,coefficient_vec) in (0..coefficients.len()).into_iter().zip(coefficients.into_iter()){
             for (index_p,point) in (0..eval_points.len()).zip(eval_points.clone().into_iter()){
-                let evaluation = large_field_shamir_context.mod_evaluate_at_lf(&coefficient_vec.as_slice(), point);
+                let evaluation = large_field_shamir_context.evaluate_at(Polynomial::new(&coefficient_vec.as_slice()), point);
                 row_evaluations[index].push(evaluation.clone());
                 column_evaluations[index_p].push(evaluation);
             }
@@ -187,7 +188,7 @@ impl Context{
             let nonce_interpolated_batch_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &nonce_points_batch_wise);
             
             for (index, eval_index) in (0..evaluation_points.len()).zip(evaluation_points.clone().into_iter()){
-                let eval_point = self.large_field_uv_sss.mod_evaluate_at_lf(&nonce_interpolated_batch_coeffs, eval_index);
+                let eval_point = self.large_field_uv_sss.evaluate_at(&nonce_interpolated_batch_coeffs, eval_index);
                 share_map[index].1.push(eval_point);
             }
 
@@ -195,7 +196,7 @@ impl Context{
                 let single_bv_coefficients = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &eval_points_single_bv);
 
                 for (index,eval_index) in (0..evaluation_points.len()).zip(evaluation_points.clone().into_iter()){
-                    let eval_point = self.large_field_uv_sss.mod_evaluate_at_lf(&single_bv_coefficients, eval_index);
+                    let eval_point = self.large_field_uv_sss.evaluate_at(&single_bv_coefficients, eval_index);
                     share_map[index].0[batch_index].push(eval_point);
                 }
             }
