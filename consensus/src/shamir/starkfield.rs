@@ -121,8 +121,8 @@ impl ShamirSecretSharing {
         let evaluation_point = self.get_evaluation_point_from_u64(x);
         polynomial.evaluate(&evaluation_point)
     }
-    pub fn evaluate_at_lf(&self, polynomial: &Polynomial<LargeField>, x: &LargeField) -> LargeField {
-        let evaluation_point = self.get_evaluation_point_from_lf(x);
+    pub fn evaluate_at_lf(&self, polynomial: &Polynomial<LargeField>, x: LargeField) -> LargeField {
+        let evaluation_point = self.get_evaluation_point_from_lf(&x);
         polynomial.evaluate(&evaluation_point)
     }
 }
@@ -147,6 +147,18 @@ impl ShamirSecretSharing {
     // Note that we expect polynomial_evaluations at points 0, w^0, w^1, ... w^(t), and not 0... t like we did before
     // We return the polynomial evaluations at points 0, w^0, w^1, ... w^(n) where n is the share amount
     // Note that we can only use this function when t+1 = 2^m
+
+    pub fn verify_degree(&self, values: &mut Vec<LargeField>) -> bool{
+        let mut shares_interp = Vec::new();
+        
+        for rep in self.share_amount - self.threshold .. self.share_amount{
+            shares_interp.push(values[rep+1].clone());
+        }
+        
+        let secret = self.recover(&Polynomial::new(&shares_interp[..]));
+        //println!("Degree verification : {:?} {:?}",secret,values[0].clone());
+        secret == values[0].clone()
+    }
     pub fn fill_evaluation_at_all_points_fft(&self, polynomial_evals: &mut Vec<LargeField>) {
         let mut all_values = Vec::new();
         all_values.push(polynomial_evals[0]);

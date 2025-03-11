@@ -5,6 +5,7 @@ use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
 
 use crate::{Context, msg::{PointsBV, PointsBVSer, ProtMsg, Commitment}, protocol::BatchACSSState};
+use lambdaworks_math::traits::ByteConversion;
 
 impl Context{
     pub async fn process_ready(self: &mut Context, ctrbc_msg: CTRBCMsg, enc_share: Vec<u8>, ready_sender: Replica, instance_id: usize){
@@ -147,7 +148,7 @@ impl Context{
 
                 // Sample F(x,0) polynomial next
                 let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
-                let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+                let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index as u64)).collect();
                 eval_point_indices_lf.reverse();
                 let eval_points_len = eval_point_indices_lf.len();
 
@@ -191,7 +192,7 @@ impl Context{
                     }
 
                     
-                    let dzk_poly_point = LargeField::from_bytes_be(dzk_poly[self.myid+1].clone().as_slice()).collect();
+                    let dzk_poly_point = LargeField::from_bytes_be(dzk_poly[self.myid+1].clone().as_slice()).unwrap();
                     let mut sub_point = dzk_poly_point - agg_value;
               
 
@@ -239,7 +240,7 @@ impl Context{
         let sender_party = instance_id/self.threshold;
         log::info!("Terminating ACSS for instance id {}, true_inst_id: {}, sender_party: {}",instance_id, true_inst_id, sender_party);
 
-        let shares_ser = shares.into_iter().map(|share| share.to_signed_bytes_be()).collect();
+        let shares_ser = shares.into_iter().map(|share| share.to_bytes_be().to_vec()).collect();
         let _status = self.out_acss_shares.send((true_inst_id, sender_party, root_comm, shares_ser)).await;
     }
 }

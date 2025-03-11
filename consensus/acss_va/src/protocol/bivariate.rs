@@ -8,6 +8,8 @@ use types::Replica;
 
 use crate::{Context, msg::{Commitment, PointsBV}};
 
+use lambdaworks_math::traits::ByteConversion;
+
 impl Context{
     // This method samples a random degree-(2t,t) bivariate polynomial given a set of secrets to encode within it. 
     // Returns (a,b,c) - a is the set of evaluations on row polynomials on the given evaluation points, 
@@ -41,7 +43,7 @@ impl Context{
             // First polynomial must be randomly sampled
             let mut first_poly = Vec::new();
             for _ in 0..2*num_faults+1{
-                first_poly.push(large_field_uv_sss.rand_field_element());
+                first_poly.push(ShamirSecretSharing::rand_field_element());
             }
             row_coefficients.push(first_poly);
         }
@@ -78,7 +80,7 @@ impl Context{
         }
         for (index,coefficient_vec) in (0..coefficients.len()).into_iter().zip(coefficients.into_iter()){
             for (index_p,point) in (0..eval_points.len()).zip(eval_points.clone().into_iter()){
-                let evaluation = large_field_shamir_context.evaluate_at(Polynomial::new(&coefficient_vec.as_slice()), point);
+                let evaluation = large_field_shamir_context.evaluate_at_lf(&Polynomial::new(&coefficient_vec.as_slice()), point);
                 row_evaluations[index].push(evaluation.clone());
                 column_evaluations[index_p].push(evaluation);
             }
@@ -95,7 +97,7 @@ impl Context{
     pub fn sample_univariate_polynomial(&self) -> Vec<LargeField>{
         let mut coeffs = Vec::new();
         for _ in 0..self.num_faults+1{
-            coeffs.push(self.large_field_uv_sss.rand_field_element());
+            coeffs.push(ShamirSecretSharing::rand_field_element());
         }
         coeffs
     }
@@ -165,7 +167,7 @@ impl Context{
         // Construct Vandermonde inverse matrix for the given set of indices
         let mut indices_vec: Vec<usize> = indices_verified_points.iter().map(|el| el.clone()).collect();
         indices_vec.sort();
-        let mut indices_lf: Vec<LargeField> = indices_verified_points.iter().map(|el| LargeField::from(*el)).collect();
+        let mut indices_lf: Vec<LargeField> = indices_verified_points.iter().map(|el| LargeField::from(*el as u64)).collect();
         indices_lf.sort();
         let vandermonde_matrix = self.large_field_uv_sss.vandermonde_matrix(&indices_lf);
         let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix);
@@ -188,7 +190,7 @@ impl Context{
             let nonce_interpolated_batch_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &nonce_points_batch_wise);
             
             for (index, eval_index) in (0..evaluation_points.len()).zip(evaluation_points.clone().into_iter()){
-                let eval_point = self.large_field_uv_sss.evaluate_at(&nonce_interpolated_batch_coeffs, eval_index);
+                let eval_point = self.large_field_uv_sss.evaluate_at_lf(&nonce_interpolated_batch_coeffs, eval_index);
                 share_map[index].1.push(eval_point);
             }
 
@@ -196,7 +198,7 @@ impl Context{
                 let single_bv_coefficients = self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &eval_points_single_bv);
 
                 for (index,eval_index) in (0..evaluation_points.len()).zip(evaluation_points.clone().into_iter()){
-                    let eval_point = self.large_field_uv_sss.evaluate_at(&single_bv_coefficients, eval_index);
+                    let eval_point = self.large_field_uv_sss.evaluate_at_lf(&single_bv_coefficients, eval_index);
                     share_map[index].0[batch_index].push(eval_point);
                 }
             }

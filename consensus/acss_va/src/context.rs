@@ -3,6 +3,7 @@ use std::{
     net::{SocketAddr, SocketAddrV4},
 };
 
+use lambdaworks_math::traits::ByteConversion;
 use anyhow::{anyhow, Result};
 use config::Node;
 
@@ -177,7 +178,7 @@ impl Context {
 
         // Folding context
         let folding_context = FoldingDZKContext{
-            large_field_uv_sss: lf_uv_sss,
+            large_field_uv_sss: lf_uv_sss.clone(),
             hash_context: hashstate2,
             poly_split_evaluation_map: ss_contexts,
             evaluation_points: (1..config.num_nodes+1).into_iter().collect(),
@@ -285,7 +286,7 @@ impl Context {
                     )?;
                     let acss_inst_id = self.myid*self.threshold + acss_msg.0;
                     let acss_share_msgs_ser = acss_msg.1;
-                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
                     self.init_batch_acss_va(acss_lf_secrets, acss_inst_id).await;
                 }
             };

@@ -9,6 +9,8 @@ use types::{WrapperMsg, Replica};
 use crate::{Context, msg::{RowPolynomialsBatch, Commitment, RowPolynomialsBatchSer, ProtMsg, PointsBV}, protocol::BatchACSSState};
 use consensus::LargeField;
 
+use lambdaworks_math::{polynomial::Polynomial, traits::ByteConversion};
+
 impl Context{
     pub async fn init_batch_acss_va(self: &mut Context, secrets: Vec<LargeField>, instance_id: usize){
 
@@ -47,10 +49,10 @@ impl Context{
         
         let mut handles: Vec<(usize, 
         tokio::task::JoinHandle<
-        (Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
-            Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
-            Vec<Vec<Vec<num_bigint_dig::BigInt>>>, 
-            Vec<Vec<Vec<num_bigint_dig::BigInt>>>)>)> = Vec::new();
+        (Vec<Vec<Vec<LargeField>>>, 
+            Vec<Vec<Vec<LargeField>>>, 
+            Vec<Vec<Vec<LargeField>>>, 
+            Vec<Vec<Vec<LargeField>>>)>)> = Vec::new();
         for (b_i,batch) in (0..num_cores).into_iter().zip(batched_parallel_secrets.into_iter()){
             let batch_index = b_i*len_each_chunk;
             let job = tokio::spawn(
@@ -117,7 +119,7 @@ impl Context{
             // First polynomial must be randomly sampled
             let mut first_poly = Vec::new();
             for _ in 0..2*self.num_faults+1{
-                first_poly.push(self.large_field_uv_sss.rand_field_element());
+                first_poly.push(ShamirSecretSharing::rand_field_element());
             }
 
             let (mut nonce_row_evals, mut nonce_col_evals, _nonce_row_coeffs) 
@@ -141,7 +143,7 @@ impl Context{
 
             let mut nonce_coefficients_all_parties = Vec::new();
             for row_poly in nonce_row_evals.iter(){
-                nonce_coefficients_all_parties.push(self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
+                nonce_coefficients_all_parties.push(self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly).coefficients);
             }
 
             // Generate commitments
@@ -170,10 +172,10 @@ impl Context{
             let blinding_poly_coeffs = self.sample_univariate_polynomial();
             let blinding_nonce_poly_coeffs = self.sample_univariate_polynomial();
 
-            let blinding_eval_points_comm: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&blinding_poly_coeffs, point)).collect();
+            let blinding_eval_points_comm: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&blinding_poly_coeffs), point as u64)).collect();
             
-            let blinding_eval_points_dzk: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&blinding_poly_coeffs, point)).collect();
-            let blinding_nonce_eval_points: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&blinding_nonce_poly_coeffs, point)).collect();
+            let blinding_eval_points_dzk: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|point| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&blinding_poly_coeffs), point as u64)).collect();
+            let blinding_nonce_eval_points: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&blinding_nonce_poly_coeffs), point as u64)).collect();
 
             let mut blinding_poly_evals_vec = Vec::new();
             blinding_poly_evals_vec.push(blinding_eval_points_comm.clone());
@@ -211,9 +213,9 @@ impl Context{
 
             self.large_field_uv_sss.fill_evaluation_at_all_points(&mut agg_poly);
 
-            dzk_polynomials.push(agg_poly.clone().into_iter().map(|el| el.to_bytes_be()).to_vec().collect());
+            dzk_polynomials.push(agg_poly.clone().into_iter().map(|el| el.to_bytes_be().to_vec()).collect());
 
-            blinding_nonces.push(blinding_nonce_eval_points.clone().into_iter().map(|el| el.to_bytes_be()).to_vec().collect());
+            blinding_nonces.push(blinding_nonce_eval_points.clone().into_iter().map(|el| el.to_bytes_be().to_vec()).collect());
             
             //Compose share message
             
@@ -341,8 +343,8 @@ impl Context{
         inverse_vandermonde: Vec<Vec<LargeField>>,
         num_faults: usize,
         num_nodes: usize,
-        large_field_bv_sss: LargeFieldSSS,
-        large_field_uv_sss: LargeFieldSSS
+        large_field_bv_sss: ShamirSecretSharing,
+        large_field_uv_sss: ShamirSecretSharing, 
     )-> 
     (Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>,Vec<Vec<Vec<LargeField>>>)
     {
@@ -359,12 +361,12 @@ impl Context{
 
             let mut points_f_x0: Vec<LargeField> = batch.clone();
             for _ in 1..num_faults+1{
-                let rnd_share = self.large_field_uv_sss.rand_field_element();
+                let rnd_share = ShamirSecretSharing::rand_field_element();
                 points_f_x0.push(rnd_share);
             }
 
             // Generate coefficients of this polynomial
-            let coeffs_f_x0 = large_field_bv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&points_f_x0);
+            let coeffs_f_x0 = large_field_bv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&points_f_x0).coefficients;
             
             let mut prf_seed = Vec::new();
             prf_seed.extend(instance_id.to_be_bytes());
@@ -402,7 +404,7 @@ impl Context{
 
             let mut coefficients_all_parties = Vec::new();
             for row_poly in row_evaluations.iter(){
-                coefficients_all_parties.push(large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly));
+                coefficients_all_parties.push(large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &row_poly).coefficients);
             }
 
             row_coefficients_batch.push(coefficients_all_parties);
@@ -489,10 +491,10 @@ impl Context{
 
             // Verify DZK proof
             let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
-            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index as u64)).collect();
             eval_point_indices_lf.reverse();
 
-            let dzk_polynomial: Vec<LargeField> = dzk_polynomial.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+            let dzk_polynomial: Vec<LargeField> = dzk_polynomial.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
             if !shares_batch.verify_shares_with_dzk(
                 dzk_polynomial[self.myid+1].clone(), 
                 eval_point_indices_lf, 
@@ -504,18 +506,18 @@ impl Context{
 
 
             let eval_point_start: isize = ((self.num_faults) as isize) * (-1);
-            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index)).collect();
+            let mut eval_point_indices_lf: Vec<LargeField> = (eval_point_start..1).into_iter().map(|index| LargeField::from(index as u64)).collect();
             eval_point_indices_lf.reverse();
 
             let row_evaluations_batch: Vec<Vec<LargeField>> = shares_batch.coefficients.clone().into_iter().map(|coeffs| {
                 // Shares of degree-t share polynomials
                 for point in eval_point_indices_lf.clone().into_iter(){
-                    shares.push(self.large_field_uv_sss.mod_evaluate_at_lf(&coeffs, point));
+                    shares.push(self.large_field_uv_sss.evaluate_at_lf(&Polynomial::new(&coeffs), point));
                 }
-                return (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&coeffs, point)).collect();
+                return (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&coeffs), point as u64)).collect();
             }).collect();
 
-            let nonce_evals_batch: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.mod_evaluate_at(&shares_batch.nonce_coefficients , point)).collect();
+            let nonce_evals_batch: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point| self.large_field_uv_sss.evaluate_at(&Polynomial::new(&shares_batch.nonce_coefficients) , point as u64)).collect();
             
             row_evaluations.push(row_evaluations_batch);
             nonce_evaluations.push(nonce_evals_batch);
@@ -607,11 +609,11 @@ impl Context{
         }
         for shares_poly in shares{
             for (rep,share) in (0..shares_poly.len()).into_iter().zip(shares_poly.into_iter()){
-                appended_msgs[rep].extend(share.to_signed_bytes_be());
+                appended_msgs[rep].extend(share.to_bytes_be().to_vec());
             }
         }
         for (mut msg,nonce) in appended_msgs.into_iter().zip(nonces.into_iter()){
-            let nonce_ser = nonce.to_signed_bytes_be();
+            let nonce_ser = nonce.to_bytes_be().to_vec();
             msg.extend(nonce_ser);
             hashes.push(do_hash(msg.as_slice()));
         }
@@ -626,9 +628,9 @@ impl Context{
         }
         for (batch_index,(shares_poly, nonce)) in (0..shares.len()).into_iter().zip(shares.into_iter().zip(nonces.into_iter())){
             for share in shares_poly.into_iter(){
-                appended_msgs[batch_index].extend(share.to_signed_bytes_be());
+                appended_msgs[batch_index].extend(share.to_bytes_be().to_vec());
             }
-            appended_msgs[batch_index].extend(nonce.to_signed_bytes_be());
+            appended_msgs[batch_index].extend(nonce.to_bytes_be().to_vec());
         }
         for msg in appended_msgs.into_iter(){
             hashes.push(do_hash(msg.as_slice()));
