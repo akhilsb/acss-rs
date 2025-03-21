@@ -59,10 +59,13 @@ impl Context{
             // Output this value finally
             log::info!("ACS output of value {}", value);
             log::info!("ACS output {:?}", self.acs_state.re_broadcast_messages.get(&value).unwrap());
+            // Shift all this part of the code to a new repository
             // Compute random linear combination of shares
             let output_set = self.acs_state.re_broadcast_messages.get(&value).unwrap();
-            self.acs_state.acs_output.extend(output_set);
-            self.gen_rand_shares().await;
+            let _status = self.acs_out_channel.send(output_set.clone()).await;
+            
+            //self.acs_state.acs_output.extend(output_set);
+            //self.gen_rand_shares().await;
         }
         else{
             let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();

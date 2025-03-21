@@ -76,12 +76,12 @@ async fn main() -> Result<()> {
     // Start the Reliable Broadcast protocol
     let exit_tx;
     match vss_type {
-        "acs" => {
+        "dpss" => {
             exit_tx = 
-                acs::Context::spawn(config, 
+                dpss::Context::spawn(config, 
                     batches, 
                     per_batch, 
-                    true,
+                    false,
                     node_normal
                 ).unwrap();
         }

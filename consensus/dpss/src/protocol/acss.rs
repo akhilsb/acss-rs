@@ -5,7 +5,7 @@ use num_bigint_dig::RandBigInt;
 //use num_bigint_dig::RandBigInt;
 use types::Replica;
 
-use crate::{Context, msg::{ProtMsg, CTRBCInterface}};
+use crate::{Context, msg::{ProtMsg}};
 
 impl Context{
     pub async fn start_acss(&mut self, num_points: usize){
@@ -31,12 +31,12 @@ impl Context{
         let inst_key = (inst+1)/2;
         let first_or_second = inst%2;
 
-        if !self.acss_map.contains_key(&sender){
+        if !self.dpss_state.acss_map.contains_key(&sender){
             let hash_map = HashMap::default();
-            self.acss_map.insert(sender, hash_map);
+            self.dpss_state.acss_map.insert(sender, hash_map);
         }
         
-        let party_share_map = self.acss_map.get_mut(&sender).unwrap();
+        let party_share_map = self.dpss_state.acss_map.get_mut(&sender).unwrap();
         if !party_share_map.contains_key(&inst_key){
             party_share_map.insert(inst_key, (None,None));
         }
@@ -93,11 +93,11 @@ impl Context{
             return;
         }
         let eval_point_lf = LargeField::from_signed_bytes_be(eval_point.as_slice());
-        if !self.sec_equivalence.contains_key(&origin){
-            self.sec_equivalence.insert(origin, HashMap::default());
+        if !self.dpss_state.sec_equivalence.contains_key(&origin){
+            self.dpss_state.sec_equivalence.insert(origin, HashMap::default());
         }
 
-        let sec_eq_map = self.sec_equivalence.get_mut(&origin).unwrap();
+        let sec_eq_map = self.dpss_state.sec_equivalence.get_mut(&origin).unwrap();
         if !sec_eq_map.contains_key(&inst_key){
             sec_eq_map.insert(inst_key, (HashMap::default(),HashMap::default()));
         }
@@ -157,10 +157,10 @@ impl Context{
     }
 
     pub async fn check_acss_and_secret_equivalence_termination(&mut self, origin: Replica){
-        if !self.acss_map.contains_key(&origin) {
+        if !self.dpss_state.acss_map.contains_key(&origin) {
             return;
         }
-        let acss_share_map = self.acss_map.get(&origin).unwrap();
+        let acss_share_map = self.dpss_state.acss_map.get(&origin).unwrap();
 
         if acss_share_map.len()< self.num_batches{
             return;
@@ -183,13 +183,7 @@ impl Context{
 
         if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() == self.num_batches{
             self.acs_input_set.insert(origin);
-            log::info!("Completed sharing process for secrets originated by {}, adding to acs_set", origin);
-            let ctrbc_msg = CTRBCInterface{
-                id: 1,
-                msg: Vec::new()
-            };
-            let ser_msg = bincode::serialize(&ctrbc_msg).unwrap();
-            self.process_ctrbc_event(origin, 1, ser_msg).await;
+            let _status = self.acs_term_event.send(origin).await;
             // Check if ACS already output shares
             self.gen_rand_shares().await;
         }

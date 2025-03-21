@@ -15,9 +15,6 @@ pub struct ACSState{
     pub ra_value: Option<Replica>,
 
     pub acs_output: HashSet<Replica>,
-
-    pub pub_rec_echo1s: HashMap<Replica, Vec<LargeField>>,
-    pub pub_rec_echo2s: HashMap<Replica, Vec<LargeField>>
 }
 
 impl ACSState{
@@ -34,9 +31,6 @@ impl ACSState{
             ra_value: None,
 
             acs_output: HashSet::default(),
-
-            pub_rec_echo1s: HashMap::default(),
-            pub_rec_echo2s: HashMap::default()
         }
     }
 }

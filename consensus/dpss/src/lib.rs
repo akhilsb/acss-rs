@@ -1,8 +1,7 @@
 mod context;
 pub use context::*;
 
-pub mod protocol;
-pub use protocol::*;
+mod protocol;
 
 mod handlers;
 pub use handlers::*;

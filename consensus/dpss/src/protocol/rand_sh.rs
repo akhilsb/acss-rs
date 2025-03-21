@@ -5,8 +5,14 @@ use types::{WrapperMsg, Replica};
 use crate::{Context, msg::ProtMsg};
 
 impl Context{
+    pub async fn process_acs_output(&mut self, acs_output: Vec<Replica>){
+        self.dpss_state.acs_output.extend(acs_output.clone());
+        // Generate random shares
+        self.gen_rand_shares().await;
+    }
+
     pub async fn gen_rand_shares(&mut self){
-        if self.acs_state.acs_output.len() == 0{
+        if self.dpss_state.acs_output.len() == 0{
             return;
         }
 
@@ -17,9 +23,9 @@ impl Context{
             shares_to_be_combined.push(Vec::new());
         }
         for rep in 0..self.num_nodes{
-            if self.acs_state.acs_output.contains(&rep){
+            if self.dpss_state.acs_output.contains(&rep){
                 // Fetch shares
-                let share_inst_map = self.acss_map.get(&rep).unwrap();
+                let share_inst_map = self.dpss_state.acss_map.get(&rep).unwrap();
                 let mut index = 0;
                 for batch in 1..self.num_batches+1{
                     if !share_inst_map.contains_key(&batch){
@@ -69,16 +75,16 @@ impl Context{
         let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
         // Utilize shares for error correction
         let shares_len = shares.len();
-        self.acs_state.pub_rec_echo1s.insert(sender, shares);
-        if self.acs_state.pub_rec_echo1s.len() == self.num_faults + 1{
+        self.dpss_state.pub_rec_echo1s.insert(sender, shares);
+        if self.dpss_state.pub_rec_echo1s.len() == self.num_faults + 1{
             // Reconstruct all shares for polynomials
             let mut vec_shares_indices = Vec::new();
             for _ in 0..shares_len{
                 vec_shares_indices.push(Vec::new());
             }
             for rep in 0..self.num_nodes{
-                if self.acs_state.pub_rec_echo1s.contains_key(&rep){
-                    let shares_sub_poly = self.acs_state.pub_rec_echo1s.get(&rep).unwrap().clone();
+                if self.dpss_state.pub_rec_echo1s.contains_key(&rep){
+                    let shares_sub_poly = self.dpss_state.pub_rec_echo1s.get(&rep).unwrap().clone();
                     for (index, shares_ind) in (0..shares_len).into_iter().zip(shares_sub_poly.into_iter()){
                         vec_shares_indices[index].push(((rep+1), shares_ind));
                     }
@@ -101,8 +107,8 @@ impl Context{
         let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
         // Utilize shares for error correction
         let shares_len = shares.len();
-        self.acs_state.pub_rec_echo2s.insert(sender, shares);
-        if self.acs_state.pub_rec_echo2s.len() == self.num_faults + 1{
+        self.dpss_state.pub_rec_echo2s.insert(sender, shares);
+        if self.dpss_state.pub_rec_echo2s.len() == self.num_faults + 1{
             // Reconstruct all shares for polynomials
             let mut vec_shares_indices = Vec::new();
             for _ in 0..shares_len{
@@ -111,8 +117,8 @@ impl Context{
 
             let mut ht_indices = Vec::new();
             for rep in 0..self.num_nodes{
-                if self.acs_state.pub_rec_echo2s.contains_key(&rep){
-                    let shares_sub_poly = self.acs_state.pub_rec_echo2s.get(&rep).unwrap().clone();
+                if self.dpss_state.pub_rec_echo2s.contains_key(&rep){
+                    let shares_sub_poly = self.dpss_state.pub_rec_echo2s.get(&rep).unwrap().clone();
                     for (index, shares_ind) in (0..shares_len).into_iter().zip(shares_sub_poly.into_iter()){
                         vec_shares_indices[index].push(shares_ind);
                     }
@@ -129,7 +135,7 @@ impl Context{
                 secrets_blinded.extend(self.large_field_shamir_ss.polynomial_coefficients_with_vandermonde_matrix(&vandermonde_inverse, &shares));
             }
             log::info!("Finished reconstruction of secrets, total length: {}", secrets_blinded.len());
-            self.terminate("Term".to_string()).await;
+            //self.terminate("Term".to_string()).await;
         }
     }
 }

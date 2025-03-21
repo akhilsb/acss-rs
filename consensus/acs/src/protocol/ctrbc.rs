@@ -9,15 +9,13 @@ impl Context{
         let deser_msg: CTRBCInterface = bincode::deserialize(value.as_slice()).unwrap();
         let instance = deser_msg.id;
         let value = deser_msg.msg;
-        if instance == 1{
-            
+        if instance == 1 {
             // First instance is for the RBC of the core ACS instance
-            // Replace this part with ACSS protocol invocation
+            // This 
             
             //let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
             self.acs_state.broadcast_messages.insert(broadcaster , Vec::new());
             
-            // Second time CTRBC has been used. 
             if self.acs_state.broadcast_messages.len() == self.num_nodes - self.num_faults{
                 // Invoke CTRBC to broadcast list of indices
                 let key_set:Vec<Replica> = self.acs_state.broadcast_messages.keys().map(|key | key.clone()).collect();
@@ -118,5 +116,16 @@ impl Context{
             self.start_vaba( pre_i, Vec::new(), 1).await;
             self.acs_state.vaba_started = true;
         }
+    }
+
+    pub async fn process_termination_event(&mut self, replica: usize){
+        self.acs_input_set.insert(replica);
+        log::info!("Completed sharing process for secrets originated by {}, adding to acs_set", replica);
+        let ctrbc_msg = CTRBCInterface{
+            id: 1,
+            msg: Vec::new()
+        };
+        let ser_msg = bincode::serialize(&ctrbc_msg).unwrap();
+        self.process_ctrbc_event(replica, 1, ser_msg).await;
     }
 }
