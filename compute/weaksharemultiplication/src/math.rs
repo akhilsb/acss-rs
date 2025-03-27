@@ -47,32 +47,7 @@ pub(crate) fn evaluate_polynomial_from_coefficients_at_position(
     coefficients: Vec<FieldElement<Stark252PrimeField>>,
     evaluation_point: FieldElement<Stark252PrimeField>,
 ) -> FieldElement<Stark252PrimeField> {
-    let n = coefficients.len();
-
-    if n <= 100 {
-        let mut result = FieldElement::<Stark252PrimeField>::zero();
-        let mut x_power = FieldElement::<Stark252PrimeField>::one();
-
-        for coefficient in coefficients {
-            result = result + coefficient * x_power;
-            x_power = x_power * evaluation_point;
-        }
-        return result;
-    }
-
-    let mut powers = Vec::with_capacity(n);
-    let mut current_power = FieldElement::<Stark252PrimeField>::one();
-    powers.push(current_power);
-
-    for _ in 1..n {
-        current_power = current_power * evaluation_point;
-        powers.push(current_power);
-    }
-
-    coefficients.par_iter()
-        .zip(powers.par_iter())
-        .map(|(coeff, power)| *coeff * *power)
-        .reduce(|| FieldElement::<Stark252PrimeField>::zero(), |a, b| a + b)
+    Polynomial::new(&coefficients).evaluate(&evaluation_point)
 }
 
 
@@ -89,63 +64,10 @@ pub(crate) fn evaluate_polynomial_from_coefficients_at_position(
 pub(crate) fn interpolate_polynomial(
     shares: Vec<(FieldElement<Stark252PrimeField>, FieldElement<Stark252PrimeField>)>,
 ) -> Vec<FieldElement<Stark252PrimeField>> {
-    let n = shares.len();
-    let mut matrix = vec![vec![FieldElement::<Stark252PrimeField>::zero(); n + 1]; n];
-
-    // Populate the matrix
-    for (i, &(x, y)) in shares.iter().enumerate() {
-        let mut x_power = FieldElement::<Stark252PrimeField>::one();
-        for j in 0..n {
-            matrix[i][j] = x_power;
-            x_power = x_power * x;
-        }
-        matrix[i][n] = y;
-    }
-
-    // Perform Gaussian elimination
-    for i in 0..n {
-        // Find pivot
-        let mut pivot_row = i;
-        for j in i + 1..n {
-            if matrix[j][i] != FieldElement::<Stark252PrimeField>::zero() {
-                pivot_row = j;
-                break;
-            }
-        }
-
-        // Swap rows if necessary
-        if pivot_row != i {
-            matrix.swap(i, pivot_row);
-        }
-
-        let pivot = matrix[i][i];
-        let pivot_inv = pivot.inv().unwrap(); // Unwrap the Result
-
-        // Normalize pivot row
-        for j in i..=n {
-            matrix[i][j] = matrix[i][j] * pivot_inv;
-        }
-
-        // Eliminate in other rows
-        for k in 0..n {
-            if k != i {
-                let factor = matrix[k][i];
-                for j in i..=n {
-                    matrix[k][j] = matrix[k][j] - factor * matrix[i][j];
-                }
-            }
-        }
-    }
-
-    // Extract solution
-    let mut result: Vec<FieldElement<Stark252PrimeField>> = matrix.iter().map(|row| row[n]).collect();
-
-    // Remove leading zero coefficients
-    while result.len() > 1 && result.last() == Some(&FieldElement::<Stark252PrimeField>::zero()) {
-        result.pop();
-    }
-
-    result
+    let xs: Vec<FieldElement<Stark252PrimeField>> = shares.iter().map(|(x, _)| x.clone()).collect();
+    let ys: Vec<FieldElement<Stark252PrimeField>> = shares.iter().map(|(_, y)| y.clone()).collect();
+    let polynomial: Polynomial<FieldElement<Stark252PrimeField>> = Polynomial::interpolate(&xs, &ys).unwrap();
+    polynomial.coefficients
 }
 
 pub(crate) fn generate_vandermonde_matrix(rows: usize, cols: usize) -> Vec<Vec<FieldElement<Stark252PrimeField>>> {
