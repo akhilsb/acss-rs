@@ -111,7 +111,7 @@ impl Context {
         config: Node,
         term_event_channel: Receiver<usize>,
         acs_out_channel: Sender<Vec<usize>>,
-        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+        byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -277,6 +277,8 @@ impl Context {
         //         false
         //     );
         // }
+        // This is so that the inner contexts are not dropped by the compiler
+        let mut statuses = Vec::new();
 
         let _rbc_serv_status = ctrbc::Context::spawn(
             rbc_config,
@@ -285,12 +287,16 @@ impl Context {
             false
         );
 
+        statuses.push(_rbc_serv_status);
+
         let _asks_serv_status = asks::Context::spawn(
             asks_config, 
             asks_req_recv_channel, 
             asks_out_send_channel,
             false
         );
+
+        statuses.push(_asks_serv_status);
 
         let _ra_serv_status = ra::Context::spawn(
             ra_config,
@@ -299,10 +305,12 @@ impl Context {
             false
         );
 
+        statuses.push(_ra_serv_status);
+
         let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
         signals.forever().next();
         log::error!("Received termination signal");
-        Ok(exit_tx)
+        Ok((exit_tx, statuses))
     }
 
     pub async fn broadcast(&mut self, protmsg: ProtMsg) {
