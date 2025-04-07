@@ -43,7 +43,7 @@ impl Context{
             let ready_msg = ProtMsg::Ready(instance_id, value);
             self.broadcast(ready_msg).await;
         }
-        else if size == self.num_nodes - self.num_faults && !ra_context.terminated {
+        else if size >= self.num_nodes - self.num_faults && !ra_context.terminated {
             log::info!("Received n-f READY messages for RA Instance ID {}, terminating",instance_id);
             // Terminate protocol
             ra_context.terminated = true;

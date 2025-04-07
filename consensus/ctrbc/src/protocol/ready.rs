@@ -108,7 +108,7 @@ impl Context {
                 self.broadcast(ready_msg).await;
             }
         }
-        else if size == self.num_nodes - self.num_faults && !rbc_context.terminated {
+        else if size >= self.num_nodes - self.num_faults && !rbc_context.terminated {
             log::info!("Received n-f READY messages for RBC Instance ID {}, terminating",instance_id);
             // Terminate protocol
             rbc_context.terminated = true;
