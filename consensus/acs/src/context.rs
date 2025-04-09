@@ -12,7 +12,7 @@ use network::{
     Acknowledgement,
 };
 use num_bigint_dig::{BigInt};
-use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
+//use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
 use tokio::{sync::{
     mpsc::{UnboundedReceiver, Sender, Receiver, channel, unbounded_channel},
     oneshot,
@@ -307,9 +307,9 @@ impl Context {
 
         statuses.push(_ra_serv_status);
 
-        let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
-        signals.forever().next();
-        log::error!("Received termination signal");
+        // let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
+        // signals.forever().next();
+        // log::error!("Received termination signal");
         Ok((exit_tx, statuses))
     }
 
