@@ -7,11 +7,9 @@ use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
-use tokio::sync::mpsc::channel;
 use std::{net::{SocketAddr, SocketAddrV4}};
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-//#[tokio::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     log::error!("{}", std::env::current_dir().unwrap().display());
     let yaml = load_yaml!("cli.yml");
@@ -81,15 +79,9 @@ async fn main() -> Result<()> {
                 dpss::Context::spawn(config, 
                     batches, 
                     per_batch, 
-                    false,
+                    true,
                     node_normal
                 ).unwrap();
-        }
-        "avid" => {
-            let (sender,receiver) = channel(10000);
-            exit_tx =
-                avid::Context::spawn(config, receiver, sender, node_normal)
-                    .unwrap();
         }
         "sync" => {
             let f_str = syncer_file.to_string();

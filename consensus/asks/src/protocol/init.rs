@@ -1,8 +1,7 @@
 use consensus::get_shards;
-use crypto::{LargeField, hash::{do_hash, Hash}, encrypt, decrypt, aes_hash::MerkleTree};
+use crypto::{LargeField, hash::{do_hash, Hash}, encrypt, decrypt, aes_hash::MerkleTree, rand_field_element};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
-use num_bigint_dig::RandBigInt;
 use types::{WrapperMsg, Replica};
 
 use crate::{context::Context, msg::{WSSMsg, WSSMsgSer, ProtMsg, Commitment}};
@@ -10,18 +9,15 @@ use crate::{context::Context, msg::{WSSMsg, WSSMsgSer, ProtMsg, Commitment}};
 use super::state::ASKSState;
 
 impl Context{
-    pub async fn init_asks(&mut self, instance_id: usize){
-        
-        let zero = LargeField::from(0);
-        
+    pub async fn init_asks(&mut self, instance_id: usize){        
         // Sample secret polynomial first
         
         let coefficients: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| 
-            rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime)
+            rand_field_element()
         ).collect();
         
         let nonce_coefficients: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| 
-            rand::thread_rng().gen_bigint_range(&zero, &self.large_field_uv_sss.prime)
+            rand_field_element()
         ).collect();
 
         let shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|point|
@@ -34,8 +30,8 @@ impl Context{
 
         let commitments: Vec<Hash> = shares.clone().into_iter().zip(nonce_shares.clone().into_iter()).map(|(share,nonce)|{
             let mut appended_vec = Vec::new();
-            appended_vec.extend(share.to_signed_bytes_be());
-            appended_vec.extend(nonce.to_signed_bytes_be());
+            appended_vec.extend(share.to_bytes_be());
+            appended_vec.extend(nonce.to_bytes_be());
             return do_hash(appended_vec.as_slice());
         }).collect();
 

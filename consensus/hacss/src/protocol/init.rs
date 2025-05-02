@@ -1,4 +1,4 @@
-use crypto::{encrypt, pseudorandom_lf, LargeField, SmallField, decrypt};
+use crypto::{encrypt, pseudorandom_lf, LargeField,decrypt};
 use crypto::hash::{do_hash};
 use network::Acknowledgement;
 use network::plaintcp::CancelHandler;

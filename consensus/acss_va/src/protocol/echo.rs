@@ -106,7 +106,7 @@ impl Context{
                     comm.clone(), 
                     bv_echo_points,
                     true,
-                    (1..self.num_nodes+1).into_iter().map(|el| LargeField::from(el)).collect()
+                    (1..self.num_nodes+1).into_iter().map(|el| LargeField::from(el as u64)).collect()
                 );
                 if verf_status.is_none(){
                     log::error!("Error verifying column polynomials, abandoning ACSS instance {}",instance_id);

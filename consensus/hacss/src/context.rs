@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use config::Node;
 
 use fnv::FnvHashMap;
+use lambdaworks_math::traits::ByteConversion;
 use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
@@ -20,7 +21,7 @@ use tokio::sync::{
 use types::{Replica, WrapperMsg};
 
 use crate::{Handler, ACSSVAState};
-use consensus::{SmallFieldSSS,LargeFieldSSS,FoldingDZKContext};
+use consensus::{LargeFieldSSS,FoldingDZKContext};
 
 use super::{ProtMsg};
 use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
@@ -59,7 +60,6 @@ pub struct Context {
     pub max_id: usize, 
 
     /// Shamir secret sharing states
-    pub small_field_sss: SmallFieldSSS,
     pub large_field_sss: LargeFieldSSS,
 
     pub large_field_bv_sss: LargeFieldSSS,
@@ -118,41 +118,20 @@ impl Context {
         let small_field_prime:u64 = 4294967291;
         let large_field_prime: BigInt = BigInt::parse_bytes(b"115792088158918333131516597762172392628570465465856793992332884130307292657121",10).unwrap();
         
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
-        //let small_field_prime = 37;
-        //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
-        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
-        let file_name_pattern = "data/ht/vandermonde_inverse-{}.json";
-        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
-        // // Save to file
-        let file_path = file_name_pattern.replace("{}", config.num_nodes.to_string().as_str());
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
-
-        let smallfield_ss = SmallFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes, 
-            small_field_prime
-        );
         // Blinding and Nonce polynomials
         let largefield_ss = LargeFieldSSS::new(
             config.num_faults+1, 
-            config.num_nodes, 
-            large_field_prime.clone()
+            config.num_nodes
         );
 
         let lf_bv_sss = LargeFieldSSS::new_with_vandermonde(
             2*config.num_faults +1, 
-            config.num_nodes,
-            file_path,
-            large_field_prime_bv.clone()
+            config.num_nodes
         );
 
         let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
             config.num_faults +1,
-            config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
+            config.num_nodes
         );
 
         // Prepare dZK context for halving degrees
@@ -203,7 +182,6 @@ impl Context {
 
                 max_id: rbc_start_id, 
 
-                small_field_sss: smallfield_ss,
                 large_field_sss: largefield_ss,
 
                 large_field_bv_sss: lf_bv_sss,
@@ -282,7 +260,7 @@ impl Context {
                     )?;
                     let acss_inst_id = self.myid*self.threshold + acss_msg.0;
                     let acss_share_msgs_ser = acss_msg.1;
-                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+                    let acss_lf_secrets: Vec<LargeField> = acss_share_msgs_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
                     
                     self.init_verifiable_abort(acss_lf_secrets, acss_inst_id, 2*self.num_faults+1).await;
                 }

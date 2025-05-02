@@ -1,6 +1,7 @@
 use consensus::{LargeFieldSSS};
 use crypto::{LargeField, aes_hash::{Proof, HashState, MerkleTree}, LargeFieldSer, hash::{Hash, do_hash}};
 use ctrbc::CTRBCMsg;
+use lambdaworks_math::traits::ByteConversion;
 use serde::{Serialize, Deserialize};
 use types::Replica;
 
@@ -49,7 +50,7 @@ impl RowPolynomialsBatch{
 
         let evaluations = self.points(lf_sss, eval_points.clone()); 
         let evaluations_ser: Vec<Vec<LargeFieldSer>> = evaluations.clone().into_iter().map(|el| {
-            el.into_iter().map(|el2| el2.to_signed_bytes_be()).collect()
+            el.into_iter().map(|el2| el2.to_bytes_be()).collect()
         }).collect();
         
         let mut appended_vec_vecs = Vec::new();
@@ -64,7 +65,7 @@ impl RowPolynomialsBatch{
 
         let nonce_evaluations: Vec<LargeFieldSer> = eval_points.into_iter().map(|el| {
             let point =  lf_sss.mod_evaluate_at(&self.nonce_coefficients, el);
-            return point.to_signed_bytes_be();
+            return point.to_bytes_be();
         }).collect();
 
         for (rep,nonce_eval) in (0..tot_points).into_iter().zip(nonce_evaluations.into_iter()){
@@ -82,8 +83,8 @@ impl RowPolynomialsBatch{
         }
 
         let mut appended_vec = Vec::new();
-        appended_vec.extend(self.blinding_evaluation.clone().to_signed_bytes_be());
-        appended_vec.extend(self.blinding_nonce_evaluation.clone().to_signed_bytes_be());
+        appended_vec.extend(self.blinding_evaluation.clone().to_bytes_be());
+        appended_vec.extend(self.blinding_nonce_evaluation.clone().to_bytes_be());
 
         let blinding_commitment = do_hash(appended_vec.as_slice());
         if !self.blinding_poly_proof.validate(hc) || self.blinding_poly_proof.item() != blinding_commitment{
@@ -107,11 +108,7 @@ impl RowPolynomialsBatch{
         hc: &HashState
     ) -> bool{
         // verify dzk proof
-        let mut col_root = self.batch_root(&hc) % &lf_uv_sss.prime;
-        
-        if col_root < LargeField::from(0){
-            col_root += &lf_uv_sss.prime;
-        }
+        let col_root = self.batch_root(&hc);
 
         let evaluations: Vec<Vec<LargeField>> = self.coefficients.iter().map(|poly| {
             return eval_points.clone().into_iter().map(|el|
@@ -128,11 +125,8 @@ impl RowPolynomialsBatch{
 
         let mut root_mult = col_root.clone();
         for evaluation in evaluations_expanded{
-            agg_point = (&agg_point + &root_mult*evaluation)%&lf_uv_sss.prime;
-            root_mult = (&root_mult*&col_root)%&lf_uv_sss.prime;
-        }
-        if agg_point < LargeField::from(0){
-            agg_point += &lf_uv_sss.prime;
+            agg_point = &agg_point + &root_mult*evaluation;
+            root_mult = &root_mult*&col_root;
         }
         dzk_poly == agg_point
     }
@@ -143,7 +137,7 @@ impl RowPolynomialsBatch{
         let mr = MerkleTree::new(roots,hc);
         let hash_two = hc.hash_two(mr.root() , self.blinding_poly_proof.root());
 
-        LargeField::from_signed_bytes_be(hash_two.as_slice())
+        LargeField::from_bytes_be(hash_two.as_slice()).unwrap()
     }
 }
 
@@ -164,11 +158,11 @@ pub struct RowPolynomialsBatchSer{
 impl RowPolynomialsBatchSer{
     pub fn from_deser(rows: RowPolynomialsBatch)-> RowPolynomialsBatchSer{
         let ser_coeffs: Vec<Vec<LargeFieldSer>> = rows.coefficients.iter().map(|coefficients| 
-            coefficients.iter().map(|element| element.to_signed_bytes_be()).collect()
+            coefficients.iter().map(|element| element.to_bytes_be()).collect()
         ).collect();
-        let blind_eval: LargeFieldSer = rows.blinding_evaluation.to_signed_bytes_be();
-        let nonce_coeffs: Vec<LargeFieldSer> = rows.nonce_coefficients.iter().map(|el| el.to_signed_bytes_be()).collect();
-        let blinding_nonce_eval: LargeFieldSer = rows.blinding_nonce_evaluation.to_signed_bytes_be();
+        let blind_eval: LargeFieldSer = rows.blinding_evaluation.to_bytes_be();
+        let nonce_coeffs: Vec<LargeFieldSer> = rows.nonce_coefficients.iter().map(|el| el.to_bytes_be()).collect();
+        let blinding_nonce_eval: LargeFieldSer = rows.blinding_nonce_evaluation.to_bytes_be();
 
         RowPolynomialsBatchSer { 
             coefficients: ser_coeffs, 
@@ -185,11 +179,11 @@ impl RowPolynomialsBatchSer{
 
     pub fn to_deser(&self) -> RowPolynomialsBatch{
         let deser_coeffs: Vec<Vec<LargeField>> = self.coefficients.iter().map(|coefficients| 
-            coefficients.iter().map(|element| LargeField::from_signed_bytes_be(element)).collect()
+            coefficients.iter().map(|element| LargeField::from_bytes_be(element).unwrap()).collect()
         ).collect();
-        let blind_eval: LargeField = LargeField::from_signed_bytes_be(self.blinding_evaluation.as_slice());
-        let nonce_coeffs: Vec<LargeField> = self.nonce_coefficients.iter().map(|el| LargeField::from_signed_bytes_be(el)).collect();
-        let blinding_nonce_eval: LargeField = LargeField::from_signed_bytes_be(self.blinding_nonce_evaluation.as_slice());
+        let blind_eval: LargeField = LargeField::from_bytes_be(self.blinding_evaluation.as_slice()).unwrap();
+        let nonce_coeffs: Vec<LargeField> = self.nonce_coefficients.iter().map(|el| LargeField::from_bytes_be(el).unwrap()).collect();
+        let blinding_nonce_eval: LargeField = LargeField::from_bytes_be(self.blinding_nonce_evaluation.as_slice()).unwrap();
 
         RowPolynomialsBatch { 
             coefficients: deser_coeffs, 
@@ -238,9 +232,9 @@ impl PointsBV{
         for (evaluations, nonce) in self.evaluations.iter().zip(self.nonce_evaluation.iter()){
             let mut appended_vec = Vec::new();
             for eval in evaluations{
-                appended_vec.extend(eval.to_signed_bytes_be());
+                appended_vec.extend(eval.to_bytes_be());
             }
-            appended_vec.extend(nonce.to_signed_bytes_be());
+            appended_vec.extend(nonce.to_bytes_be());
             let hash = do_hash(appended_vec.as_slice());
             vec_hashes.push(hash);
         }
@@ -249,10 +243,10 @@ impl PointsBV{
 
     pub fn to_ser(&self)-> PointsBVSer{
         let evaluations_ser: Vec<Vec<LargeFieldSer>> = self.evaluations.clone().into_iter().map(|el| {
-            return el.into_iter().map(|deser| deser.to_signed_bytes_be()).collect();
+            return el.into_iter().map(|deser| deser.to_bytes_be()).collect();
         }).collect();
         let nonce_ser: Vec<LargeFieldSer> = self.nonce_evaluation.clone().into_iter().map(|el|{
-            el.to_signed_bytes_be()
+            el.to_bytes_be()
         }).collect();
 
         PointsBVSer{
@@ -264,9 +258,9 @@ impl PointsBV{
 
     pub fn from_ser(pt: PointsBVSer)-> PointsBV{
         let evaluations: Vec<Vec<LargeField>> = pt.evaluations.into_iter().map(|el| {
-            return el.into_iter().map(|ser| LargeField::from_signed_bytes_be(ser.as_slice())).collect();
+            return el.into_iter().map(|ser| LargeField::from_bytes_be(ser.as_slice()).unwrap()).collect();
         }).collect();
-        let eval_nonce = pt.nonce_evaluation.into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+        let eval_nonce = pt.nonce_evaluation.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
         PointsBV { evaluations: evaluations, nonce_evaluation: eval_nonce, proof: pt.proofs }
     }
 }

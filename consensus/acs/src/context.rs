@@ -11,7 +11,6 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::{BigInt};
 //use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
 use tokio::{sync::{
     mpsc::{UnboundedReceiver, Sender, Receiver, channel, unbounded_channel},
@@ -36,9 +35,6 @@ pub struct Context {
     pub myid: usize,
     pub num_faults: usize,
     _byz: bool,
-
-    /// Primes for computation
-    pub large_field_prime: BigInt,
 
     pub large_field_shamir_ss: LargeFieldSSS,
     /// Secret Key map
@@ -178,14 +174,11 @@ impl Context {
         let hashstate = HashState::new(key0, key1, key2);
 
         let rbc_start_id = 1;
-        
-        let large_field_prime: LargeField = LargeField::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
+                
         // Blinding and Nonce polynomials
         let largefield_ss = LargeFieldSSS::new(
             config.num_faults+1, 
-            config.num_nodes, 
-            large_field_prime.clone()
+            config.num_nodes
         );
         // Prepare ACSS context
         //let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
@@ -215,7 +208,6 @@ impl Context {
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
                 
-                large_field_prime: large_field_prime,
                 large_field_shamir_ss: largefield_ss,
 
                 //avid_context:HashMap::default(),

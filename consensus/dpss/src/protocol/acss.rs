@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crypto::{LargeField, LargeFieldSer, hash::{Hash}};
-use num_bigint_dig::RandBigInt;
-//use num_bigint_dig::RandBigInt;
+use consensus::LargeFieldSSS;
+use crypto::{LargeField, LargeFieldSer, hash::{Hash}, rand_field_element};
+use lambdaworks_math::traits::ByteConversion;
 use types::Replica;
 
 use crate::{Context, msg::{ProtMsg}};
@@ -11,10 +11,9 @@ impl Context{
     pub async fn start_acss(&mut self, num_points: usize){
         // Sample num_points random points
         let mut random_points = Vec::new();
-        let zero = LargeField::from(0);
         for _ in 0..num_points{
-            let rand_int = rand::thread_rng().gen_bigint_range(&zero, &self.large_field_prime);
-            random_points.push(rand_int.to_signed_bytes_be());
+            let rand_int = rand_field_element();
+            random_points.push(rand_int.to_bytes_be());
         }
         let id = self.max_id;
         let _status = self.acss_req.send((id, random_points.clone())).await;
@@ -25,8 +24,7 @@ impl Context{
 
     pub async fn process_acss_event(&mut self, inst: usize, sender: usize, root_comm: Hash, shares_ser: Vec<LargeFieldSer>){
         log::info!("Received ACSS terminated event for instance {}, dealer: {}, with shares: {}", inst, sender, shares_ser.len());
-        let shares_deser = shares_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect(); 
-        
+        let shares_deser = shares_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect(); 
 
         let inst_key = (inst+1)/2;
         let first_or_second = inst%2;
@@ -59,10 +57,7 @@ impl Context{
             let root_2 = second_comm_shares.1;
 
             let core_root = self.hash_context.hash_two(root_1, root_2);
-            let mut root_comm_lf = LargeField::from_signed_bytes_be(core_root.as_slice())%&self.large_field_prime;
-            if root_comm_lf < LargeField::from(0){
-                root_comm_lf += &self.large_field_prime;
-            }
+            let root_comm_lf = LargeField::from_bytes_be(core_root.as_slice()).unwrap();
 
             // Construct aggregated shares and broadcast them within committee
             let mut root_comm_mul = root_comm_lf.clone();
@@ -70,16 +65,16 @@ impl Context{
             let mut agg_share_c2 = LargeField::from(0);
 
             for (f_share, s_share) in first_comm_shares.0.into_iter().zip(second_comm_shares.0.into_iter()){
-                agg_share_c1 += (&root_comm_mul*f_share)%&self.large_field_prime;
-                agg_share_c2 += (&root_comm_mul*s_share)%&self.large_field_prime;
+                agg_share_c1 += &root_comm_mul*f_share;
+                agg_share_c2 += &root_comm_mul*s_share;
 
-                root_comm_mul = (&root_comm_mul*&root_comm_lf)%&self.large_field_prime;
+                root_comm_mul = &root_comm_mul*&root_comm_lf;
             }
 
             // Send both shares individually
             // craft message
-            let sec_eq_c1 = ProtMsg::SecEq(inst_key, sender, 1, agg_share_c1.to_signed_bytes_be());
-            let sec_eq_c2 = ProtMsg::SecEq(inst_key, sender, 2, agg_share_c2.to_signed_bytes_be());
+            let sec_eq_c1 = ProtMsg::SecEq(inst_key, sender, 1, agg_share_c1.to_bytes_be());
+            let sec_eq_c2 = ProtMsg::SecEq(inst_key, sender, 2, agg_share_c2.to_bytes_be());
 
             self.broadcast(sec_eq_c1).await;
             self.broadcast(sec_eq_c2).await;
@@ -92,7 +87,7 @@ impl Context{
         if self.acs_input_set.contains(&origin){
             return;
         }
-        let eval_point_lf = LargeField::from_signed_bytes_be(eval_point.as_slice());
+        let eval_point_lf = LargeField::from_bytes_be(eval_point.as_slice()).unwrap();
         if !self.dpss_state.sec_equivalence.contains_key(&origin){
             self.dpss_state.sec_equivalence.insert(origin, HashMap::default());
         }
@@ -109,16 +104,25 @@ impl Context{
             if c1_val_map.contains_key(&(self.num_nodes+1)){
                 return;
             }
-            if c1_val_map.len() == self.num_faults+1{
+            if c1_val_map.len() == 2*self.num_faults+1{
                 // Reconstruct degree-t polynomial
                 let mut eval_points = Vec::new();
+                let mut evaluations = Vec::new();
                 for rep in 0..self.num_nodes{
                     if c1_val_map.contains_key(&rep){
-                        eval_points.push(((rep+1), c1_val_map.get(&rep).unwrap().clone()));
+                        eval_points.push(LargeField::from((rep+1) as u64));
+                        evaluations.push(c1_val_map.get(&rep).unwrap().clone());
                     }
                 }
+
+                let (verf, poly) = LargeFieldSSS::check_if_all_points_lie_on_degree_x_polynomial(
+                    eval_points.clone(), 
+                    vec![evaluations], 
+                    self.num_faults+1);
+                assert!(verf);
+
                 // reconstruct point
-                let secret = self.large_field_shamir_ss.recover(eval_points.as_slice());
+                let secret = poly.unwrap()[0].evaluate(&LargeField::zero());
 
                 log::info!("Reconstructed secret {:?} for instance id {} and origin {} in c_1", secret, inst_key, origin);
                 c1_val_map.insert(self.num_nodes+1, secret);
@@ -129,16 +133,25 @@ impl Context{
             if c2_val_map.contains_key(&(self.num_nodes+1)){
                 return;
             }
-            if c2_val_map.len() == self.num_faults+1{
+            if c2_val_map.len() == 2*self.num_faults+1{
                 // Reconstruct degree-t polynomial
                 let mut eval_points = Vec::new();
+                let mut evaluations = Vec::new();
                 for rep in 0..self.num_nodes{
                     if c2_val_map.contains_key(&rep){
-                        eval_points.push(((rep+1), c2_val_map.get(&rep).unwrap().clone()));
-                    }   
+                        eval_points.push(LargeField::from((rep+1) as u64));
+                        evaluations.push(c1_val_map.get(&rep).unwrap().clone());
+                    }
                 }
+
+                let (verf, poly) = LargeFieldSSS::check_if_all_points_lie_on_degree_x_polynomial(
+                    eval_points.clone(), 
+                    vec![evaluations], 
+                    self.num_faults+1);
+                assert!(verf);
+
                 // reconstruct point
-                let secret = self.large_field_shamir_ss.recover(eval_points.as_slice());
+                let secret = poly.unwrap()[0].evaluate(&LargeField::zero());
                 log::info!("Reconstructed secret {:?} for instance id {} and origin {} in c_2", secret, inst_key, origin);
                 c2_val_map.insert(self.num_nodes+1, secret);
             }
@@ -183,6 +196,7 @@ impl Context{
 
         if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() == self.num_batches{
             self.acs_input_set.insert(origin);
+            log::info!("Sending instance {} to ACS for consensus", origin);
             let _status = self.acs_term_event.send(origin).await;
             // Check if ACS already output shares
             self.gen_rand_shares().await;

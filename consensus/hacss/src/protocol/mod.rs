@@ -1,5 +1,3 @@
-mod init;
-
 mod echo_vf;
 
 mod ready_vf;

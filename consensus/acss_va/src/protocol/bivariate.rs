@@ -1,8 +1,7 @@
 use std::collections::{HashSet, HashMap};
 
 use consensus::LargeFieldSSS;
-use crypto::{LargeField, pseudorandom_lf, hash::Hash};
-use num_bigint_dig::RandBigInt;
+use crypto::{LargeField, pseudorandom_lf, hash::Hash, rand_field_element};
 use types::Replica;
 
 use crate::{Context, msg::{Commitment, PointsBV}};
@@ -35,10 +34,7 @@ impl Context{
             
             let sampled_coefficients: Vec<LargeField> = pseudorandom_lf(sec_key.as_slice(), 2*num_faults+1).into_iter().map(
                 |elem|{
-                    let mut mod_elem = elem%&large_field_uv_sss.prime;
-                    if mod_elem < LargeField::from(0){
-                        mod_elem+=&large_field_uv_sss.prime;
-                    }
+                    let mod_elem = elem;
                     mod_elem
                 }
             ).collect();
@@ -48,7 +44,7 @@ impl Context{
             // First polynomial must be randomly sampled
             let mut first_poly = Vec::new();
             for _ in 0..2*num_faults+1{
-                first_poly.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &large_field_uv_sss.prime));
+                first_poly.push(rand_field_element());
             }
             row_coefficients.push(first_poly);
         }
@@ -102,7 +98,7 @@ impl Context{
     pub fn sample_univariate_polynomial(&self) -> Vec<LargeField>{
         let mut coeffs = Vec::new();
         for _ in 0..self.num_faults+1{
-            coeffs.push(rand::thread_rng().gen_bigint_range(&LargeField::from(0), &self.large_field_bv_sss.prime));
+            coeffs.push(rand_field_element());
         }
         coeffs
     }
@@ -172,10 +168,10 @@ impl Context{
         // Construct Vandermonde inverse matrix for the given set of indices
         let mut indices_vec: Vec<usize> = indices_verified_points.iter().map(|el| el.clone()).collect();
         indices_vec.sort();
-        let mut indices_lf: Vec<LargeField> = indices_verified_points.iter().map(|el| LargeField::from(*el)).collect();
+        let mut indices_lf: Vec<LargeField> = indices_verified_points.iter().map(|el| LargeField::from(*el as u64)).collect();
         indices_lf.sort();
-        let vandermonde_matrix = self.large_field_uv_sss.vandermonde_matrix(&indices_lf);
-        let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix);
+        let vandermonde_matrix = LargeFieldSSS::vandermonde_matrix(indices_lf);
+        let inverse_vandermonde = LargeFieldSSS::inverse_vandermonde(vandermonde_matrix);
 
         // Shares and nonces of each replica
         let mut share_map: Vec<(Vec<Vec<LargeField>>, Vec<LargeField>)> = Vec::new();

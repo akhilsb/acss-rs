@@ -60,7 +60,7 @@ impl Context{
             for inst in asks_instances{
                 if vaba_context.asks_reconstructed_values.contains_key(inst){
                     let recon_value = vaba_context.asks_reconstructed_values.get(inst).unwrap();
-                    agg_secret = (agg_secret + recon_value)% &self.large_field_prime;
+                    agg_secret = agg_secret + recon_value;
                     asks_instance_set.remove(inst);
                 }
             }
@@ -95,7 +95,7 @@ impl Context{
                 if set_indices.contains(&secret_preparer_rep){
                     let mut agg_secret_old = vaba_context.ranks_parties.get(rep).unwrap().clone();
                     
-                    agg_secret_old += &recon_result;
+                    agg_secret_old += recon_result;
                     vaba_context.ranks_parties.insert(*rep, agg_secret_old);
                     set_indices.remove(&secret_preparer_rep);
 
@@ -137,26 +137,4 @@ impl Context{
             //self.terminate("Terminate".to_string()).await;   
         }
     }
-
-    // Invoke this function once you terminate the protocol
-    // pub async fn terminate(&mut self, data: String) {
-    //     let rbc_sync_msg = RBCSyncMsg{
-    //         id: 1,
-    //         msg: data,
-    //     };
-
-    //     let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
-    //     let cancel_handler = self
-    //         .sync_send
-    //         .send(
-    //             0,
-    //             SyncMsg {
-    //                 sender: self.myid,
-    //                 state: SyncState::COMPLETED,
-    //                 value: ser_msg,
-    //             },
-    //         )
-    //         .await;
-    //     self.add_cancel_handler(cancel_handler);
-    // }
 }

@@ -1,5 +1,6 @@
 use crypto::{LargeField, hash::{Hash, do_hash}, LargeFieldSer};
 use ctrbc::CTRBCMsg;
+use lambdaworks_math::traits::ByteConversion;
 use serde::{Serialize, Deserialize};
 use types::Replica;
 
@@ -20,16 +21,16 @@ pub struct WSSMsgSer{
 impl WSSMsgSer {
     pub fn from_unser(wss_msg: &WSSMsg) -> WSSMsgSer{
         WSSMsgSer { 
-            share: wss_msg.share.to_signed_bytes_be(), 
-            nonce_share: wss_msg.nonce_share.to_signed_bytes_be(), 
+            share: wss_msg.share.to_bytes_be(), 
+            nonce_share: wss_msg.nonce_share.to_bytes_be(), 
             origin: wss_msg.origin
         }
     }
 
     pub fn to_unser(&self) -> WSSMsg{
         WSSMsg { 
-            share: LargeField::from_signed_bytes_be(&self.share), 
-            nonce_share: LargeField::from_signed_bytes_be(&self.nonce_share), 
+            share: LargeField::from_bytes_be(&self.share).unwrap(), 
+            nonce_share: LargeField::from_bytes_be(&self.nonce_share).unwrap(), 
             origin: self.origin 
         }
     }

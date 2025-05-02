@@ -171,7 +171,7 @@ impl Context{
         let sender_party = instance_id/self.threshold;
         log::info!("Terminating ACSS for instance id {}, true_inst_id: {}, sender_party: {}",instance_id, true_inst_id, sender_party);
 
-        let shares_ser = shares.into_iter().map(|share| share.to_signed_bytes_be()).collect();
+        let shares_ser = shares.into_iter().map(|share| share.to_bytes_be()).collect();
         let _status = self.out_acss_shares.send((true_inst_id, sender_party, root_comm, shares_ser)).await;
     }
 }

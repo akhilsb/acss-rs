@@ -1,4 +1,5 @@
 use crypto::{LargeField, hash::{do_hash, Hash}};
+use lambdaworks_math::polynomial::Polynomial;
 
 use crate::{context::Context, msg::{WSSMsg, WSSMsgSer, ProtMsg, Commitment}};
 
@@ -58,27 +59,30 @@ impl Context{
             // Interpolate polynomial shares and coefficients
             let mut share_poly_shares = Vec::new();
             let mut nonce_poly_shares = Vec::new();
+            let mut evaluation_indices = Vec::new();
 
             for rep in 0..self.num_nodes{
                 if asks_state.secret_shares.contains_key(&rep){
                     let shares_party = asks_state.secret_shares.get(&rep).unwrap();
-                    share_poly_shares.push((LargeField::from(rep+1), shares_party.0.clone()));
-                    nonce_poly_shares.push((LargeField::from(rep+1), shares_party.1.clone()));
+                    let evaluation_index = LargeField::from((rep+1) as u64);
+                    evaluation_indices.push(evaluation_index);
+                    share_poly_shares.push(shares_party.0.clone());
+                    nonce_poly_shares.push(shares_party.1.clone());
                 }
             }
             
             // Interpolate polynomial
-            let share_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&share_poly_shares);
-            let nonce_poly_coeffs = self.large_field_uv_sss.polynomial_coefficients(&nonce_poly_shares);
-
-            let all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&share_poly_coeffs, val)).collect();
-            let nonce_all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| self.large_field_uv_sss.mod_evaluate_at(&nonce_poly_coeffs, val)).collect();
+            let share_poly_coeffs = Polynomial::interpolate(&evaluation_indices, &share_poly_shares).unwrap();
+            let nonce_poly_coeffs = Polynomial::interpolate(&evaluation_indices, &nonce_poly_shares).unwrap();
+            
+            let all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| share_poly_coeffs.evaluate(&LargeField::from(val as u64))).collect();
+            let nonce_all_shares: Vec<LargeField> = (1..self.num_nodes+1).into_iter().map(|val| nonce_poly_coeffs.evaluate(&LargeField::from(val as u64))).collect();
             
             // Compute and match commitments
             let all_commitments: Vec<Hash> = all_shares.into_iter().zip(nonce_all_shares.into_iter()).map(|(share,nonce)|{
                 let mut appended_vec = Vec::new();
-                appended_vec.extend(share.to_signed_bytes_be());
-                appended_vec.extend(nonce.to_signed_bytes_be());
+                appended_vec.extend(share.to_bytes_be());
+                appended_vec.extend(nonce.to_bytes_be());
                 return do_hash(appended_vec.as_slice());
             }).collect();
 
@@ -95,7 +99,7 @@ impl Context{
             }
             else{
                 log::info!("Successfully reconstructed secret for ASKS instance {}", instance_id);
-                secret = share_poly_coeffs[0].clone();
+                secret = share_poly_coeffs.evaluate(&LargeField::zero()).clone();
                 // Invoke termination with
             }
             log::info!("Sending back value to ACS: {} for ASKS instancce {}", secret,instance_id);

@@ -10,7 +10,6 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use num_bigint_dig::{BigInt};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, Receiver, Sender},
     oneshot,
@@ -100,22 +99,9 @@ impl Context {
         let threshold:usize = 10000;
         let rbc_start_id = threshold*config.id;
 
-        
-        let large_field_prime_bv: BigInt = BigInt::parse_bytes(b"57896044618658097711785492504343953926634992332820282019728792003956564819949", 10).unwrap();
-        
-        //let small_field_prime = 37;
-        //let large_field_prime: BigInt = BigInt::parse_bytes(b"1517", 10).unwrap();
-
-        // Preload vandermonde matrix inverse to enable speedy polynomial coefficient interpolation
-        let file_name_pattern_lt = "data/lt/vandermonde_inverse-{}.json";
-        // // Save to file
-        let file_path_lt = file_name_pattern_lt.replace("{}", config.num_nodes.to_string().as_str());
-
         let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
             config.num_faults +1,
             config.num_nodes,
-            file_path_lt,
-            large_field_prime_bv.clone()
         );
 
         tokio::spawn(async move {

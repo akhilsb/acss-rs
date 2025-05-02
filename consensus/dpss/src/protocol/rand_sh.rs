@@ -1,6 +1,7 @@
 use consensus::LargeFieldSSS;
 use crypto::{LargeField, LargeFieldSer};
-use types::{WrapperMsg, Replica};
+use lambdaworks_math::traits::ByteConversion;
+use types::{WrapperMsg, Replica, RBCSyncMsg, SyncMsg, SyncState};
 
 use crate::{Context, msg::ProtMsg};
 
@@ -38,13 +39,13 @@ impl Context{
                         index +=1;
                     }
                 }
-                ht_indices.push(LargeField::from(rep+1));
+                ht_indices.push(LargeField::from((rep+1) as u64));
             }
         }
-        let vandermonde = self.large_field_shamir_ss.vandermonde_matrix(&ht_indices);
+        let vandermonde = LargeFieldSSS::vandermonde_matrix(ht_indices);
         let mut combined_shares = Vec::new();
         for vec_shares in shares_to_be_combined{
-            let mut mult_shares = LargeFieldSSS::matrix_vector_multiply(&vandermonde, &vec_shares, &self.large_field_prime);
+            let mut mult_shares = LargeFieldSSS::matrix_vector_multiply(&vandermonde, &vec_shares);
             mult_shares.truncate(self.num_faults+1);
             combined_shares.push(mult_shares);
         }
@@ -57,13 +58,13 @@ impl Context{
         for share_comb in combined_shares{
             // Create polynomial
             for rep in 0..self.num_nodes{
-                party_wise_shares[rep].push(self.large_field_shamir_ss.mod_evaluate_at_lf(share_comb.as_slice(), LargeField::from(rep+1)));
+                party_wise_shares[rep].push(self.large_field_shamir_ss.mod_evaluate_at_lf(share_comb.as_slice(), LargeField::from((rep+1) as u64)));
             }
         }
 
         for (rep,shares) in (0..self.num_nodes).into_iter().zip(party_wise_shares.into_iter()){
             let secret_key = self.sec_key_map.get(&rep).clone().unwrap();
-            let shares_ser = shares.into_iter().map(|x| x.to_signed_bytes_be()).collect();
+            let shares_ser = shares.into_iter().map(|x| x.to_bytes_be()).collect();
             let prot_msg = ProtMsg::PubRecEcho1(shares_ser);
             let wrapper = WrapperMsg::new(prot_msg, self.myid, secret_key.as_slice());
             let cancel_handler = self.net_send.send(rep, wrapper).await;
@@ -72,7 +73,7 @@ impl Context{
     }
 
     pub async fn process_pub_rec_echo1_msg(&mut self, shares_ser: Vec<LargeFieldSer>, sender: Replica){
-        let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+        let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
         // Utilize shares for error correction
         let shares_len = shares.len();
         self.dpss_state.pub_rec_echo1s.insert(sender, shares);
@@ -98,13 +99,13 @@ impl Context{
             }
 
             // Broadcast secrets
-            let secrets_ser = secrets.into_iter().map(|x| x.to_signed_bytes_be()).collect();
+            let secrets_ser = secrets.into_iter().map(|x| x.to_bytes_be()).collect();
             self.broadcast(ProtMsg::PubRecEcho2(secrets_ser)).await;
         }
     }
 
     pub async fn process_pub_rec_echo2_msg(&mut self, shares_ser: Vec<LargeFieldSer>, sender: Replica){
-        let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+        let shares: Vec<LargeField> = shares_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
         // Utilize shares for error correction
         let shares_len = shares.len();
         self.dpss_state.pub_rec_echo2s.insert(sender, shares);
@@ -122,20 +123,42 @@ impl Context{
                     for (index, shares_ind) in (0..shares_len).into_iter().zip(shares_sub_poly.into_iter()){
                         vec_shares_indices[index].push(shares_ind);
                     }
-                    ht_indices.push(LargeField::from(rep+1));
+                    ht_indices.push(LargeField::from((rep+1) as u64));
                 }
             }
 
             // Interpolate entire polynomial
-            let vandermonde_matrix = self.large_field_shamir_ss.vandermonde_matrix(&ht_indices);
-            let vandermonde_inverse = self.large_field_shamir_ss.inverse_vandermonde(vandermonde_matrix);
+            let vandermonde_matrix = LargeFieldSSS::vandermonde_matrix(ht_indices);
+            let vandermonde_inverse = LargeFieldSSS::inverse_vandermonde(vandermonde_matrix);
             
             let mut secrets_blinded = Vec::new();
             for shares in vec_shares_indices{
                 secrets_blinded.extend(self.large_field_shamir_ss.polynomial_coefficients_with_vandermonde_matrix(&vandermonde_inverse, &shares));
             }
             log::info!("Finished reconstruction of secrets, total length: {}", secrets_blinded.len());
-            //self.terminate("Term".to_string()).await;
+            self.terminate("Term".to_string()).await;
         }
+    }
+
+    // Invoke this function once you terminate the protocol
+    pub async fn terminate(&mut self, data: String) {
+        let rbc_sync_msg = RBCSyncMsg{
+            id: 1,
+            msg: data,
+        };
+
+        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
+        let cancel_handler = self
+            .sync_send
+            .send(
+                0,
+                SyncMsg {
+                    sender: self.myid,
+                    state: SyncState::COMPLETED,
+                    value: ser_msg,
+                },
+            )
+            .await;
+        self.add_cancel_handler(cancel_handler);
     }
 }

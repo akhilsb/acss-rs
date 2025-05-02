@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crypto::{aes_hash::{MerkleTree, Proof, HashState}, LargeField, hash::{Hash, do_hash}, LargeFieldSer};
+use lambdaworks_math::{traits::ByteConversion, unsigned_integer::element::UnsignedInteger};
 use types::Replica;
 
 use crate::{LargeFieldSSS, DZKProof, PointBV};
@@ -30,7 +31,7 @@ impl FoldingDZKContext{
         
         // 1. Create a Merkle Tree if the polynomial is big enough
         let evaluations: Vec<LargeField> = self.evaluation_points.clone().into_iter().map(|x| self.large_field_uv_sss.mod_evaluate_at(&coefficients, x)).collect();
-        let hashes: Vec<Hash> = evaluations.iter().map(|x| do_hash(x.to_signed_bytes_be().as_slice())).collect();
+        let hashes: Vec<Hash> = evaluations.iter().map(|x| do_hash(x.to_bytes_be().as_slice())).collect();
         let merkle_tree = MerkleTree::new(hashes, &self.hash_context);
         let next_root = merkle_tree.root();
         let aggregated_root_hash = self.hash_context.hash_two(root, merkle_tree.root().clone());
@@ -59,15 +60,11 @@ impl FoldingDZKContext{
         
         // 4.a. Compute updated Merkle root
         let next_root = self.hash_context.hash_two(root, next_root);
-        let root_bint = LargeField::from_signed_bytes_be(next_root.as_slice()) % &self.large_field_uv_sss.prime;
+        let root_bint = LargeField::from_bytes_be(next_root.as_slice()).unwrap();
         
-        let mut poly_folded:Vec<LargeField> = second_half_coeff.into_iter().map(|coeff| (coeff*&root_bint)%&self.large_field_uv_sss.prime).collect();
+        let mut poly_folded:Vec<LargeField> = second_half_coeff.into_iter().map(|coeff| (coeff*&root_bint)).collect();
         for (index, coeff) in (0..first_half_coeff.len()).into_iter().zip(first_half_coeff.into_iter()){
             poly_folded[index] += coeff;
-            poly_folded[index] = &poly_folded[index] % &self.large_field_uv_sss.prime;
-            if poly_folded[index] < LargeField::from(0){
-                poly_folded[index] += &self.large_field_uv_sss.prime;
-            }
         }
         
 
@@ -97,13 +94,13 @@ impl FoldingDZKContext{
                 // Combine column and blinding column roots
                 let combined_root = self.hash_context.hash_two(column_share.2.root(), bcolumn_share.2.root());
                 
-                let deser_points: Vec<LargeField> = column_share.0.clone().into_iter().map(|el| LargeField::from_signed_bytes_be(el.as_slice())).collect();
+                let deser_points: Vec<LargeField> = column_share.0.clone().into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
                 let agg_point = self.gen_agg_poly_dzk(deser_points.clone(), combined_root.clone());
 
-                let nonce = LargeField::from_signed_bytes_be(column_share.1.as_slice());
+                let nonce = LargeField::from_bytes_be(column_share.1.as_slice()).unwrap();
 
-                let blinding_point = LargeField::from_signed_bytes_be(bcolumn_share.0.as_slice()); 
-                let blinding_nonce = LargeField::from_signed_bytes_be(bcolumn_share.1.as_slice());
+                let blinding_point = LargeField::from_bytes_be(bcolumn_share.0.as_slice()).unwrap(); 
+                let blinding_nonce = LargeField::from_bytes_be(bcolumn_share.1.as_slice()).unwrap();
 
                 if self.verify_dzk_proof(dzk_iter.clone() , 
                                         dzk_roots.clone(), 
@@ -112,7 +109,7 @@ impl FoldingDZKContext{
                                         agg_point.clone(), 
                                         blinding_point.clone(), 
                                         rep){
-                    valid_indices.push(LargeField::from(rep));
+                    valid_indices.push(LargeField::from(rep as u64));
                     column_evaluation_points.push(deser_points);
                     nonce_evaluation_points.push(nonce);
 
@@ -136,8 +133,8 @@ impl FoldingDZKContext{
 
         // Interpolate column
         // Compute Vandermonde matrix here once. No other choice but to compute. If we have to interpolate the entire column, then it must cost O(n^3) operations
-        let vandermonde_matrix_lt =  self.large_field_uv_sss.vandermonde_matrix(&valid_indices);
-        let inverse_vandermonde = self.large_field_uv_sss.inverse_vandermonde(vandermonde_matrix_lt);
+        let vandermonde_matrix_lt =  LargeFieldSSS::vandermonde_matrix(valid_indices);
+        let inverse_vandermonde = LargeFieldSSS::inverse_vandermonde(vandermonde_matrix_lt);
 
         let poly_coeffs: Vec<Vec<LargeField>> = column_evaluation_points.into_iter().map(|poly| self.large_field_uv_sss.polynomial_coefficients_with_vandermonde_matrix(&inverse_vandermonde, &poly)).collect();
         //let poly_coeffs = self.large_field_uv_sss.polynomial_coefficients_with_precomputed_vandermonde_matrix(&column_evaluation_points);
@@ -158,21 +155,14 @@ impl FoldingDZKContext{
         blinding_row_share: LargeField, 
         evaluation_point: usize
     ) -> bool{
-
-        let zero = LargeField::from(0);
-
         // Verify dzk proof finally
         // Start from the lowest level
         // Calculate aggregated roots first
         let mut rev_agg_roots: Vec<Hash> = Vec::new();
         let mut rev_roots: Vec<Hash> = Vec::new();
 
-        let root_bint = LargeField::from_signed_bytes_be(column_root.as_slice());
-        let mut dzk_share = (blinding_row_share + root_bint*row_share) % &self.large_field_uv_sss.prime;
-        
-        if dzk_share < LargeField::from(0){
-            dzk_share += &self.large_field_uv_sss.prime;
-        }
+        let root_bint = LargeField::from_bytes_be(column_root.as_slice()).unwrap();
+        let dzk_share = blinding_row_share + root_bint*row_share;
         
         // First root comes from the share and blinding polynomials
         let mut agg_root = column_root;
@@ -184,14 +174,14 @@ impl FoldingDZKContext{
         rev_agg_roots.extend(aggregated_roots.into_iter().rev());
         rev_roots.extend(dzk_roots.into_iter().rev());
         
-        let first_poly: Vec<LargeField> = dzk_poly.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+        let first_poly: Vec<LargeField> = dzk_poly.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
         let mut degree_poly = first_poly.len()-1;
 
         // Evaluate points according to this polynomial
         let mut point = self.large_field_uv_sss.mod_evaluate_at(first_poly.as_slice(), evaluation_point);
 
-        let g_0_pts: Vec<LargeField> = dzk_proof.g_0_x.into_iter().rev().map(|x | LargeField::from_signed_bytes_be(x.as_slice())).collect();
-        let g_1_pts: Vec<LargeField> = dzk_proof.g_1_x.into_iter().rev().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+        let g_0_pts: Vec<LargeField> = dzk_proof.g_0_x.into_iter().rev().map(|x | LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
+        let g_1_pts: Vec<LargeField> = dzk_proof.g_1_x.into_iter().rev().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
         let proofs: Vec<Proof> = dzk_proof.proof.into_iter().rev().collect();
         
         for (index, (g_0, g_1)) in (0..g_0_pts.len()).into_iter().zip(g_0_pts.into_iter().zip(g_1_pts.into_iter())){
@@ -199,12 +189,9 @@ impl FoldingDZKContext{
             
             // First, Compute Fiat-Shamir Heuristic point
             // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
-            let root = LargeField::from_signed_bytes_be(rev_agg_roots[index].as_slice())% &self.large_field_uv_sss.prime;
+            let root = LargeField::from_bytes_be(rev_agg_roots[index].as_slice()).unwrap();
             
-            let mut fiat_shamir_hs_point = (&g_0 + &root*&g_1)%&self.large_field_uv_sss.prime;
-            if fiat_shamir_hs_point < zero{
-                fiat_shamir_hs_point += &self.large_field_uv_sss.prime;
-            }
+            let fiat_shamir_hs_point = &g_0 + &root*&g_1;
             if point != fiat_shamir_hs_point{
                 log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
                 return false;
@@ -214,12 +201,10 @@ impl FoldingDZKContext{
             // Where was the polynomial split?
             let split_point = *self.poly_split_evaluation_map.get(&(degree_poly as isize)).unwrap() as usize;
 
-            let pt_bigint = LargeField::from(evaluation_point);
-            let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&LargeField::from(split_point), &self.large_field_uv_sss.prime);
-            let mut agg_point = (&g_0 + &pow_bigint*&g_1)%&self.large_field_uv_sss.prime;
-            if agg_point < zero{
-                agg_point += &self.large_field_uv_sss.prime;
-            }
+            let pt_bigint = LargeField::from(evaluation_point as u64);
+            let pow_bigint = pt_bigint.pow(UnsignedInteger::<4>::from(split_point as u64));
+            //let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&LargeField::from(split_point), &self.large_field_uv_sss.prime);
+            let agg_point = &g_0 + &pow_bigint*&g_1;
             point = agg_point;
             // update degree of the current polynomial
             degree_poly = degree_poly + split_point;
@@ -228,11 +213,11 @@ impl FoldingDZKContext{
             let merkle_proof = &proofs[index];
             if !merkle_proof.validate(
                 &self.hash_context) || 
-                    do_hash(point.to_signed_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                    do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                     rev_roots[index] != merkle_proof.root(){
                 log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                 log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_roots[index].clone(),merkle_proof.root());
-                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_signed_bytes_be().as_slice()));
+                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
                 return false; 
             }
         }
@@ -253,9 +238,6 @@ impl FoldingDZKContext{
                         blinding_row_shares: Vec<LargeField>,
                         evaluation_point: usize
                     )-> bool{
-        
-        let zero = LargeField::from(0);
-
         // Verify dzk proof finally
         // Start from the lowest level
         let roots = dzk_roots.clone();
@@ -268,12 +250,8 @@ impl FoldingDZKContext{
                 (roots.into_iter().zip(column_roots.into_iter())).zip(
                     row_shares.into_iter().zip(blinding_row_shares.into_iter())
             ){
-            let root_bint = LargeField::from_signed_bytes_be(first_root.as_slice());
-            let mut dzk_share = (blinding + root_bint*share) % &self.large_field_uv_sss.prime;
-            
-            if dzk_share < LargeField::from(0){
-                dzk_share += &self.large_field_uv_sss.prime;
-            }
+            let root_bint = LargeField::from_bytes_be(first_root.as_slice()).unwrap();
+            let dzk_share = blinding + root_bint*share;
             
             dzk_shares.push(dzk_share);
             // First root comes from the share and blinding polynomials
@@ -293,13 +271,13 @@ impl FoldingDZKContext{
                     ){
             // These are the coefficients of the polynomial
             //log::info!("DZK verification Hashes {:?} for rep {}", rev_agg_root_vec, rep);
-            let first_poly: Vec<LargeField> = first_poly.into_iter().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+            let first_poly: Vec<LargeField> = first_poly.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
             let mut degree_poly = first_poly.len()-1;
             // Evaluate points according to this polynomial
             let mut point = self.large_field_uv_sss.mod_evaluate_at(first_poly.as_slice(), evaluation_point);
 
-            let g_0_pts: Vec<LargeField> = dzk_proof.g_0_x.into_iter().rev().map(|x | LargeField::from_signed_bytes_be(x.as_slice())).collect();
-            let g_1_pts: Vec<LargeField> = dzk_proof.g_1_x.into_iter().rev().map(|x| LargeField::from_signed_bytes_be(x.as_slice())).collect();
+            let g_0_pts: Vec<LargeField> = dzk_proof.g_0_x.into_iter().rev().map(|x | LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
+            let g_1_pts: Vec<LargeField> = dzk_proof.g_1_x.into_iter().rev().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
             let proofs: Vec<Proof> = dzk_proof.proof.into_iter().rev().collect();
             
             for (index, (g_0, g_1)) in (0..g_0_pts.len()).into_iter().zip(g_0_pts.into_iter().zip(g_1_pts.into_iter())){
@@ -307,12 +285,9 @@ impl FoldingDZKContext{
                 
                 // First, Compute Fiat-Shamir Heuristic point
                 // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
-                let root = LargeField::from_signed_bytes_be(rev_agg_root_vec[index].as_slice())% &self.large_field_uv_sss.prime;
+                let root = LargeField::from_bytes_be(rev_agg_root_vec[index].as_slice()).unwrap();
                 
-                let mut fiat_shamir_hs_point = (&g_0 + &root*&g_1)%&self.large_field_uv_sss.prime;
-                if fiat_shamir_hs_point < zero{
-                    fiat_shamir_hs_point += &self.large_field_uv_sss.prime;
-                }
+                let fiat_shamir_hs_point = &g_0 + &root*&g_1;
                 if point != fiat_shamir_hs_point{
                     log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
                     return false;
@@ -322,12 +297,10 @@ impl FoldingDZKContext{
                 // Where was the polynomial split?
                 let split_point = *self.poly_split_evaluation_map.get(&(degree_poly as isize)).unwrap() as usize;
 
-                let pt_bigint = LargeField::from(evaluation_point);
-                let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&LargeField::from(split_point), &self.large_field_uv_sss.prime);
-                let mut agg_point = (&g_0 + &pow_bigint*&g_1)%&self.large_field_uv_sss.prime;
-                if agg_point < zero{
-                    agg_point += &self.large_field_uv_sss.prime;
-                }
+                let pt_bigint = LargeField::from(evaluation_point as u64);
+                let pow_bigint = pt_bigint.pow(UnsignedInteger::<4>::from(split_point as u64));
+                let agg_point = &g_0 + &pow_bigint*&g_1;
+                
                 point = agg_point;
                 // update degree of the current polynomial
                 degree_poly = degree_poly + split_point;
@@ -336,11 +309,11 @@ impl FoldingDZKContext{
                 let merkle_proof = &proofs[index];
                 if !merkle_proof.validate(
                     &self.hash_context) || 
-                        do_hash(point.to_signed_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                        do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                         rev_root_vec[index] != merkle_proof.root(){
                     log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                     log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_root_vec[index].clone(),merkle_proof.root());
-                    log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_signed_bytes_be().as_slice()));
+                    log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
                     return false; 
                 }
             }
@@ -356,17 +329,15 @@ impl FoldingDZKContext{
     
     pub fn gen_agg_poly_dzk(&self, evaluations: Vec<LargeField>, root: Hash)-> LargeField{
 
-        let mut root_mul_lf: LargeField = LargeField::from_signed_bytes_be(root.as_slice())%&self.large_field_uv_sss.prime;
+        let mut root_mul_lf: LargeField = LargeField::from_bytes_be(root.as_slice()).unwrap();
         let root_original = root_mul_lf.clone();
         let mut aggregated_val = LargeField::from(0);
 
         root_mul_lf = LargeField::from(1);
         for share in evaluations{
-            aggregated_val += (&root_mul_lf*share)%&self.large_field_uv_sss.prime;
-            if aggregated_val < LargeField::from(0){
-                aggregated_val += &self.large_field_uv_sss.prime;
-            }
-            root_mul_lf = (&root_mul_lf*&root_original)%&self.large_field_uv_sss.prime;
+            aggregated_val += &root_mul_lf*share;
+            
+            root_mul_lf = &root_mul_lf*&root_original;
         }
         aggregated_val
     }
