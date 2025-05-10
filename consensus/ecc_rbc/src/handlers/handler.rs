@@ -1,27 +1,29 @@
+use std::fmt::Debug;
+
+use crate::ProtMsg;
 use async_trait::async_trait;
 use futures_util::SinkExt;
-use network::{Acknowledgement};
+use network::Acknowledgement;
 use tokio::sync::mpsc::UnboundedSender;
-use types::SyncMsg;
+
+use types::WrapperMsg;
 
 #[derive(Debug, Clone)]
-pub struct SyncHandler {
-    consensus_tx: UnboundedSender<SyncMsg>,
+pub struct Handler {
+    consensus_tx: UnboundedSender<WrapperMsg<ProtMsg>>,
 }
 
-impl SyncHandler {
-    pub fn new(consensus_tx: UnboundedSender<SyncMsg>) -> Self {
+impl Handler {
+    pub fn new(consensus_tx: UnboundedSender<WrapperMsg<ProtMsg>>) -> Self {
         Self { consensus_tx }
     }
 }
 
 #[async_trait]
-impl network::Handler<Acknowledgement, SyncMsg>
-    for SyncHandler
-{
+impl network::Handler<Acknowledgement, WrapperMsg<ProtMsg>> for Handler {
     async fn dispatch(
         &self,
-        msg: SyncMsg,
+        msg: WrapperMsg<ProtMsg>,
         writer: &mut network::Writer<Acknowledgement>,
     ) {
         // Forward the message

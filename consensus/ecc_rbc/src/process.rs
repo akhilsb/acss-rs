@@ -33,19 +33,17 @@ impl Context {
         if self.check_proposal(msg) {
             match wrapper_msg.clone().protmsg {
                 ProtMsg::Echo(main_msg, rep) => {
-                    // RBC initialized
-                    log::info!("Received Echo from node : {:?}", rep);
-                    self.handle_echo(main_msg).await;
+                    log::info!("Received Echo for instance id {} from node : {:?}", rep, main_msg.origin);
+                    self.handle_echo(main_msg ,rep).await;
                 }
                 ProtMsg::Ready(main_msg, rep) => {
-                    // RBC initialized
-                    log::info!("Received Ready from node : {:?}", rep);
-                    self.handle_ready(main_msg).await;
+                    log::info!("Received Ready for instance id {} from node : {:?}", rep, main_msg.origin);
+                    self.handle_ready(main_msg, rep).await;
                 }
                 ProtMsg::Init(main_msg, rep) => {
                     // RBC initialized
-                    log::info!("Received Init from node : {:?}", rep);
-                    self.handle_init(main_msg).await;
+                    log::info!("Received Init for instance id {} from node : {:?}", rep, main_msg.origin);
+                    self.handle_init(main_msg, rep).await;
                 }
             }
         } else {
@@ -57,15 +55,15 @@ impl Context {
     }
 
     // Invoke this function once you terminate the protocol
-    pub async fn terminate(&mut self, data: String) {
-        let cancel_handler = self
+    pub async fn terminate(&mut self, data: Vec<u8>) {
+            let cancel_handler = self
             .sync_send
             .send(
                 0,
                 SyncMsg {
                     sender: self.myid,
                     state: SyncState::COMPLETED,
-                    value: data.into_bytes(),
+                    value: data,
                 },
             )
             .await;
