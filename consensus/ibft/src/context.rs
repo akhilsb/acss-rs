@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
     net::{SocketAddr, SocketAddrV4},
 };
 
@@ -19,10 +19,7 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use consensus::{LargeFieldSSS};
-use crypto::{aes_hash::HashState, LargeField, hash::Hash};
-
-use crate::{msg::ProtMsg, Handler, protocol::ACSState};
+use crate::{msg::ProtMsg, IBFTState, Handler};
 
 pub struct Context {
     /// Networking context
@@ -36,56 +33,26 @@ pub struct Context {
     pub num_faults: usize,
     _byz: bool,
 
-    pub large_field_shamir_ss: LargeFieldSSS,
+    pub leader_id: usize,
     /// Secret Key map
     pub sec_key_map: HashMap<Replica, Vec<u8>>,
-
-    /// Hardware acceleration context
-    pub hash_context: HashState,
 
     /// Cancel Handlers
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
-
-    //pub num_batches: usize,
-    //pub per_batch: usize,
-
-    // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
-    pub threshold: usize, 
-
-    pub max_id: usize,
-
-    /// Constants for PRF seeding
-    pub nonce_seed: usize,
-
-    ///// State for GatherState and ACS
-    pub acs_state: ACSState,
     
-    pub acss_map: HashMap<Replica, 
-        HashMap<usize, 
-        (
-            Option<(Vec<LargeField>, Hash)>,
-            Option<(Vec<LargeField>, Hash)>)>
-        >,
-
-    pub completed_batches: HashMap<Replica, HashSet<usize>>,
-    pub acs_input_set: HashSet<Replica>,
+    pub ibft_state_map: HashMap<usize, IBFTState>,
+    
     /// Channels to interact with other services
 
     //pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
     //pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
-    pub event_recv_channel: Receiver<usize>,
-    pub acs_out_channel: Sender<Vec<usize>>,
-
-    pub asks_req: Sender<(usize, Option<usize>,bool)>,
-    pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
+    pub event_recv_channel: Receiver<(usize, usize)>,
+    pub acs_out_channel: Sender<(Vec<usize>, usize)>,
 
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
-
-    pub ra_req_send: Sender<(usize, usize, usize)>,
-    pub ra_out_recv: Receiver<(usize, Replica, usize)>
 }
 
 // s = num_batches*per_batch
@@ -98,8 +65,8 @@ pub struct Context {
 impl Context {
     pub fn spawn(
         config: Node,
-        term_event_channel: Receiver<usize>,
-        acs_out_channel: Sender<Vec<usize>>,
+        term_event_channel: Receiver<(usize,usize)>,
+        acs_out_channel: Sender<(Vec<usize>, usize)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 
@@ -160,19 +127,6 @@ impl Context {
         //    TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(syncer_map);
         let (exit_tx, exit_rx) = oneshot::channel();
 
-        // Keyed AES ciphers
-        let key0 = [5u8; 16];
-        let key1 = [29u8; 16];
-        let key2 = [23u8; 16];
-        let hashstate = HashState::new(key0, key1, key2);
-
-        let rbc_start_id = 1;
-                
-        // Blinding and Nonce polynomials
-        let largefield_ss = LargeFieldSSS::new(
-            config.num_faults+1, 
-            config.num_nodes
-        );
         // Prepare ACSS context
         //let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
         //let (acss_out_send_channel, acss_out_recv_channel) = channel(10000);
@@ -180,12 +134,6 @@ impl Context {
         let (ctrbc_req_send_channel, ctrbc_req_recv_channel) = channel(10000);
         let (ctrbc_out_send_channel, ctrbc_out_recv_channel) = channel(10000);
         
-        let (ra_req_send_channel, ra_req_recv_channel) = channel(10000);
-        let (ra_out_send_channel, ra_out_recv_channel) = channel(10000);
-        
-        let (asks_req_send_channel, asks_req_recv_channel) = channel(10000);
-        let (asks_out_send_channel, asks_out_recv_channel) = channel(10000);
-
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -194,30 +142,20 @@ impl Context {
                 //sync_recv: rx_net_from_client,
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
-                hash_context: hashstate,
+
                 myid: config.id,
                 _byz: byz,
                 num_faults: config.num_faults,
+                leader_id: 0 as usize,
+
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
                 
-                large_field_shamir_ss: largefield_ss,
-
                 //avid_context:HashMap::default(),
-                threshold: 10000,
-
-                max_id: rbc_start_id, 
-                acs_state: ACSState::new(),
 
                 //num_batches: num_batches,
                 //per_batch: per_batch, 
-
-                acss_map: HashMap::default(),
-                completed_batches: HashMap::default(),
-
-                acs_input_set: HashSet::default(),
-
-                nonce_seed: 1,
+                ibft_state_map: HashMap::default(),
 
                 //acss_req: acss_req_send_channel,
                 //acss_out_recv: acss_out_recv_channel,
@@ -226,12 +164,6 @@ impl Context {
 
                 ctrbc_req: ctrbc_req_send_channel,
                 ctrbc_out_recv: ctrbc_out_recv_channel,
-
-                asks_req: asks_req_send_channel,
-                asks_out_recv: asks_out_recv_channel,
-
-                ra_req_send: ra_req_send_channel,
-                ra_out_recv: ra_out_recv_channel
             };
 
             // Populate secret keys from config
@@ -244,23 +176,6 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
-        // let _acss_serv_status;
-        // if low_or_high{
-        //     _acss_serv_status = acss_va::Context::spawn(
-        //         acss_config,
-        //         acss_req_recv_channel,
-        //         acss_out_send_channel, 
-        //         false
-        //     );
-        // }
-        // else{
-        //     _acss_serv_status = hacss::Context::spawn(
-        //         acss_config,
-        //         acss_req_recv_channel,
-        //         acss_out_send_channel, 
-        //         false
-        //     );
-        // }
         // This is so that the inner contexts are not dropped by the compiler
         let mut statuses = Vec::new();
 
@@ -272,25 +187,6 @@ impl Context {
         );
 
         statuses.push(_rbc_serv_status);
-
-        let _asks_serv_status = asks::Context::spawn(
-            asks_config, 
-            asks_req_recv_channel, 
-            asks_out_send_channel,
-            false
-        );
-
-        statuses.push(_asks_serv_status);
-
-        let _ra_serv_status = ra::Context::spawn(
-            ra_config,
-            ra_req_recv_channel,
-            ra_out_send_channel,
-            false
-        );
-
-        statuses.push(_ra_serv_status);
-
         // let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
         // signals.forever().next();
         // log::error!("Received termination signal");
@@ -335,80 +231,21 @@ impl Context {
                     )?;
                     self.process_msg(msg).await;
                 },
-                // sync_msg = self.sync_recv.recv() =>{
-                //     let sync_msg = sync_msg.ok_or_else(||
-                //         anyhow!("Networking layer has closed")
-                //     )?;
-                //     match sync_msg.state {
-                //         SyncState::START =>{
-                //             log::info!("Consensus Start time: {:?}", SystemTime::now()
-                //                 .duration_since(UNIX_EPOCH)
-                //                 .unwrap()
-                //                 .as_millis());
-                //             // Start your protocol from here
-                //             // Write a function to broadcast a message. We demonstrate an example with a PING function
-                //             // Dealer sends message to everybody. <M, init>
-                //             for instance in 0..self.num_batches{
-                //                 //self.start_acss(self.per_batch).await;
-                //                 let _status = self.asks_req.send((instance, None, false)).await;
-                //             }
-                //         },
-                //         SyncState::STOP =>{
-                //             // Code used for internal purposes
-                //             log::info!("Consensus Stop time: {:?}", SystemTime::now()
-                //                 .duration_since(UNIX_EPOCH)
-                //                 .unwrap()
-                //                 .as_millis());
-                //             log::info!("Termination signal received by the server. Exiting.");
-                //             break
-                //         },
-                //         _=>{}
-                //     }
-                // },
-                // acss_msg = self.acss_out_recv.recv() => {
-                //     let acss_msg = acss_msg.ok_or_else(||
-                //         anyhow!("Networking layer has closed")
-                //     )?;
-                //     log::debug!("Received message from CTRBC channel {:?}", acss_msg);
-                //     self.process_acss_event(acss_msg.0, acss_msg.1, acss_msg.2, acss_msg.3).await;
-                // },
                 term_event = self.event_recv_channel.recv() => {
-                    let term_event = term_event.ok_or_else(||
+                    let (term_party, instance_id) = term_event.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    log::debug!("Received termination event: {:?}", term_event);
+                    log::debug!("Received ACSS termination event: {:?} for instance id {}", term_party, instance_id);
                     // Process the termination event
-                    self.process_termination_event(term_event).await;
+                    self.init_acss_term_procedure(term_party, instance_id).await;
                 },
                 ctrbc_msg = self.ctrbc_out_recv.recv() => {
                     let ctrbc_msg = ctrbc_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-
                     log::debug!("Received message from CTRBC channel {:?}", ctrbc_msg);
-                    self.process_ctrbc_event(ctrbc_msg.1, ctrbc_msg.0, ctrbc_msg.2).await;
+                    self.process_ctrbc_termination(ctrbc_msg.2).await;
                 },
-                asks_msg = self.asks_out_recv.recv() =>{
-                    let asks_msg = asks_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-
-                    log::debug!("Received message from ASKS channel {:?}", asks_msg);
-                    if asks_msg.2.is_none(){
-                        self.process_asks_termination(asks_msg.0, asks_msg.1, asks_msg.2).await;
-                    }
-                    else{
-                        self.process_asks_reconstruction_result(asks_msg.0, asks_msg.1, asks_msg.2.unwrap()).await;
-                    }
-                },
-                ra_msg = self.ra_out_recv.recv() => {
-                    let ra_msg = ra_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-
-                    log::debug!("Received message from RA channel {:?}", ra_msg);
-                    self.process_ra_termination(ra_msg.1, ra_msg.0, ra_msg.2).await;
-                }
             };
         }
         Ok(())

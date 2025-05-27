@@ -18,27 +18,6 @@ pub struct Shares{
     pub nonce_shares: Option<(LargeFieldSer,LargeFieldSer)>, // Nonce and Blinding nonce shares
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub enum ProtMsg{
-//     Init(
-//         Vec<u8>, // Encrypted shares
-//         usize, // Number of secrets
-//         VSSCommitments,
-//         Polynomial<LargeFieldSer>, // dZK polynomial
-//         Replica, // Dealer
-//         usize // ACSS Instance ID (For PRF and share generation)
-//     ),
-//     Echo(
-//         CTRBCMsg,
-//         usize // ACSS Instance ID 
-//     ),
-//     Ready(
-//         CTRBCMsg,
-//         usize // ACSS Instance ID
-//     )
-// }
-
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VACommitment{
     pub column_roots: Vec<Hash>,
