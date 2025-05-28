@@ -197,7 +197,7 @@ impl Context{
         if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() == self.num_batches{
             self.acs_input_set.insert(origin);
             log::info!("Sending instance {} to ACS for consensus", origin);
-            let _status = self.acs_term_event.send(origin).await;
+            let _status = self.acs_term_event.send((1,origin)).await;
             // Check if ACS already output shares
             self.gen_rand_shares().await;
         }

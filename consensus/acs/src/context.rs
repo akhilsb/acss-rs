@@ -75,8 +75,8 @@ pub struct Context {
     //pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
     //pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
-    pub event_recv_channel: Receiver<usize>,
-    pub acs_out_channel: Sender<Vec<usize>>,
+    pub event_recv_channel: Receiver<(usize,usize)>,
+    pub acs_out_channel: Sender<(usize,Vec<usize>)>,
 
     pub asks_req: Sender<(usize, Option<usize>,bool)>,
     pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
@@ -98,8 +98,8 @@ pub struct Context {
 impl Context {
     pub fn spawn(
         config: Node,
-        term_event_channel: Receiver<usize>,
-        acs_out_channel: Sender<Vec<usize>>,
+        term_event_channel: Receiver<(usize,usize)>,
+        acs_out_channel: Sender<(usize,Vec<usize>)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 
@@ -378,7 +378,7 @@ impl Context {
                     )?;
                     log::debug!("Received termination event: {:?}", term_event);
                     // Process the termination event
-                    self.process_termination_event(term_event).await;
+                    self.process_termination_event(term_event.1).await;
                 },
                 ctrbc_msg = self.ctrbc_out_recv.recv() => {
                     let ctrbc_msg = ctrbc_msg.ok_or_else(||

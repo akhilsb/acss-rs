@@ -49,7 +49,7 @@ pub struct Context {
     //pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
     pub event_recv_channel: Receiver<(usize, usize)>,
-    pub acs_out_channel: Sender<(Vec<usize>, usize)>,
+    pub acs_out_channel: Sender<(usize, Vec<usize>)>,
 
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
@@ -66,7 +66,7 @@ impl Context {
     pub fn spawn(
         config: Node,
         term_event_channel: Receiver<(usize,usize)>,
-        acs_out_channel: Sender<(Vec<usize>, usize)>,
+        acs_out_channel: Sender<(usize, Vec<usize>)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 

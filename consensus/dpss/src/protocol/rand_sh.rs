@@ -6,7 +6,7 @@ use types::{WrapperMsg, Replica, RBCSyncMsg, SyncMsg, SyncState};
 use crate::{Context, msg::ProtMsg};
 
 impl Context{
-    pub async fn process_acs_output(&mut self, acs_output: Vec<Replica>){
+    pub async fn process_consensus_output(&mut self, acs_output: Vec<Replica>){
         self.dpss_state.acs_output.extend(acs_output.clone());
         // Generate random shares
         self.gen_rand_shares().await;

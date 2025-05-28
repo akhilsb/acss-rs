@@ -9,3 +9,9 @@ pub use shamir::*;
 
 mod handlers;
 pub use handlers::*;
+
+mod types;
+pub use types::*;
+
+pub mod poly;
+pub use poly::*;

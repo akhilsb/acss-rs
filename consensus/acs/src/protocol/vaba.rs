@@ -62,7 +62,7 @@ impl Context{
             // Shift all this part of the code to a new repository
             // Compute random linear combination of shares
             let output_set = self.acs_state.re_broadcast_messages.get(&value).unwrap();
-            let _status = self.acs_out_channel.send(output_set.clone()).await;
+            let _status = self.acs_out_channel.send((1,output_set.clone())).await;
             
             //self.acs_state.acs_output.extend(output_set);
             //self.gen_rand_shares().await;

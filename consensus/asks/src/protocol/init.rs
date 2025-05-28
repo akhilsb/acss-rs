@@ -67,7 +67,6 @@ impl Context{
             log::error!("Error verifying share commitment, abandoning ASKS instance {}", instance_id);
             return;
         }
-
         
         let share = deser_msg.to_unser();
         

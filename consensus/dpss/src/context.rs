@@ -69,8 +69,8 @@ pub struct Context {
     pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
     pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
-    pub acs_term_event: Sender<usize>,
-    pub acs_out_recv: Receiver<Vec<usize>>,
+    pub acs_term_event: Sender<(usize,usize)>,
+    pub acs_out_recv: Receiver<(usize,Vec<usize>)>,
 }
 
 // s = num_batches*per_batch
@@ -211,7 +211,7 @@ impl Context {
         });
         let _acss_serv_status;
         if low_or_high{
-            _acss_serv_status = acss_va::Context::spawn(
+            _acss_serv_status = acss_bv::Context::spawn(
                 acss_config,
                 acss_req_recv_channel,
                 acss_out_send_channel, 
@@ -227,7 +227,18 @@ impl Context {
             );
         }
 
-        let _acs_serv_status = acs::Context::spawn(
+        // let _acs_serv_status = acs::Context::spawn(
+        //     acs_config,
+        //     acs_req_recv_channel, 
+        //     acs_out_send_channel, 
+        //     false
+        // );
+
+        // if _acs_serv_status.is_err() {
+        //     log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
+        // }
+
+        let _acs_serv_status = ibft::Context::spawn(
             acs_config,
             acs_req_recv_channel, 
             acs_out_send_channel, 
@@ -305,11 +316,8 @@ impl Context {
                                 .unwrap()
                                 .as_millis());
                             // Start your protocol from here
-                            // Write a function to broadcast a message. We demonstrate an example with a PING function
-                            // Dealer sends message to everybody. <M, init>
                             for _instance in 0..self.num_batches{
                                 let _status = self.start_acss(self.per_batch).await;
-                                //let _status = self.asks_req.send((instance, None, false)).await;
                             }
                         },
                         SyncState::STOP =>{
@@ -336,7 +344,7 @@ impl Context {
                         anyhow!("Networking layer has closed")
                     )?;
                     log::debug!("Received message from RBC channel {:?}", acs_output);
-                    self.process_acs_output(acs_output).await;
+                    self.process_consensus_output(acs_output.1).await;
                 }
             };
         }

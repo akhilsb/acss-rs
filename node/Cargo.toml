@@ -14,7 +14,7 @@ ra = {package = "ra",path="../consensus/ra"}
 asks = {package = "asks",path="../consensus/asks"}
 ctrbc = {package = "ctrbc",path="../consensus/ctrbc"}
 hacss = {package = "hacss", path="../consensus/hacss"}
-acss_va = {package = "acss_va", path="../consensus/acss_va"}
+acss_bv = {package = "acss_bv", path="../consensus/acss_bv"}
 acs = {package = "acs", path="../consensus/acs"}
 dpss = {package = "dpss", path="../consensus/dpss"}
 

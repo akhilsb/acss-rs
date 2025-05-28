@@ -65,7 +65,7 @@ impl Context{
         let ibft_state = self.ibft_state_map.get_mut(&instance_id).unwrap();
         ibft_state.add_consensus_out(party_set.clone());
 
-        let out_status = self.acs_out_channel.send((party_set, instance_id)).await;
+        let out_status = self.acs_out_channel.send((instance_id, party_set)).await;
         if out_status.is_err() {
             log::error!("Failed to send CTRBC request for instance {}", instance_id);
         } else {
