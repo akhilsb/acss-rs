@@ -78,8 +78,8 @@ pub struct Context {
     pub event_recv_channel: Receiver<(usize,usize)>,
     pub acs_out_channel: Sender<(usize,Vec<usize>)>,
 
-    pub asks_req: Sender<(usize, Option<usize>,bool)>,
-    pub asks_out_recv: Receiver<(usize, usize, Option<LargeField>)>,
+    pub asks_req: Sender<(usize, usize, bool, bool, Option<Vec<LargeField>>,Option<usize>)>,
+    pub asks_out_recv: Receiver<(usize, Replica, Option<Vec<LargeField>>)>,
 
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,

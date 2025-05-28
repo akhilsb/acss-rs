@@ -8,7 +8,7 @@ use crate::Context;
 use super::VABAState;
 
 impl Context{
-    pub async fn process_asks_termination(&mut self, instance: usize, sender: Replica, value: Option<LargeField>){
+    pub async fn process_asks_termination(&mut self, instance: usize, sender: Replica, value: Option<Vec<LargeField>>){
         if !self.acs_state.vaba_states.contains_key(&instance){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(instance, vaba_context);
@@ -26,7 +26,8 @@ impl Context{
             self.check_witness_pre_broadcast(instance).await;
         }
         else{
-            vaba_context.reconstructed_values.insert(sender, value.unwrap());
+            let value = value.unwrap()[0].clone();
+            vaba_context.reconstructed_values.insert(sender, value);
         }
     }
 
@@ -70,15 +71,17 @@ impl Context{
         }
 
         for rep in vaba_context.term_asks_instances.iter(){
-            let _status = self.asks_req.send((instance, Some(*rep), true)).await;
+            let _status = self.asks_req.send((instance, 1, true, true, None, Some(*rep))).await;
         }
         // Reconstruction true
         vaba_context.asks_reconstruction_started = true;
         // Wait until receiving all results for ranks
     }
 
-    pub async fn process_asks_reconstruction_result(&mut self, instance: usize, secret_preparer_rep: usize, recon_result: LargeField){
+    pub async fn process_asks_reconstruction_result(&mut self, instance: usize, secret_preparer_rep: usize, recon_result: Vec<LargeField>){
         log::info!("Received reconstruction result from ASKS for instance {} and Replica {}", instance, secret_preparer_rep);
+        
+        let recon_result = recon_result[0].clone();
         // Compute Rank of reconstruction
         if !self.acs_state.vaba_states.contains_key(&instance){
             let vaba_context = VABAState::new_without_pre_justify();

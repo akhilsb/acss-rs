@@ -58,14 +58,15 @@ pub struct Context {
     pub asks_state: HashMap<usize, ASKSState>,
 
     /// Input and output request channels
-    pub inp_asks_requests: Receiver<(usize, Option<usize>, bool)>,
-    pub out_asks_values: Sender<(usize, Replica, Option<LargeField>)>
+    /// First: Instance id, Second: Number of secrets, Third: Reconstruction to all or none, Fourth: Request for reconstruction/sharing, Fifth: Reconstruction ID
+    pub inp_asks_requests: Receiver<(usize, usize, bool, bool, Option<Vec<LargeField>>, Option<usize>)>,
+    pub out_asks_values: Sender<(usize, Replica, Option<Vec<LargeField>>)>
 }
 
 impl Context {
     pub fn spawn(config: Node,
-        input_reqs: Receiver<(usize, Option<usize>,bool)>, 
-        output_shares: Sender<(usize,Replica,Option<LargeField>)>,
+        input_reqs: Receiver<(usize, usize, bool, bool, Option<Vec<LargeField>>, Option<usize>)>, 
+        output_shares: Sender<(usize,Replica,Option<Vec<LargeField>>)>,
         byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
@@ -188,16 +189,16 @@ impl Context {
                         return;
                     }
                     let req_msg = req_msg.unwrap();
-                    if !req_msg.2{
+                    if !req_msg.3{
                         let acss_inst_id = self.max_id + 1;
                         self.max_id = acss_inst_id;
                         
-                        self.init_asks(acss_inst_id).await;
+                        self.init_asks(acss_inst_id, req_msg.1, req_msg.2, req_msg.4).await;
                     }
                     else {
                         // Reconstruct this message
-                        let instance_id = self.threshold*req_msg.1.unwrap() + req_msg.0;
-                        self.reconstruct_asks(instance_id).await;
+                        let instance_id = self.threshold*req_msg.5.unwrap() + req_msg.0;
+                        self.reconstruct_asks(instance_id, req_msg.2).await;
                     }
                 },
             };

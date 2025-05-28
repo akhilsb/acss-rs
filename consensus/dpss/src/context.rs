@@ -227,18 +227,7 @@ impl Context {
             );
         }
 
-        // let _acs_serv_status = acs::Context::spawn(
-        //     acs_config,
-        //     acs_req_recv_channel, 
-        //     acs_out_send_channel, 
-        //     false
-        // );
-
-        // if _acs_serv_status.is_err() {
-        //     log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
-        // }
-
-        let _acs_serv_status = ibft::Context::spawn(
+        let _acs_serv_status = acs::Context::spawn(
             acs_config,
             acs_req_recv_channel, 
             acs_out_send_channel, 
@@ -248,6 +237,17 @@ impl Context {
         if _acs_serv_status.is_err() {
             log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
         }
+
+        // let _acs_serv_status = ibft::Context::spawn(
+        //     acs_config,
+        //     acs_req_recv_channel, 
+        //     acs_out_send_channel, 
+        //     false
+        // );
+
+        // if _acs_serv_status.is_err() {
+        //     log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
+        // }
 
         let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
         signals.forever().next();

@@ -20,7 +20,8 @@ impl Context{
         }
 
         // Start ASKS
-        let status = self.asks_req.send((instance, None, false)).await;
+        // (Instance ID, Number of secrets to be proposed, All_to_all reconstruction, Reconstruction Request?, Reconstruction_related_data) 
+        let status = self.asks_req.send((instance,1, true, false, None, None)).await;
         self.broadcast_pre(instance).await;
         if status.is_err(){
             log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");

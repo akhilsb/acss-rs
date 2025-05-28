@@ -8,10 +8,10 @@ use crate::{context::Context, msg::ProtMsg};
 use super::ASKSState;
 
 impl Context{
-    pub async fn process_asks_echo(&mut self, ctrbc_msg: CTRBCMsg, echo_sender: Replica, instance_id: usize){
-
+    pub async fn process_asks_echo(&mut self, ctrbc_msg: CTRBCMsg, echo_sender: Replica, reconstruct_to_all: bool, instance_id: usize){
+        log::info!("Processing ASKS ECHO from {} for instance {}", echo_sender, instance_id);
         if !self.asks_state.contains_key(&instance_id){
-            let new_state = ASKSState::new(ctrbc_msg.origin);
+            let new_state = ASKSState::new(ctrbc_msg.origin, reconstruct_to_all);
             self.asks_state.insert(instance_id, new_state);
         }
 
@@ -86,7 +86,10 @@ impl Context{
                 // ECHO phase is completed. Save our share and the root for later purposes and quick access. 
                 asks_state.rbc_state.echo_root = Some(root);
                 asks_state.rbc_state.fragment = Some((my_share.clone(),merkle_tree.gen_proof(self.myid)));
-                asks_state.rbc_state.message = Some(message);
+                asks_state.rbc_state.message = Some(message.clone());
+
+                let deser_root_vec: Vec<Hash> = bincode::deserialize(&message).unwrap();
+                asks_state.roots = Some(deser_root_vec);
 
                 // Send ready message
                 let ctrbc_msg = CTRBCMsg{
@@ -96,7 +99,7 @@ impl Context{
                 };
                 
                 //self.handle_ready(ctrbc_msg.clone(),ctrbc_msg.origin,instance_id).await;
-                let ready_msg = ProtMsg::Ready(ctrbc_msg, instance_id);
+                let ready_msg = ProtMsg::Ready(ctrbc_msg, reconstruct_to_all, instance_id);
                 self.broadcast(ready_msg).await;
             }
         }

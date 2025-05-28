@@ -61,8 +61,8 @@ pub struct Context {
     pub out_avss: Sender<(bool, Option<(Replica,AvssShare)>, Option<(Replica,Replica,AvssShare)>)>,
 
     /// ASKS input and output channels
-    pub asks_inp_channel: Sender<(usize, Option<usize>,bool)>,
-    pub asks_recv_out: Receiver<(usize,Replica,Option<LargeField>)>,
+    pub asks_inp_channel: Sender<(usize, usize, bool, bool, Option<Vec<LargeField>>, Option<usize>)>,
+    pub asks_recv_out: Receiver<(usize, Replica, Option<Vec<LargeField>>)>,
 
     /// CTRBC input and output channels
     pub inp_ctrbc: Sender<Vec<u8>>,

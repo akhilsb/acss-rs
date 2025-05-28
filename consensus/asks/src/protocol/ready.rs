@@ -7,9 +7,10 @@ use crate::{context::Context, protocol::ASKSState, msg::ProtMsg};
 
 impl Context{
 
-    pub async fn process_asks_ready(&mut self, ctrbc_msg: CTRBCMsg, ready_sender: Replica,instance_id: usize){
+    pub async fn process_asks_ready(&mut self, ctrbc_msg: CTRBCMsg, ready_sender: Replica, reconstruct_to_all: bool,instance_id: usize){
+        log::info!("Processing ASKS READY from {} for instance {}", ready_sender, instance_id);
         if !self.asks_state.contains_key(&instance_id){
-            let asks_state = ASKSState::new(ctrbc_msg.origin);
+            let asks_state = ASKSState::new(ctrbc_msg.origin, reconstruct_to_all);
             self.asks_state.insert(instance_id, asks_state);
         }
 
@@ -96,8 +97,10 @@ impl Context{
                 // Ready phase is completed. Save our share for later purposes and quick access. 
                 asks_context.rbc_state.fragment = Some((my_share.clone(),merkle_tree.gen_proof(self.myid)));
 
-                asks_context.rbc_state.message = Some(message);
+                asks_context.rbc_state.message = Some(message.clone());
 
+                let deser_root_vec: Vec<Hash> = bincode::deserialize(&message).unwrap();
+                asks_context.roots = Some(deser_root_vec);
                 // Insert own ready share
                 asks_context.rbc_state.readys.get_mut(&root).unwrap().insert(self.myid, my_share.clone());
                 // Send ready message
@@ -107,7 +110,7 @@ impl Context{
                     origin: ctrbc_msg.origin,
                 };
                 
-                let ready_msg = ProtMsg::Ready(ctrbc_msg.clone(), instance_id);
+                let ready_msg = ProtMsg::Ready(ctrbc_msg.clone(), reconstruct_to_all, instance_id);
 
                 self.broadcast(ready_msg).await;
             }
@@ -116,15 +119,16 @@ impl Context{
             log::info!("Received n-f READY messages for RBC Instance ID {}, terminating",instance_id);
             // Terminate protocol
             asks_context.rbc_state.terminated = true;
+            asks_context.terminated = true;
             self.terminate(instance_id, None).await;
         }
     }
 
-    pub async fn terminate(&mut self, instance_id: usize, secret: Option<LargeField>){
+    pub async fn terminate(&mut self, instance_id: usize, secrets: Option<Vec<LargeField>>){
         let instance: usize = instance_id % self.threshold;
         let rep = instance_id/self.threshold;
 
-        if secret.is_none(){
+        if secrets.is_none(){
             // Completed sharing
             let msg = (instance, rep, None);
             let status = self.out_asks_values.send(msg).await;
@@ -132,7 +136,7 @@ impl Context{
         }
         else{
             // Completed reconstruction of the secret
-            let msg = (instance,rep, Some(secret.unwrap()));
+            let msg = (instance,rep, Some(secrets.unwrap()));
             let status = self.out_asks_values.send(msg).await;
             log::info!("Sent result back to original channel {:?}", status);
         }

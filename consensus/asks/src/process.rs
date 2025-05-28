@@ -31,20 +31,20 @@ impl Context {
         // Verify the message's authenticity before proceeding
         if self.check_proposal(msg) {
             match wrapper_msg.clone().protmsg {
-                ProtMsg::Echo(main_msg, instance_id) => {
+                ProtMsg::Echo(main_msg, rec_to_all, instance_id) => {
                     // RBC initialized
                     log::debug!("Received Echo for instance id {} from node : {}", instance_id, main_msg.origin);
-                    self.process_asks_echo(main_msg, wrapper_msg.sender,instance_id).await;
+                    self.process_asks_echo(main_msg,  wrapper_msg.sender,rec_to_all,instance_id).await;
                 }
-                ProtMsg::Ready(main_msg, instance_id) => {
+                ProtMsg::Ready(main_msg,rec_to_all, instance_id) => {
                     // RBC initialized
                     log::debug!("Received Ready for instance id {} from node : {}", instance_id, main_msg.origin);
-                    self.process_asks_ready(main_msg, wrapper_msg.sender,instance_id).await;
+                    self.process_asks_ready(main_msg,  wrapper_msg.sender, rec_to_all,instance_id).await;
                 }
-                ProtMsg::Init(enc_msg, commitment, instance_id) => {
+                ProtMsg::Init(enc_msg,  instance_id) => {
                     // RBC initialized
                     log::debug!("Received Init for instance id {} from node {}", instance_id, wrapper_msg.sender);
-                    self.process_init_asks(enc_msg, commitment, wrapper_msg.sender,instance_id).await;
+                    self.process_init_asks(enc_msg,  wrapper_msg.sender,instance_id).await;
                 },
                 ProtMsg::Reconstruct(share, instance_id) => {
                     
