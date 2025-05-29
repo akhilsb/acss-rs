@@ -26,6 +26,10 @@ impl Context{
         for rep in 0..self.num_nodes{
             if self.dpss_state.acs_output.contains(&rep){
                 // Fetch shares
+                if !self.dpss_state.acss_map.contains_key(&rep){
+                    log::info!("ACSS did not terminate yet, will retry later for share generation");
+                    return;
+                }
                 let share_inst_map = self.dpss_state.acss_map.get(&rep).unwrap();
                 let mut index = 0;
                 for batch in 1..self.num_batches+1{
@@ -33,8 +37,12 @@ impl Context{
                         log::info!("ACSS did not terminate yet, will retry later for share generation");
                         return;
                     }
-                    let batch_shares = share_inst_map.get(&batch).unwrap().0.clone().unwrap().0;
-                    for share in batch_shares{
+                    let batch_shares = share_inst_map.get(&batch).unwrap().0.clone();
+                    if batch_shares.is_none(){
+                        log::info!("ACSS did not terminate yet, will retry later for share generation");
+                        return;
+                    }
+                    for share in batch_shares.unwrap().0.clone(){
                         shares_to_be_combined[index].push(share);
                         index +=1;
                     }

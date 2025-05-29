@@ -46,7 +46,7 @@ impl Context{
         let shares = acss_ab_state.enc_shares.get(&sender_rep).unwrap().clone();
         
         let dec_shares = decrypt(sec_key.as_slice(), shares);
-        let (instance_id,shares) : (usize,(Vec<LargeFieldSer>,LargeFieldSer,LargeFieldSer)) = bincode::deserialize(dec_shares.as_slice()).unwrap();
+        let shares : (Vec<LargeFieldSer>,LargeFieldSer,LargeFieldSer) = bincode::deserialize(dec_shares.as_slice()).unwrap();
         // Decrypt shares here
         // Assuming decrypt function is defined elsewhere
         log::info!("Decrypted shares for sender {} in instance_id {}", sender_rep, instance_id);

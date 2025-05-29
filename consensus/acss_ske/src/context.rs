@@ -339,7 +339,7 @@ impl Context {
                                 .unwrap()
                                 .as_millis());
                     
-                    self.handle_avid_termination(avid_msg.0, avid_msg.1, avid_msg.2).await;
+                    self.handle_avid_termination(avid_msg.1, avid_msg.2).await;
                 },
                 ra_msg = self.recv_out_ra.recv() => {
                     let ra_msg = ra_msg.ok_or_else(||

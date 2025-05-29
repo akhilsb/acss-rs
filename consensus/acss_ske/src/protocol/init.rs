@@ -295,13 +295,14 @@ impl Context{
                 let blinding_nonce_share = nonce_blinding_poly_evaluations[rep].clone().to_bytes_be();
                 
                 let shares_full = (shares_party, nonce_share, blinding_nonce_share);
-                let serialized_shares = (instance_id, shares_full);
+                let serialized_shares = shares_full;
                 let shares_ser = bincode::serialize(&serialized_shares).unwrap();
 
                 let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
-                
                 let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
-                shares.push((rep, Some(enc_shares)));
+                
+                let ser_enc_msg = bincode::serialize(&(instance_id,enc_shares)).unwrap();
+                shares.push((rep, Some(ser_enc_msg)));
             }
         }
         // Reliably broadcast this vector

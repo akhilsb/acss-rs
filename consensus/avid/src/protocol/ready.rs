@@ -113,9 +113,7 @@ impl Context {
                     return;
                 }
                 log::info!("Delivered message through AVID from sender {} for instance ID {}",avid_context.sender,instance_id);    
-                log::info!("Trying to decrypt message with length {} with secret key of {}", message.len(), origin);
-                // decrypt message
-
+                
                 //let msg = decrypt(sec_key.as_slice(), message);
                 let status = self.out_avid.send((instance_id,avid_context.sender,Some(truncated_deser_message))).await;
                 if status.is_err(){
