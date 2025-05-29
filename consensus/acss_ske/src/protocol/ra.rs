@@ -1,6 +1,5 @@
-use crypto::aes_hash::MerkleTree;
-use lambdaworks_math::{traits::ByteConversion, polynomial::Polynomial};
 use consensus::LargeField;
+use lambdaworks_math::traits::ByteConversion;
 
 use crate::{Context, protocol::ACSSABState};
 
@@ -31,34 +30,36 @@ impl Context{
             if acss_state.verification_status.get(&sender).unwrap().clone(){
                 // Send shares back to parent process
                 log::info!("Sending shares back to syncer for sender {} for instance id {}",sender, instance_id);
-                if self.avss_inst_id == instance_id{
-                    acss_state.acss_status.insert(sender);
-                    let shares = acss_state.shares.get(&sender).unwrap().clone();
-                    let (comm,b_comm, dzk_poly) = acss_state.commitments.get(&sender).unwrap().clone();
+                // if self.avss_inst_id == instance_id{
+                //     acss_state.acss_status.insert(sender);
+                //     let shares = acss_state.shares.get(&sender).unwrap().clone();
+                //     let (comm,b_comm, dzk_poly) = acss_state.commitments.get(&sender).unwrap().clone();
 
-                    // Compute root commitment
-                    let share_root = MerkleTree::new(comm, &self.hash_context).root();
-                    let blinding_root = MerkleTree::new(b_comm, &self.hash_context).root();
-                    let root_comm = self.hash_context.hash_two(share_root, blinding_root);
-                    let root_comm_fe = LargeField::from_bytes_be(&root_comm).unwrap();
-                    acss_state.commitment_root_fe.insert(sender, root_comm_fe);
+                //     // Compute root commitment
+                //     let share_root = MerkleTree::new(comm, &self.hash_context).root();
+                //     let blinding_root = MerkleTree::new(b_comm, &self.hash_context).root();
+                //     let root_comm = self.hash_context.hash_two(share_root, blinding_root);
+                //     let root_comm_fe = LargeField::from_bytes_be(&root_comm).unwrap();
+                //     acss_state.commitment_root_fe.insert(sender, root_comm_fe);
 
-                    // Compute DZK polynomial
-                    let dzk_poly_coeffs: Vec<LargeField> = dzk_poly.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
-                    let dzk_poly = Polynomial::new(dzk_poly_coeffs.as_slice());
-                    acss_state.dzk_poly.insert(sender, dzk_poly);
+                //     // Compute DZK polynomial
+                //     let dzk_poly_coeffs: Vec<LargeField> = dzk_poly.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
+                //     let dzk_poly = Polynomial::new(dzk_poly_coeffs.as_slice());
+                //     acss_state.dzk_poly.insert(sender, dzk_poly);
 
-                    let _status = self.out_avss.send((true,Some((sender,shares)),None)).await;
-                }
-                else{
-                    let shares = acss_state.shares.get(&sender).unwrap().clone();
-                    let _status = self.out_acss.send((instance_id,sender,Some(shares.0))).await;
-                    acss_state.acss_status.insert(sender);
-                }
+                //     let _status = self.out_avss.send((true,Some((sender,shares)),None)).await;
+                // }
+                //else{
+                let root_comm = acss_state.commitment_root_fe.get(&sender).unwrap().clone().to_bytes_be();
+
+                let shares: Vec<LargeField> = acss_state.shares.get(&sender).unwrap().clone().0.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
+                let _status = self.out_acss.send((instance_id,sender, root_comm,Some(shares))).await;
+                acss_state.acss_status.insert(sender);
+                //}
                 //self.terminate("Hello".to_string()).await;
             }
             else{
-                let _status = self.out_acss.send((instance_id, sender,None)).await;
+                let _status = self.out_acss.send((instance_id, sender, [0;32],None)).await;
                 acss_state.acss_status.insert(sender);
             }
         }

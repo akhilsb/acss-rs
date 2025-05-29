@@ -1,16 +1,78 @@
 use std::{ops::{Mul, Add, Sub}};
 
 use crate::Context;
-use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree};
+use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree, encrypt};
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, polynomial::Polynomial, traits::ByteConversion};
-use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf};
+use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element};
 use rand::random;
 use types::Replica;
 
 use super::ACSSABState;
 
 impl Context{
+    pub async fn init_symmetric_key_setup(&mut self){
+        if self.symmetric_keys_avid.keys_from_me.is_empty(){
+            log::info!("Initializing symmetric keys and sharing them through ASKS in ACSS instance");
+            // First sample $n$ symmetric keys
+            let mut symm_keys = Vec::new();
+            for i in 0..self.num_nodes{
+                let key = rand_field_element();
+                symm_keys.push(key.clone());
+                self.symmetric_keys_avid.keys_from_me.insert(i, key.to_bytes_be().to_vec());
+            }
+            log::info!("Symmetric keys generated: {:?}", symm_keys);
+            // Now share these keys through ASKS
+            let _status = self.asks_inp_channel.send((
+                1,
+                self.num_nodes, 
+                false, 
+                false, 
+                Some(symm_keys), 
+                None
+            )).await;
+            if _status.is_err(){
+                log::error!("Failed to send ASKS init request");
+                return;
+            }
+        }
+    }
+
+    pub async fn init_symmetric_key_reconstruction(&mut self, party: Replica){
+        log::info!("Received ASKS termination for secrets initiated by party {}", party);
+        log::info!("Reconstructing symmetric keys in ASKS from party {}", party);
+        if !self.symmetric_keys_avid.term_asks_sharing.contains(&party){
+            self.symmetric_keys_avid.term_asks_sharing.insert(party);
+            // Initiate reconstruction
+
+            let _status = self.asks_inp_channel.send((
+                1,
+                self.num_nodes, 
+                false, 
+                true, 
+                None, 
+                Some(party)
+            )).await;
+            if _status.is_err(){
+                log::error!("Failed to send ASKS termination request for symmetric keys");
+                return;
+            }
+        }
+    }
+
+    pub async fn process_symmetric_key_reconstruction(&mut self, party: Replica, secret: Vec<LargeField>){
+        log::info!("Received reconstructed symmetric keys from party {} {:?}", party, secret);
+        if !self.symmetric_keys_avid.keys_to_me.contains_key(&party){
+            let secret = secret[0].clone().to_bytes_be();
+            self.symmetric_keys_avid.keys_to_me.insert(party, secret.to_vec());
+            // Now that the key is available, we can use it to decrypt the secrets initialized by the party {party}
+        } else {
+            log::warn!("Reconstructed keys from party {} already exists", party);
+        }
+    }
+
     pub async fn init_acss_ab(&mut self, secrets: Vec<LargeField>, instance_id: usize){
+        // Init ASKS first
+        self.init_symmetric_key_setup().await;
         if !self.acss_ab_state.contains_key(&instance_id){
             let acss_ab_state = ACSSABState::new();
             self.acss_ab_state.insert(instance_id, acss_ab_state);
@@ -32,7 +94,7 @@ impl Context{
             // Generate evaluations right here
             let evaluations_prf = sample_polynomials_from_prf(
                 secrets, 
-                self.sec_key_map.clone(), 
+                self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 false, 
                 1u8
@@ -68,7 +130,7 @@ impl Context{
                 vec![LargeField::new(UnsignedInteger{
                     limbs: random()
                 })], 
-                self.sec_key_map.clone(), 
+                self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
                 1u8
@@ -86,7 +148,7 @@ impl Context{
                 vec![LargeField::new(UnsignedInteger{
                     limbs: random()
                 })], 
-                self.sec_key_map.clone(), 
+                self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
                 2u8
@@ -104,7 +166,7 @@ impl Context{
                 vec![LargeField::new(UnsignedInteger{
                     limbs: random()
                 })], 
-                self.sec_key_map.clone(), 
+                self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
                 3u8
@@ -235,8 +297,9 @@ impl Context{
                 let serialized_shares = (instance_id, shares_full);
                 let shares_ser = bincode::serialize(&serialized_shares).unwrap();
 
-                //let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
-                shares.push((rep, Some(shares_ser)));
+                let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
+                let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
+                shares.push((rep, Some(enc_shares)));
             }
         }
         // Reliably broadcast this vector

@@ -16,7 +16,7 @@ impl Context{
 
     pub async fn share_validity_oracle(&mut self, origin: Replica, share_sender: Replica, share: AvssShare){
         // Use the avss instance id for this
-        let orig_share = share.clone();
+        let _orig_share = share.clone();
         log::info!("Request received to validate shares from sender {} for AVSS from origin {}", share_sender, origin);
         if !self.acss_ab_state.contains_key(&self.avss_inst_id){
             log::error!("AVSS instance not found");
@@ -51,7 +51,7 @@ impl Context{
         let dzk_poly  = avss_state.dzk_poly.get(&origin).unwrap();
         let root_comm_fe = avss_state.commitment_root_fe.get(&origin).unwrap();
 
-        let status = self.evaluate_dzk_poly(
+        let _status = self.evaluate_dzk_poly(
             root_comm_fe.clone(), 
             share_sender,
             dzk_poly,
@@ -60,14 +60,14 @@ impl Context{
             blinding_nonce.clone()
         );
 
-        if !status{
-            log::error!("DZK proof mismatch for share from sender {} for AVSS from origin {}", share_sender, origin);
-            return;
-        }
-        else{
-            // send share back through the channel
-            log::info!("Successfully validated AVSS share, sending output back to channel");
-            let _status = self.out_avss.send((false, None, Some((origin, share_sender, orig_share)))).await;
-        }
+        // if !status{
+        //     log::error!("DZK proof mismatch for share from sender {} for AVSS from origin {}", share_sender, origin);
+        //     return;
+        // }
+        // else{
+        //     // send share back through the channel
+        //     log::info!("Successfully validated AVSS share, sending output back to channel");
+        //     let _status = self.out_avss.send((false, None, Some((origin, share_sender, orig_share)))).await;
+        // }
     }
 }

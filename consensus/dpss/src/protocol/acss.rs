@@ -13,7 +13,7 @@ impl Context{
         let mut random_points = Vec::new();
         for _ in 0..num_points{
             let rand_int = rand_field_element();
-            random_points.push(rand_int.to_bytes_be());
+            random_points.push(rand_int);
         }
         let id = self.max_id;
         let _status = self.acss_req.send((id, random_points.clone())).await;
@@ -22,10 +22,14 @@ impl Context{
         self.max_id = id+2;
     }
 
-    pub async fn process_acss_event(&mut self, inst: usize, sender: usize, root_comm: Hash, shares_ser: Vec<LargeFieldSer>){
-        log::info!("Received ACSS terminated event for instance {}, dealer: {}, with shares: {}", inst, sender, shares_ser.len());
-        let shares_deser = shares_ser.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect(); 
-
+    pub async fn process_acss_event(&mut self, inst: usize, sender: usize, root_comm: Hash, shares_deser: Option<Vec<LargeField>>){
+        if shares_deser.is_none(){
+            log::error!("Received ACSS terminated event for instance {}, dealer: {}, but shares are None", inst, sender);
+            return;
+        }
+        let shares_deser = shares_deser.unwrap();
+        log::info!("Received ACSS terminated event for instance {}, dealer: {}, with shares: {}", inst, sender, shares_deser.len());
+        
         let inst_key = (inst+1)/2;
         let first_or_second = inst%2;
 

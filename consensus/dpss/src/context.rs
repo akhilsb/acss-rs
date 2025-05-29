@@ -19,8 +19,8 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::{SyncHandler, LargeFieldSSS};
-use crypto::{aes_hash::HashState, LargeFieldSer, hash::Hash};
+use consensus::{SyncHandler, LargeFieldSSS, LargeField};
+use crypto::{aes_hash::HashState, hash::Hash};
 
 use crate::{msg::ProtMsg, Handler, protocol::DPSSState};
 
@@ -66,11 +66,14 @@ pub struct Context {
     pub acs_input_set: HashSet<Replica>,
     /// Channels to interact with other services
 
-    pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
-    pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
+    pub acss_req: Sender<(usize, Vec<LargeField>)>,
+    pub acss_out_recv: Receiver<(usize, usize, Hash, Option<Vec<LargeField>>)>,
 
     pub acs_term_event: Sender<(usize,usize)>,
     pub acs_out_recv: Receiver<(usize,Vec<usize>)>,
+
+    pub pub_rec_req_send_channel: Sender<(usize, Replica)>,
+    pub pub_rec_out_recv_channel: Receiver<(usize, Replica, Vec<LargeField>)>
 }
 
 // s = num_batches*per_batch
@@ -156,6 +159,9 @@ impl Context {
         let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
         let (acss_out_send_channel, acss_out_recv_channel) = channel(10000);
         
+        let (pub_rec_req_send_channel, pub_rec_req_recv_channel) = channel(10000);
+        let (pub_rec_out_send_channel, pub_rec_out_recv_channel) = channel(10000);
+
         let (acs_req_send_channel, acs_req_recv_channel) = channel(10000);
         let (acs_out_send_channel, acs_out_recv_channel) = channel(10000);
 
@@ -197,6 +203,9 @@ impl Context {
 
                 acs_term_event: acs_req_send_channel,
                 acs_out_recv: acs_out_recv_channel,
+
+                pub_rec_req_send_channel: pub_rec_req_send_channel,
+                pub_rec_out_recv_channel: pub_rec_out_recv_channel,
             };
 
             // Populate secret keys from config
@@ -211,21 +220,30 @@ impl Context {
         });
         let _acss_serv_status;
         if low_or_high{
-            _acss_serv_status = acss_bv::Context::spawn(
+            // _acss_serv_status = acss_bv::Context::spawn(
+            //     acss_config,
+            //     acss_req_recv_channel,
+            //     acss_out_send_channel, 
+            //     false
+            // );
+            _acss_serv_status = acss_ske::Context::spawn(
                 acss_config,
                 acss_req_recv_channel,
                 acss_out_send_channel, 
+                pub_rec_req_recv_channel,
+                pub_rec_out_send_channel,
+                false,
                 false
             );
         }
-        else{
-            _acss_serv_status = hacss::Context::spawn(
-                acss_config,
-                acss_req_recv_channel,
-                acss_out_send_channel, 
-                false
-            );
-        }
+        // else{
+        //     _acss_serv_status = hacss::Context::spawn(
+        //         acss_config,
+        //         acss_req_recv_channel,
+        //         acss_out_send_channel, 
+        //         false
+        //     );
+        // }
 
         let _acs_serv_status = acs::Context::spawn(
             acs_config,

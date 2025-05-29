@@ -35,3 +35,21 @@ impl ACSSABState{
         }
     }
 }
+
+pub struct SymmetricKeyState{
+    pub keys_from_me: HashMap<Replica, Vec<u8>>,
+    pub keys_to_me: HashMap<Replica, Vec<u8>>,
+    pub term_asks_sharing: HashSet<Replica>,
+    pub term_asks_recon: HashSet<Replica>,
+}
+
+impl SymmetricKeyState {
+    pub fn new() -> Self {
+        Self {
+            keys_from_me: HashMap::default(),
+            keys_to_me: HashMap::default(),
+            term_asks_sharing: HashSet::default(),
+            term_asks_recon: HashSet::default(),
+        }
+    }
+}

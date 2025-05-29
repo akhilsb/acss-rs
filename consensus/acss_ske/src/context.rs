@@ -8,13 +8,13 @@ use anyhow::{anyhow, Result};
 use config::Node;
 
 use fnv::FnvHashMap;
-use lambdaworks_math::{traits::ByteConversion, fft::cpu::roots_of_unity::get_powers_of_primitive_root, field::traits::RootsConfig};
+use lambdaworks_math::{ fft::cpu::roots_of_unity::get_powers_of_primitive_root, field::traits::RootsConfig};
 use network::{
     plaintcp::{CancelHandler},
     Acknowledgement,
 };
-use consensus::{LargeFieldSer, LargeField, AvssShare};
-//use signal_hook::{iterator::Signals, consts::{SIGINT, SIGTERM}};
+use consensus::{LargeField};
+
 use tokio::{sync::{
     mpsc::{Receiver, Sender, channel},
     oneshot,
@@ -22,9 +22,9 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica};
 
-use crypto::aes_hash::HashState;
+use crypto::{aes_hash::HashState, hash::Hash};
 
-use crate::protocol::{ACSSABState};
+use crate::protocol::{ACSSABState, SymmetricKeyState};
 
 pub struct Context {
     /// Data context
@@ -42,6 +42,8 @@ pub struct Context {
     pub cancel_handlers: HashMap<u64, Vec<CancelHandler<Acknowledgement>>>,
     exit_rx: oneshot::Receiver<()>,
     
+    pub symmetric_keys_avid: SymmetricKeyState,
+
     pub acss_ab_state: HashMap<usize,ACSSABState>,
     pub avss_state: ACSSABState,
 
@@ -54,11 +56,11 @@ pub struct Context {
     pub num_threads: usize,
     
     // Input queue for receiving acss requests with bool field indicating ACSS or AVSS.
-    pub inp_acss: Receiver<(usize, Vec<LargeFieldSer>)>,
-    pub out_acss: Sender<(usize, Replica,Option<Vec<LargeFieldSer>>)>,
+    pub inp_acss: Receiver<(usize, Vec<LargeField>)>,
+    pub out_acss: Sender<(usize, Replica, Hash, Option<Vec<LargeField>>)>,
 
-    pub inp_avss: Receiver<(bool, Option<Vec<LargeFieldSer>>, Option<(Replica, Replica, AvssShare)>)>,
-    pub out_avss: Sender<(bool, Option<(Replica,AvssShare)>, Option<(Replica,Replica,AvssShare)>)>,
+    pub inp_pub_rec_in: Receiver<(usize, Replica)>,
+    pub out_pub_rec_out: Sender<(usize, Replica, Vec<LargeField>)>,
 
     /// ASKS input and output channels
     pub asks_inp_channel: Sender<(usize, usize, bool, bool, Option<Vec<LargeField>>, Option<usize>)>,
@@ -79,17 +81,16 @@ pub struct Context {
     pub use_fft: bool,
     pub roots_of_unity: Vec<LargeField>,
 
-    pub avss_inst_id: usize, 
-
+    pub avss_inst_id: usize,
 }
 
 impl Context {
     pub fn spawn(
         config: Node,
-        input_acss: Receiver<(usize,Vec<LargeFieldSer>)>, 
-        output_acss: Sender<(usize,Replica,Option<Vec<LargeFieldSer>>)>,
-        input_avss: Receiver<(bool, Option<Vec<LargeFieldSer>>, Option<(Replica, Replica, AvssShare)>)>,
-        output_avss: Sender<(bool, Option<(Replica,AvssShare)>, Option<(Replica,Replica,AvssShare)>)>, 
+        input_acss: Receiver<(usize,Vec<LargeField>)>, 
+        output_acss: Sender<(usize,Replica,Hash,Option<Vec<LargeField>>)>,
+        input_pubrec: Receiver<(usize, Replica)>,
+        output_pubrec: Sender<(usize, Replica, Vec<LargeField>)>, 
         use_fft: bool,
         _byz: bool
     ) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
@@ -171,6 +172,8 @@ impl Context {
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
                 
+                symmetric_keys_avid: SymmetricKeyState::new(),
+
                 acss_ab_state: HashMap::default(),
                 avss_state: ACSSABState::new(),
 
@@ -183,8 +186,8 @@ impl Context {
                 inp_acss: input_acss,
                 out_acss: output_acss,
 
-                inp_avss: input_avss,
-                out_avss: output_avss,
+                inp_pub_rec_in: input_pubrec,
+                out_pub_rec_out: output_pubrec,
 
                 roots_of_unity: Self::gen_roots_of_unity(config.num_nodes),
 
@@ -277,26 +280,39 @@ impl Context {
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis());
-                    let secrets_field: Vec<LargeField> = secrets.into_iter().map(|secret| LargeField::from_bytes_be(&secret).unwrap()).collect();
+                    let secrets_field: Vec<LargeField> = secrets.clone();
                     self.acss_id = id;
                     self.init_acss_ab(secrets_field, id).await;
                 },
-                avss_msg = self.inp_avss.recv() =>{
-                    let (sharing, secrets, recon_request) = avss_msg.ok_or_else(||
+                avss_msg = self.inp_pub_rec_in.recv() =>{
+                    let (_instance_id, _cheating_party) = avss_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    if sharing {
-                        let secrets = secrets.unwrap();
-                        log::info!("Received request to start AVSS for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis());
-                        self.init_avss(secrets).await;
+                    // if sharing {
+                    //     let secrets = secrets.unwrap();
+                    //     log::info!("Received request to start AVSS for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
+                    //             .duration_since(UNIX_EPOCH)
+                    //             .unwrap()
+                    //             .as_millis());
+                    //     self.init_avss(secrets).await;
+                    // }
+                    // else{
+                    //     let recon_request = recon_request.unwrap();
+                    //     log::info!("Received request to reconstruct AVSS for secrets shared by party {} and shares sent by {}",recon_request.0, recon_request.1);
+                    //     self.share_validity_oracle(recon_request.0, recon_request.1, recon_request.2).await;
+                    // }
+                },
+                asks_msg = self.asks_recv_out.recv() => {
+                    let asks_msg = asks_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    if asks_msg.2.is_none() {
+                        log::info!("Got ASKS termination event from party {:?}", asks_msg.clone());
+                        self.init_symmetric_key_reconstruction(asks_msg.1).await;
                     }
                     else{
-                        let recon_request = recon_request.unwrap();
-                        log::info!("Received request to reconstruct AVSS for secrets shared by party {} and shares sent by {}",recon_request.0, recon_request.1);
-                        self.share_validity_oracle(recon_request.0, recon_request.1, recon_request.2).await;
+                        log::info!("Got ASKS termination reconstruction event from party {:?}", asks_msg.clone());
+                        self.process_symmetric_key_reconstruction(asks_msg.1, asks_msg.2.unwrap()).await;
                     }
                 },
                 ctrbc_msg = self.recv_out_ctrbc.recv() =>{
