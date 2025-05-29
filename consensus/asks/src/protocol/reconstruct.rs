@@ -149,7 +149,7 @@ impl Context{
             }
             else{
                 // Else get the ith root from the set of commitments
-                let my_commitment = roots[self.myid].clone();
+                let my_commitment = roots[0].clone();
                 let recon_comm = recon_commitments[0].clone();
                 if recon_comm != my_commitment{
                     log::error!("Reconstructed commitment does not match the state roots for ASKS instance {} for secret key reconstruction", instance_id);

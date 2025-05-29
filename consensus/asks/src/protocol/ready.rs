@@ -84,7 +84,6 @@ impl Context{
             let my_share:Vec<u8> = shards[self.myid].clone();
             
             // Reconstruct Merkle Root
-            // Reconstruct Merkle Root
             let hashes_rbc: Vec<Hash> = shards
             .into_iter()
             .map(|x| do_hash(x.as_slice()))

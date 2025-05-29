@@ -98,7 +98,7 @@ impl Context {
         let mut acs_config = config.clone();
 
         let port_acss: u16 = 150;
-        let port_acs: u16 = 300;
+        let port_acs: u16 = 900;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");

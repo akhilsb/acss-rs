@@ -50,7 +50,7 @@ impl Context{
                 //     let _status = self.out_avss.send((true,Some((sender,shares)),None)).await;
                 // }
                 //else{
-                let root_comm = acss_state.commitment_root_fe.get(&sender).unwrap().clone().to_bytes_be();
+                let root_comm = acss_state.commitment_root_fe.get(&sender).unwrap().clone();
 
                 let shares: Vec<LargeField> = acss_state.shares.get(&sender).unwrap().clone().0.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
                 let _status = self.out_acss.send((instance_id,sender, root_comm,Some(shares))).await;

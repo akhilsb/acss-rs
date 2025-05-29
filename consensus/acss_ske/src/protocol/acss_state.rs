@@ -7,10 +7,11 @@ use types::Replica;
 
 #[derive(Clone, Debug)]
 pub struct ACSSABState{
+    pub enc_shares: HashMap<Replica, Vec<u8>>,
     // Shares, Nonce, Blinding nonce share in each tuple
     pub shares: HashMap<Replica, AvssShare>,
     // Commitments to shares, commitments to blinding polynomial, and DZK polynomial
-    pub commitments: HashMap<Replica, (Vec<Hash>, Vec<Hash>, Vec<[u8;32]>)>,
+    pub commitments: HashMap<Replica, (Vec<Hash>, Vec<Hash>, Vec<[u8;32]>, usize)>,
     // Reliable Agreement
     pub ra_outputs: HashSet<Replica>,
     // Verification status for each party
@@ -18,12 +19,13 @@ pub struct ACSSABState{
     pub acss_status: HashSet<Replica>,
 
     pub dzk_poly: HashMap<Replica,Polynomial<LargeField>>,
-    pub commitment_root_fe: HashMap<Replica, LargeField>,
+    pub commitment_root_fe: HashMap<Replica, Hash>,
 }
 
 impl ACSSABState{
     pub fn new() -> Self{
         Self{
+            enc_shares: HashMap::default(),
             shares: HashMap::default(),
             commitments: HashMap::default(),
             ra_outputs: HashSet::default(),

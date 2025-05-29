@@ -65,6 +65,7 @@ impl Context{
             let secret = secret[0].clone().to_bytes_be();
             self.symmetric_keys_avid.keys_to_me.insert(party, secret.to_vec());
             // Now that the key is available, we can use it to decrypt the secrets initialized by the party {party}
+            self.decrypt_shares_all_instances(party).await;
         } else {
             log::warn!("Reconstructed keys from party {} already exists", party);
         }
@@ -298,6 +299,7 @@ impl Context{
                 let shares_ser = bincode::serialize(&serialized_shares).unwrap();
 
                 let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
+                
                 let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
                 shares.push((rep, Some(enc_shares)));
             }

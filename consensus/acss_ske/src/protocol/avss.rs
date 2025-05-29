@@ -27,7 +27,7 @@ impl Context{
             return;
         }
         
-        let (commitments, blinding_commitments, _dzk_poly) = avss_state.commitments.get(&origin).unwrap().clone();
+        let (commitments, blinding_commitments, _dzk_poly, _tot_shares) = avss_state.commitments.get(&origin).unwrap().clone();
 
         let shares = share.0;
         let nonce = share.1;
@@ -49,10 +49,10 @@ impl Context{
         let deser_shares = shares.iter().map(|x| LargeField::from_bytes_be(x).unwrap()).collect::<Vec<LargeField>>();
         
         let dzk_poly  = avss_state.dzk_poly.get(&origin).unwrap();
-        let root_comm_fe = avss_state.commitment_root_fe.get(&origin).unwrap();
+        let root_comm_fe = LargeField::from_bytes_be(avss_state.commitment_root_fe.get(&origin).unwrap()).unwrap();
 
         let _status = self.evaluate_dzk_poly(
-            root_comm_fe.clone(), 
+            root_comm_fe.clone(),
             share_sender,
             dzk_poly,
             &deser_shares, 

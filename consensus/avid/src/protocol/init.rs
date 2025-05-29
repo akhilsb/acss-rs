@@ -24,18 +24,16 @@ impl Context {
             }
         }
         filled_msg_vec.extend(msgs);
-        // let encrypted_msgs = msgs.into_iter().map(|(replica,msg)|{
-        //     let secret_key = self.sec_key_map.get(&replica).unwrap();
-        //     let encrypted_msg = encrypt(secret_key, msg);
-        //     return (replica, encrypted_msg);            
-        // });
+        
         // Each element of the vector is an AVID for sending a message to a single replica
         let mut avid_tree: Vec<(Replica,Vec<Vec<u8>>,MerkleTree)> = Vec::new(); 
         let mut roots_agg: Vec<Hash> = Vec::new();
         
         for msg in filled_msg_vec{
+            let msg_length = msg.1.len();
+            let msg_with_length_serialized = bincode::serialize(&(msg.1, msg_length)).unwrap();
             // Get encrypted text itself
-            let shards = get_shards(msg.1, self.num_faults+1, 2*self.num_faults);
+            let shards = get_shards(msg_with_length_serialized, self.num_faults+1, 2*self.num_faults);
             let merkle_tree = construct_merkle_tree(shards.clone(),&self.hash_context);
             roots_agg.push(merkle_tree.root());
             avid_tree.push((msg.0,shards,merkle_tree));

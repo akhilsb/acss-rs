@@ -104,18 +104,20 @@ impl Context {
                 // Terminate protocol
                 let message = avid_context.message.clone().unwrap();
                 avid_context.terminated = true;
-                if &message[0..32] == self.zero_hash{
+
+                let (deser_message, msg_len): (Vec<u8>, usize) = bincode::deserialize(&message).unwrap();
+                
+                let truncated_deser_message = deser_message[0..msg_len].to_vec();
+                if &truncated_deser_message[0..32] == self.zero_hash{
                     log::info!("Received dummy message, not sending to parent process");
                     return;
                 }
-
                 log::info!("Delivered message through AVID from sender {} for instance ID {}",avid_context.sender,instance_id);    
                 log::info!("Trying to decrypt message with length {} with secret key of {}", message.len(), origin);
                 // decrypt message
 
-                let _sec_key = self.sec_key_map.get(&origin).unwrap().clone();
                 //let msg = decrypt(sec_key.as_slice(), message);
-                let status = self.out_avid.send((instance_id,avid_context.sender,Some(message))).await;
+                let status = self.out_avid.send((instance_id,avid_context.sender,Some(truncated_deser_message))).await;
                 if status.is_err(){
                     log::error!("Error sending message to parent channel {:?}", status.unwrap_err());
                 }
