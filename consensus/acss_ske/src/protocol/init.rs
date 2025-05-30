@@ -1,8 +1,6 @@
-use std::{ops::{Mul, Add, Sub}};
-
 use crate::{Context, msg::AcssSKEShares};
 use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
-use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, polynomial::Polynomial, traits::ByteConversion};
+use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
 use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element, VACommitment};
 use rayon::prelude::{ParallelIterator, IndexedParallelIterator, IntoParallelIterator};
 use types::Replica;
@@ -359,30 +357,39 @@ impl Context{
         for rep in 0..self.num_nodes{
             // prepare shares
             // even need to encrypt shares
-            if (self.use_fft) || (!self.use_fft && rep >= self.num_faults){
-                let shares_party = shares_party_wise[rep].clone();
-                let nonce_shares = nonce_shares_party_wise[rep].clone();
-                let blinding_shares = blinding_shares_party_wise[rep].clone();
-                let nonce_blinding_poly_shares = blinding_nonce_shares_party_wise[rep].clone();
+            
+            let shares_party = shares_party_wise[rep].clone();
+            let nonce_shares = nonce_shares_party_wise[rep].clone();
+            let blinding_shares = blinding_shares_party_wise[rep].clone();
+            let nonce_blinding_poly_shares = blinding_nonce_shares_party_wise[rep].clone();
 
-                let merkle_proofs = merkle_proofs_party_wise[rep].clone();
-                let blinding_merkle_proofs = blinding_merkle_proofs_party_wise[rep].clone();
-                
-                let shares_struct = AcssSKEShares{
+            let merkle_proofs = merkle_proofs_party_wise[rep].clone();
+            let blinding_merkle_proofs = blinding_merkle_proofs_party_wise[rep].clone();
+            let shares_struct;
+            if (self.use_fft) || (!self.use_fft && rep >= self.num_faults){
+                shares_struct = AcssSKEShares{
                     evaluations: (shares_party, nonce_shares, merkle_proofs),
                     blinding_evaluations: (blinding_shares, nonce_blinding_poly_shares, blinding_merkle_proofs),
                     dzk_iters: dzk_proofs[rep].clone(),
                     rep: rep
-                };
-
-                let shares_ser = bincode::serialize(&shares_struct).unwrap();
-                
-                let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
-                let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
-                
-                let ser_enc_msg = bincode::serialize(&(instance_id,enc_shares)).unwrap();
-                shares.push((rep, Some(ser_enc_msg)));
+                };   
             }
+            else{
+                shares_struct = AcssSKEShares{
+                    evaluations: (vec![], vec![], merkle_proofs),
+                    blinding_evaluations: (vec![], vec![], blinding_merkle_proofs),
+                    dzk_iters: dzk_proofs[rep].clone(),
+                    rep: rep
+                }; 
+            }
+
+            let shares_ser = bincode::serialize(&shares_struct).unwrap();
+            
+            let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
+            let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
+            
+            let ser_enc_msg = bincode::serialize(&(instance_id,enc_shares)).unwrap();
+            shares.push((rep, Some(ser_enc_msg)));
         }
 
         let ser_broadcast_vec: Vec<u8> = bincode::serialize(&va_comm).unwrap();
@@ -530,40 +537,5 @@ impl Context{
         // Start reliable agreement
         let _status = self.inp_ra_channel.send((sender,1,instance_id)).await;
         self.check_termination(sender, instance_id).await;
-    }
-
-    pub fn evaluate_dzk_poly(
-        &self,
-        root_comm_fe: LargeField,
-        share_sender: Replica,
-        dzk_poly: &Polynomial<LargeField>, 
-        shares: &Vec<LargeField>, 
-        blinding_comm: LargeFieldSer,
-        blinding_nonce: LargeFieldSer,
-    )-> bool{
-        // Change this to be root of unity
-        let dzk_point;
-        if !self.use_fft{
-            dzk_point = dzk_poly.evaluate(&LargeField::new(UnsignedInteger::from((share_sender+1) as u64)));
-        }
-        else{
-            // get point of evaluation
-            let eval_point = self.roots_of_unity[share_sender];
-            dzk_point = dzk_poly.evaluate(&eval_point);
-        }
-        let mut agg_shares_point = LargeField::zero();
-        let mut root_comm_fe_mul = root_comm_fe.clone();
-        for share in shares{
-            agg_shares_point = agg_shares_point.add(share.mul(root_comm_fe_mul));
-            root_comm_fe_mul = root_comm_fe_mul.mul(root_comm_fe.clone());
-        }
-
-        let blinding_poly_share_bytes = dzk_point.sub(agg_shares_point).to_bytes_be();
-        let blinding_hash = self.hash_context.hash_two(blinding_poly_share_bytes,blinding_nonce);
-        if blinding_hash != blinding_comm{
-            // Invalid DZK proof
-            return false;
-        }
-        true
     }
 }
