@@ -2,16 +2,18 @@ use std::collections::{HashMap, HashSet};
 
 use crypto::hash::Hash;
 use lambdaworks_math::polynomial::Polynomial;
-use consensus::{LargeField, AvssShare};
+use consensus::{LargeField, VACommitment};
 use types::Replica;
+
+use crate::msg::AcssSKEShares;
 
 #[derive(Clone, Debug)]
 pub struct ACSSABState{
     pub enc_shares: HashMap<Replica, Vec<u8>>,
     // Shares, Nonce, Blinding nonce share in each tuple
-    pub shares: HashMap<Replica, AvssShare>,
+    pub shares: HashMap<Replica, AcssSKEShares>,
     // Commitments to shares, commitments to blinding polynomial, and DZK polynomial
-    pub commitments: HashMap<Replica, (Vec<Hash>, Vec<Hash>, Vec<[u8;32]>, usize)>,
+    pub commitments: HashMap<Replica, VACommitment>,
     // Reliable Agreement
     pub ra_outputs: HashSet<Replica>,
     // Verification status for each party

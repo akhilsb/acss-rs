@@ -2,7 +2,7 @@ use consensus::{interpolate_shares, LargeFieldSer};
 use crypto::{decrypt};
 use types::Replica;
 
-use crate::Context;
+use crate::{Context, msg::AcssSKEShares};
 
 impl Context{
     pub async fn interpolate_shares(&mut self, sender_rep: Replica, instance_id: usize){
@@ -16,16 +16,21 @@ impl Context{
             log::info!("Shares already generated for sender {} in instance_id {}", sender_rep, instance_id);
             return;
         }
-        let comm_dzk_vals = acss_ab_state.commitments.get(&sender_rep).unwrap().clone();
+        let _comm_dzk_vals = acss_ab_state.commitments.get(&sender_rep).unwrap().clone();
         // Interpolate shares here for first t parties
-        if !self.use_fft && self.myid < self.num_faults{
-            // Interpolate your shares in this case
-            let secret_key = self.symmetric_keys_avid.keys_to_me.get(&sender_rep).clone().unwrap().clone();
-            let shares = interpolate_shares(secret_key.clone(), comm_dzk_vals.3, false, 1).into_iter().map(|el| el.to_bytes_be()).collect();
-            let nonce_share = interpolate_shares(secret_key.clone(),1, true, 1u8)[0].to_bytes_be();
-            let blinding_nonce_share = interpolate_shares(secret_key, 1, true, 3u8)[0].to_bytes_be();
-            acss_ab_state.shares.insert(sender_rep, (shares,nonce_share,blinding_nonce_share));
-        }
+        // if !self.use_fft && self.myid < self.num_faults{
+        //     // Interpolate your shares in this case
+        //     let secret_key = self.symmetric_keys_avid.keys_to_me.get(&sender_rep).clone().unwrap().clone();
+        //     let shares = interpolate_shares(secret_key.clone(), comm_dzk_vals.tot_shares, false, 1).into_iter().map(|el| el.to_bytes_be()).collect();
+        //     let nonce_share = interpolate_shares(secret_key.clone(),self.num_nodes, true, 1u8).into_iter().map(|el| el.to_bytes_be()).collect();
+        //     let blinding_nonce_share = interpolate_shares(secret_key, self.num_nodes, true, 3u8)[0].to_bytes_be();
+        //     acss_ab_state.shares.insert(sender_rep, AcssSKEShares { 
+        //         evaluations: shares, 
+        //         blinding_evaluations: blin, 
+        //         dzk_iters: (), 
+        //         rep: () 
+        //     });
+        // }
         self.verify_shares(sender_rep,instance_id).await;
     }
 
@@ -46,7 +51,7 @@ impl Context{
         let shares = acss_ab_state.enc_shares.get(&sender_rep).unwrap().clone();
         
         let dec_shares = decrypt(sec_key.as_slice(), shares);
-        let shares : (Vec<LargeFieldSer>,LargeFieldSer,LargeFieldSer) = bincode::deserialize(dec_shares.as_slice()).unwrap();
+        let shares : AcssSKEShares = bincode::deserialize(dec_shares.as_slice()).unwrap();
         // Decrypt shares here
         // Assuming decrypt function is defined elsewhere
         log::info!("Decrypted shares for sender {} in instance_id {}", sender_rep, instance_id);

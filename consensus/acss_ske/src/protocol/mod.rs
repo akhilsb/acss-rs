@@ -9,8 +9,6 @@ pub use acss_state::*;
 
 mod ra;
 
-mod avss;
-
 mod ske;
 
 mod pub_rec;

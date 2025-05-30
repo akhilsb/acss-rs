@@ -1,7 +1,7 @@
 use std::ops::{Add, Mul};
 
 use consensus::{LargeField, LargeFieldSer, DZKProof};
-use crypto::{aes_hash::{MerkleTree, HashState}, hash::{Hash, do_hash}};
+use crypto::{aes_hash::{MerkleTree, HashState, Proof}, hash::{Hash, do_hash}};
 use lambdaworks_math::{polynomial::Polynomial};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator, IntoParallelRefIterator, IndexedParallelIterator};
 
@@ -27,12 +27,40 @@ impl Context{
             let agg_polys: Vec<Polynomial<LargeField>> = coefficients_grouped.par_iter().map(|group| {
                 let dot_product: Vec<Polynomial<LargeField>> 
                     = group.iter().zip(powers.iter()).map(|(poly,power)| poly*power).collect();
-                let sum: Polynomial<LargeField> = dot_product.iter().fold(Polynomial::zero(), |acc, poly| acc + poly);
+                let sum: Polynomial<LargeField> 
+                    = dot_product.iter().fold(Polynomial::zero(), |acc, poly| acc + poly);
                 return sum;
             }).collect();
             return agg_polys;
         }).collect();
+        collection_evaluation_points
+    }
 
+    pub fn group_points_for_public_reconstruction(
+        evaluations: Vec<LargeField>,
+        evaluation_points: Vec<LargeField>,
+        group_degree: usize
+    )-> Vec<Vec<LargeField>>{
+        let coefficients_grouped: Vec<Vec<LargeField>> = evaluations.chunks(group_degree).map(|el_vec| el_vec.to_vec()).collect();
+        
+        let collection_evaluation_points: Vec<Vec<LargeField>> = evaluation_points.into_par_iter().map(|element|{
+            // Compute t+1 powers
+            let mut powers = vec![element];
+            let mut element_power = element;
+            for _ in 0..group_degree-1{
+                element_power = element_power*element;
+                powers.push(element_power.clone());
+            }
+            // Use these powers zipped with the coefficients
+            let agg_polys: Vec<LargeField> = coefficients_grouped.par_iter().map(|group| {
+                let dot_product: Vec<LargeField> 
+                    = group.iter().zip(powers.iter()).map(|(poly,power)| poly*power).collect();
+                let sum: LargeField 
+                    = dot_product.iter().fold(LargeField::zero(), |acc, poly| acc + poly);
+                return sum;
+            }).collect();
+            return agg_polys;
+        }).collect();
         collection_evaluation_points
     }
 
@@ -67,6 +95,55 @@ impl Context{
         merkle_trees
     }
 
+    pub fn verify_commitments(
+        chunk_size: usize,
+        evaluation_points: Vec<LargeField>,
+        shares: Vec<LargeField>,
+        nonce_shares: Vec<LargeField>,
+        merkle_proofs: Vec<Proof>,
+        hc: &HashState
+    )-> bool{
+        let grouped_shares: Vec<Vec<LargeField>> = Self::group_points_for_public_reconstruction(
+            shares, 
+            evaluation_points, 
+            chunk_size
+        );
+        let hashes: Vec<Hash> = grouped_shares.into_iter().zip(nonce_shares.into_iter()).map(|(grp, nonce)|{
+            let mut appended_share = vec![];
+            for share in grp.into_iter() {
+                appended_share.extend(share.to_bytes_be());
+            }
+            appended_share.extend(nonce.to_bytes_be());
+            return do_hash(appended_share.as_slice());
+        }).collect();
+
+        let mut proof_flag = true;
+        for (hash, proof) in hashes.into_iter().zip(merkle_proofs.into_iter()){
+            proof_flag &= proof.validate(hc) && proof.item() == hash;
+        }
+        proof_flag
+    }
+
+    pub fn verify_blinding_commitments(
+        blinding_shares: Vec<LargeField>,
+        blinding_nonce_shares: Vec<LargeField>,
+        blinding_merkle_proofs: Vec<Proof>,
+        hc: &HashState,    
+    ) -> bool{
+        let hashes: Vec<Hash> = blinding_shares.into_iter().zip(blinding_nonce_shares.into_iter()).map(|(share, nonce)|{
+            let mut appended_share = vec![];
+            appended_share.extend(share.to_bytes_be());
+            appended_share.extend(nonce.to_bytes_be());
+            return do_hash(appended_share.as_slice());
+        }).collect();
+
+        let mut proof_flag = true;
+        for (hash, proof) in hashes.into_iter().zip(blinding_merkle_proofs.into_iter()){
+            proof_flag &= proof.validate(hc) && proof.item() == hash;
+        }
+        proof_flag
+    }
+
     pub fn aggregate_polynomials_for_dzk(
         polys: Vec<Vec<Polynomial<LargeField>>>,
         blinding_polys: Vec<Polynomial<LargeField>>,
@@ -85,6 +162,26 @@ impl Context{
             return agg_poly.clone();
         }).collect();
         agg_poly_vector
+    }
+
+    pub fn aggregate_points_for_dzk(
+        points: Vec<Vec<LargeField>>,
+        blinding_points: Vec<LargeField>,
+        root_fes: Vec<LargeField>
+    )-> Vec<LargeField>{
+        let agg_point_vector: Vec<LargeField> = (points.into_par_iter().zip(
+            blinding_points.into_par_iter()
+        )).zip(root_fes.into_par_iter()).map(|((point_group, b_point), root_fe)|{
+            // Start aggregation
+            let mut agg_poly = b_point.clone();
+            let mut root_fe_iter_mul = root_fe.clone();
+            for poly in point_group.into_iter(){
+                agg_poly = agg_poly.add(poly.mul(&root_fe_iter_mul));
+                root_fe_iter_mul *= &root_fe;
+            }
+            return agg_poly.clone();
+        }).collect();
+        agg_point_vector
     }
 
     pub fn compute_dzk_proofs(

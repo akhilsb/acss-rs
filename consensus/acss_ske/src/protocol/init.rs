@@ -71,6 +71,17 @@ impl Context{
         }
     }
 
+    pub fn gen_evaluation_points(&self)-> Vec<LargeField>{
+        let evaluation_points;
+        if !self.use_fft{
+            evaluation_points = (1..self.num_nodes+1).into_iter().map(|x| LargeField::from(x as u64)).collect();
+        }
+        else{
+            evaluation_points = self.roots_of_unity.clone();
+        }
+        evaluation_points
+    }
+
     pub async fn init_acss_ab(&mut self, secrets: Vec<LargeField>, instance_id: usize){
         // Init ASKS first
         self.init_symmetric_key_setup().await;
@@ -87,6 +98,7 @@ impl Context{
             }
         }
 
+        let tot_sharings = secrets.len();
         let mut handles = Vec::new();
         let mut _indices;
         let mut evaluations;
@@ -238,15 +250,8 @@ impl Context{
             ).await;
             nonce_blinding_poly_evaluations = nonce_blinding_evaluations_vec;
         }
-
-        let evaluation_points;
-        if !self.use_fft{
-            evaluation_points = (1..self.num_nodes+1).into_iter().map(|x| LargeField::from(x as u64)).collect();
-        }
-        else{
-            evaluation_points = self.roots_of_unity.clone();
-        }
         
+        let evaluation_points = self.gen_evaluation_points();
         // Group polynomials into groups of t+1
         let grouped_polynomials_dzk_proofs = Self::group_polynomials_for_public_reconstruction(
             coefficients, 
@@ -299,10 +304,12 @@ impl Context{
         );
 
         let va_comm: VACommitment = VACommitment{
+            instance_id: instance_id,
             column_roots: roots.clone(),
             blinding_column_roots: blinding_roots.clone(),
             dzk_roots: commitment_hashes,
-            polys: dzk_broadcast_polys
+            polys: dzk_broadcast_polys,
+            tot_shares: tot_sharings
         };
         
         // Transform the shares to party wise shares
@@ -404,57 +411,117 @@ impl Context{
             return;
         }
 
+        // Share verification first
         let shares_full = acss_ab_state.shares.get(&sender).unwrap().clone();
-        let shares = shares_full.0;
-        let nonce_share = shares_full.1;
-        let blinding_nonce_share = shares_full.2;
-
-        let commitments_full = acss_ab_state.commitments.get(&sender).unwrap().clone();
-        let share_commitments = commitments_full.0;
-        let blinding_commitments = commitments_full.1;
-        let dzk_coeffs = commitments_full.2;
-        let blinding_comm_sender = blinding_commitments[self.myid].clone();
-
-        // First, verify share commitments
-        let mut appended_share = Vec::new();
-        for share in shares.clone().into_iter(){
-            appended_share.extend(share);
+        let va_commitment = acss_ab_state.commitments.get(&sender).unwrap().clone();
+        
+        let shares: Vec<LargeField> = shares_full.evaluations.0.into_iter().map(|el| 
+            LargeField::from_bytes_be(el.as_slice()).unwrap()
+        ).collect();
+        let nonce_shares = shares_full.evaluations.1.into_iter().map(|el| 
+            LargeField::from_bytes_be(el.as_slice()).unwrap()
+        ).collect();
+        let merkle_proofs = shares_full.evaluations.2;
+        
+        let evaluation_points;
+        if !self.use_fft{
+            evaluation_points = (1..self.num_nodes+1).into_iter().map(|x| LargeField::from(x as u64)).collect();
         }
-        appended_share.extend(nonce_share);
-        let comm_hash = do_hash(appended_share.as_slice());
-        if comm_hash != share_commitments[self.myid]{
-            // Invalid share commitments
-            log::error!("Invalid share commitments from {}", sender);
-            acss_ab_state.verification_status.insert(sender, false);
+        else{
+            evaluation_points = self.roots_of_unity.clone();
+        }
+
+        let roots_from_proofs: Vec<Hash> = merkle_proofs.iter().map(|proof| proof.root()).collect();
+        
+        if roots_from_proofs != va_commitment.column_roots {
+            log::error!("Share commitment roots mismatch for instance {} from sender {}", instance_id, sender);
+            return;
+        }
+        if !Self::verify_commitments(
+            self.num_faults+1, 
+            evaluation_points.clone(), 
+            shares.clone(), 
+            nonce_shares, 
+            merkle_proofs, 
+            &self.hash_context
+        ){
+            log::error!("Share commitment verification failed for instance {} from sender {}", instance_id, sender);
             return;
         }
 
-        // Second, verify DZK proof
-        let shares_ff: Vec<LargeField> = shares.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
-        let dzk_poly_coeffs: Vec<LargeField> = dzk_coeffs.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
-        let dzk_poly = Polynomial::new(dzk_poly_coeffs.as_slice());
-        // Change this to be root of unity
+        // Blinding share verification next
+        let blinding_shares: Vec<LargeField> = shares_full.blinding_evaluations.0.into_iter().map(|el| 
+            LargeField::from_bytes_be(el.as_slice()).unwrap()
+        ).collect();
+        let blinding_nonce_shares = shares_full.blinding_evaluations.1.into_iter().map(|el| 
+            LargeField::from_bytes_be(el.as_slice()).unwrap()
+        ).collect();
+        let blinding_merkle_proofs = shares_full.blinding_evaluations.2;
 
-        let share_root = MerkleTree::new(share_commitments, &self.hash_context).root();
-        let blinding_root = MerkleTree::new(blinding_commitments, &self.hash_context).root();
-        let root_comm = self.hash_context.hash_two(share_root, blinding_root);
-        let root_comm_fe = LargeField::from_bytes_be(&root_comm).unwrap();
+        let blinding_merkle_roots: Vec<Hash> = blinding_merkle_proofs.iter().map(|proof| proof.root()).collect();
+        if blinding_merkle_roots != va_commitment.blinding_column_roots {
+            log::error!("Blinding share commitment roots mismatch for instance {} from sender {}", instance_id, sender);
+            return;
+        }
 
-        let verf_status = self.evaluate_dzk_poly(
-            root_comm_fe, 
-            self.myid, 
-            &dzk_poly, 
-            &shares_ff, 
-            blinding_comm_sender, 
-            blinding_nonce_share
+        if !Self::verify_blinding_commitments(
+            blinding_shares.clone(), 
+            blinding_nonce_shares,
+            blinding_merkle_proofs, 
+            &self.hash_context
+        ){
+            log::error!("Blinding share commitment verification failed for instance {} from sender {}", instance_id, sender);
+            return;
+        }
+
+
+        // Finally, verify DZK proofs
+        let grouped_points = Self::group_points_for_public_reconstruction(
+            shares, 
+            evaluation_points.clone(), 
+            self.num_faults+1
         );
-        let acss_ab_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
-        if !verf_status{
-            // Invalid DZK proof
-            log::error!("Invalid DZK proof from {}", sender);
-            acss_ab_state.verification_status.insert(sender,false);
-            return;
+
+        let root_comm_fe: Vec<LargeField> = roots_from_proofs.iter().zip(blinding_merkle_roots.iter()).map(|(root, b_root)|{
+            //let root = mt.root();
+            let root_combined = self.hash_context.hash_two(root.clone(), b_root.clone());
+            return LargeField::from_bytes_be(root_combined.as_slice()).unwrap();
+        }).collect();
+
+        let dzk_aggregated_points = Self::aggregate_points_for_dzk(
+            grouped_points, 
+            blinding_shares.clone(), 
+            root_comm_fe
+        );
+
+        for index in 0..self.num_nodes{
+            let dzk_proof = shares_full.dzk_iters[index].clone();
+            let dzk_roots = va_commitment.dzk_roots[index].clone();
+            let dzk_polynomial = va_commitment.polys[index].clone();
+            
+            let share_merkle_root = va_commitment.column_roots[index].clone();
+            let blinding_merkle_root = va_commitment.blinding_column_roots[index].clone();
+            let combined_root = self.hash_context.hash_two(share_merkle_root, blinding_merkle_root);
+
+            let share_point = dzk_aggregated_points[index].clone();
+            let blinding_share_point = blinding_shares[index].clone();
+            
+            let status = self.folding_dzk_context.verify_dzk_proof(
+                dzk_proof, 
+                dzk_roots, 
+                dzk_polynomial, 
+                combined_root, 
+                share_point, 
+                blinding_share_point, 
+                index+1
+            );
+
+            if !status{
+                log::error!("DZK proof verification failed for instance {} from sender {} at index {}", instance_id, sender, index);
+            }
         }
+
+        
         log::info!("Share from {} verified", sender);
         // If successful, add to verified list
         // Reborrow share

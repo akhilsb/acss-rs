@@ -262,10 +262,12 @@ impl Context{
         }
         
         let va_comm: VACommitment = VACommitment {
+            instance_id: instance_id,
             column_roots: column_share_roots,
             blinding_column_roots: column_blinding_roots,
             dzk_roots: hashes, 
-            polys: dzk_broadcast_polys 
+            polys: dzk_broadcast_polys ,
+            tot_shares: secrets.len()
         };
         
         log::info!("Share Creation time: {:?}", SystemTime::now()
@@ -322,6 +324,7 @@ impl Context{
 
 
             let msg = VAShare{
+                instance_id: instance_id,
                 row_poly: row_poly,
                 column_poly: column_poly,
                 dzk_iters: dzk_proofs,
