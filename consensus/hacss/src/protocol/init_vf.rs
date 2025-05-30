@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use consensus::{get_shards, LargeFieldSSS};
+use consensus::{get_shards, LargeFieldSSS, VACommitment, VAShare};
 use crypto::aes_hash::{MerkleTree, Proof};
 use crypto::hash::{do_hash, Hash};
 use crypto::{LargeField, LargeFieldSer, encrypt, decrypt, rand_field_element};
@@ -11,7 +11,7 @@ use network::Acknowledgement;
 use network::plaintcp::CancelHandler;
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, VAShare, VACommitment, ProtMsg, ACSSVAState};
+use crate::{Context, ProtMsg, ACSSVAState};
 use consensus::{DZKProof, PointBV};
 
 impl Context{

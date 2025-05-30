@@ -1,10 +1,10 @@
 use std::{ops::{Mul, Add, Sub}};
 
-use crate::Context;
-use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree, encrypt};
+use crate::{Context, msg::AcssSKEShares};
+use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, polynomial::Polynomial, traits::ByteConversion};
-use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element};
-use rand::random;
+use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element, VACommitment};
+use rayon::prelude::{ParallelIterator, IndexedParallelIterator, IntoParallelIterator};
 use types::Replica;
 
 use super::ACSSABState;
@@ -78,8 +78,14 @@ impl Context{
             let acss_ab_state = ACSSABState::new();
             self.acss_ab_state.insert(instance_id, acss_ab_state);
         }
-
-        let tot_sharings = secrets.len();
+        // Number of secrets must be a multiple of self.num_faults+1
+        let mut secrets = secrets;
+        if secrets.len() % (self.num_faults + 1) != 0 {
+            let rem_secrets = (self.num_faults+1) - (secrets.len()%(self.num_faults+1));
+            for _ in 0..rem_secrets {
+                secrets.push(rand_field_element());
+            }
+        }
 
         let mut handles = Vec::new();
         let mut _indices;
@@ -126,11 +132,11 @@ impl Context{
                 evaluations.extend(evaluations_batch);
                 coefficients.extend(coefficients_batch);
             }
+            
             // Generate nonce evaluations
+            let nonce_secrets:Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
             let evaluations_nonce_prf = sample_polynomials_from_prf(
-                vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })], 
+                nonce_secrets,
                 self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
@@ -141,14 +147,14 @@ impl Context{
                 self.num_faults,
                 self.num_nodes
             ).await;
-            nonce_evaluations = nonce_evaluations_ret[0].clone();
+            nonce_evaluations = nonce_evaluations_ret;
 
             // Generate the DZK proofs and commitments and utilize RBC to broadcast these proofs
-            // Sample blinding polynomial
+            
+            // Sample blinding polynomials
+            let blinding_secrets: Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
             let blinding_prf = sample_polynomials_from_prf(
-                vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })], 
+                blinding_secrets, 
                 self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
@@ -160,13 +166,12 @@ impl Context{
                 self.num_nodes
             ).await;
 
-            blinding_poly_evaluations = blinding_poly_evaluations_vec[0].clone();
-            blinding_poly_coefficients = blinding_poly_coefficients_vec[0].clone();
+            blinding_poly_evaluations = blinding_poly_evaluations_vec;
+            blinding_poly_coefficients = blinding_poly_coefficients_vec;
 
+            let blinding_nonce_secrets: Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
             let blinding_nonce_prf = sample_polynomials_from_prf(
-                vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })], 
+                blinding_nonce_secrets, 
                 self.symmetric_keys_avid.keys_from_me.clone(), 
                 self.num_faults, 
                 true, 
@@ -178,7 +183,7 @@ impl Context{
                 self.num_faults,
                 self.num_nodes,
             ).await;
-            nonce_blinding_poly_evaluations = nonce_blinding_poly_evaluations_vec[0].clone();
+            nonce_blinding_poly_evaluations = nonce_blinding_poly_evaluations_vec;
         }
         else{
             // Parallelize the generation of evaluation points
@@ -206,98 +211,165 @@ impl Context{
             }
 
             // Generate nonce evaluations
+            let nonce_secrets:Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
             let (nonce_evaluations_ret,_nonce_coefficients) = generate_evaluation_points_fft(
-                vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })],
+                nonce_secrets,
                 self.num_faults-1,
                 self.num_nodes,
             ).await;
-            nonce_evaluations = nonce_evaluations_ret[0].clone();
+            nonce_evaluations = nonce_evaluations_ret;
 
-            let (blinding_poly_evaluations_vec, blinding_poly_coefficients_vec) = generate_evaluation_points_fft(vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })], 
+            // Generate blinding polynomials
+            let blinding_secrets:Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
+            let (blinding_poly_evaluations_vec, blinding_poly_coefficients_vec) = generate_evaluation_points_fft(
+                blinding_secrets, 
                 self.num_faults-1, 
                 self.num_nodes
             ).await;
-            blinding_poly_evaluations = blinding_poly_evaluations_vec[0].clone();
-            blinding_poly_coefficients = blinding_poly_coefficients_vec[0].clone();
+            blinding_poly_evaluations = blinding_poly_evaluations_vec;
+            blinding_poly_coefficients = blinding_poly_coefficients_vec;
 
-            let (nonce_blinding_evaluations_vec, _nonce_coefficients_vec) = generate_evaluation_points_fft(vec![LargeField::new(UnsignedInteger{
-                    limbs: random()
-                })]
-                , 
+            // Generate blinding nonce polynomials
+            let blinding_nonce_secrets: Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
+            let (nonce_blinding_evaluations_vec, _nonce_coefficients_vec) = generate_evaluation_points_fft(
+                blinding_nonce_secrets, 
                 self.num_faults-1, 
                 self.num_nodes
             ).await;
-            nonce_blinding_poly_evaluations = nonce_blinding_evaluations_vec[0].clone();
-        }
-        // let poly_status = check_if_all_points_lie_on_degree_x_polynomial(_indices, evaluations.clone(), self.num_faults+1);
-        // assert!(poly_status.0);
-        // Transform the shares to element wise shares
-        let mut party_wise_shares: Vec<Vec<LargeFieldSer>> = Vec::new();
-        let mut party_appended_shares: Vec<Vec<u8>> = Vec::new();
-        for i in 0..self.num_nodes{
-            let mut party_shares = Vec::new();
-            let mut appended_share = Vec::new();
-            for j in 0..evaluations.len(){
-                party_shares.push(evaluations[j][i].clone().to_bytes_be());
-                appended_share.extend(evaluations[j][i].clone().to_bytes_be());
-            }
-            party_wise_shares.push(party_shares);
-
-            // Append nonce shares to shares for generating commitment
-            appended_share.extend(nonce_evaluations[i].clone().to_bytes_be());
-            party_appended_shares.push(appended_share);
+            nonce_blinding_poly_evaluations = nonce_blinding_evaluations_vec;
         }
 
-        // Generate Commitments here
-        // There should be $n$ commitments overall
-        let commitments: Vec<Hash> = party_appended_shares.into_iter().map(|share| {
-            do_hash(&share)
+        let evaluation_points;
+        if !self.use_fft{
+            evaluation_points = (1..self.num_nodes+1).into_iter().map(|x| LargeField::from(x as u64)).collect();
+        }
+        else{
+            evaluation_points = self.roots_of_unity.clone();
+        }
+        
+        // Group polynomials into groups of t+1
+        let grouped_polynomials_dzk_proofs = Self::group_polynomials_for_public_reconstruction(
+            coefficients, 
+            evaluation_points.clone(), 
+            self.num_faults+1,
+        );
+
+        // Generate commitments
+        let merkle_tree_vector: Vec<MerkleTree> = Self::compute_commitments(
+            grouped_polynomials_dzk_proofs.clone(), 
+            evaluation_points.clone(), 
+            nonce_evaluations.clone(), 
+            &self.hash_context
+        );
+
+        let roots: Vec<Hash> = merkle_tree_vector.iter().map(|tree| tree.root()).collect();
+
+        let blinding_merkle_trees: Vec<MerkleTree> = blinding_poly_coefficients.clone().into_par_iter().zip(nonce_blinding_poly_evaluations.clone().into_par_iter()).map(|(b_poly, b_nonce_evals)|{
+            let b_poly_evaluations: Vec<LargeFieldSer> = evaluation_points.iter().map(|eval_point| 
+                b_poly.evaluate(eval_point).clone().to_bytes_be()
+            ).collect();
+            let b_hashes: Vec<Hash> = b_poly_evaluations.into_iter().zip(b_nonce_evals.into_iter()).map(|(b_poly_eval, b_nonce_eval)|{
+                let mut appended_vec = vec![];
+                appended_vec.extend(b_poly_eval);
+                appended_vec.extend(b_nonce_eval.to_bytes_be());
+                return do_hash(appended_vec.as_slice());
+            }).collect();
+            MerkleTree::new(b_hashes, &self.hash_context)
         }).collect();
 
-        let merkle_tree = MerkleTree::new(commitments.clone(), &self.hash_context);
-        let share_root_comm = merkle_tree.root();
+        let blinding_roots = blinding_merkle_trees.iter().map(|mt| mt.root()).collect::<Vec<Hash>>();
 
-        let mut blinding_commitments = Vec::new();
-        for i in 0..self.num_nodes{
-            blinding_commitments.push(self.hash_context.hash_two( blinding_poly_evaluations[i].clone().to_bytes_be(), nonce_blinding_poly_evaluations[i].clone().to_bytes_be()));
-        }
+        let root_comm_fe: Vec<LargeField> = roots.iter().zip(blinding_roots.iter()).map(|(root, b_root)|{
+            //let root = mt.root();
+            let root_combined = self.hash_context.hash_two(root.clone(), b_root.clone());
+            return LargeField::from_bytes_be(root_combined.as_slice()).unwrap();
+        }).collect();
 
-        let blinding_mt_root = MerkleTree::new(blinding_commitments.clone(), &self.hash_context).root();
-        // Generate DZK coefficients
+        // Aggregated polynomials
+        let agg_polys = Self::aggregate_polynomials_for_dzk(
+            grouped_polynomials_dzk_proofs, 
+            blinding_poly_coefficients, 
+            root_comm_fe.clone()
+        );
+
+        // Initialize DZK procedure
+        let (dzk_proofs, dzk_broadcast_polys, commitment_hashes) = self.compute_dzk_proofs(
+            agg_polys, 
+            root_comm_fe.clone()
+        );
+
+        let va_comm: VACommitment = VACommitment{
+            column_roots: roots.clone(),
+            blinding_column_roots: blinding_roots.clone(),
+            dzk_roots: commitment_hashes,
+            polys: dzk_broadcast_polys
+        };
         
-        let root_comm = self.hash_context.hash_two(share_root_comm, blinding_mt_root);
-        // Convert root commitment to field element
-        let root_comm_fe = LargeField::from_bytes_be(&root_comm).unwrap();
-        let mut root_comm_fe_mul = root_comm_fe.clone();
-        let mut dzk_coeffs = blinding_poly_coefficients.clone();
-        for poly in coefficients.into_iter(){
-            dzk_coeffs = dzk_coeffs.add(poly.mul(root_comm_fe_mul));
-            root_comm_fe_mul = root_comm_fe_mul.mul(root_comm_fe);
+        // Transform the shares to party wise shares
+        let mut shares_party_wise: Vec<Vec<LargeFieldSer>> = Vec::new();
+        
+        let mut nonce_shares_party_wise: Vec<Vec<LargeFieldSer>>  = Vec::new();
+        let mut blinding_shares_party_wise: Vec<Vec<LargeFieldSer>> = Vec::new();
+        let mut blinding_nonce_shares_party_wise: Vec<Vec<LargeFieldSer>> = Vec::new();
+        
+        let mut merkle_proofs_party_wise: Vec<Vec<Proof>> = Vec::new();
+        let mut blinding_merkle_proofs_party_wise: Vec<Vec<Proof>> = Vec::new();
+
+        for i in 0..self.num_nodes{
+            let mut party_shares = Vec::new();
+            for j in 0..evaluations.len(){
+                party_shares.push(evaluations[j][i].clone().to_bytes_be());
+            }
+            let mut party_nonce_shares = Vec::new();
+            let mut party_blinding_shares = Vec::new();
+            let mut party_blinding_nonce_shares = Vec::new();
+
+            for j in 0..nonce_evaluations.len(){
+                party_nonce_shares.push(nonce_evaluations[j][i].clone().to_bytes_be());
+                party_blinding_shares.push(blinding_poly_evaluations[j][i].clone().to_bytes_be());
+                party_blinding_nonce_shares.push(nonce_blinding_poly_evaluations[j][i].clone().to_bytes_be());
+            }
+
+            let mut party_merkle_proofs = Vec::new();
+            let mut party_blinding_merkle_proofs = Vec::new();
+
+            for j in 0..merkle_tree_vector.len(){
+                party_merkle_proofs.push(merkle_tree_vector[j].gen_proof(i));
+                party_blinding_merkle_proofs.push(blinding_merkle_trees[j].gen_proof(i));
+            }
+
+            shares_party_wise.push(party_shares);
+            nonce_shares_party_wise.push(party_nonce_shares);
+            blinding_shares_party_wise.push(party_blinding_shares);
+            blinding_nonce_shares_party_wise.push(party_blinding_nonce_shares);
+
+            merkle_proofs_party_wise.push(party_merkle_proofs);
+            blinding_merkle_proofs_party_wise.push(party_blinding_merkle_proofs);
         }
 
-        // Serialize shares,commitments, and DZK polynomials
-        let ser_dzk_coeffs: Vec<[u8;32]> = dzk_coeffs.coefficients.into_iter().map(|el| el.to_bytes_be()).collect();
-        let broadcast_vec = (commitments, blinding_commitments, ser_dzk_coeffs, tot_sharings);
-        let serialized_broadcase_vec = (instance_id, broadcast_vec);
-        let ser_vec = bincode::serialize(&serialized_broadcase_vec).unwrap();
 
         let mut shares: Vec<(Replica,Option<Vec<u8>>)> = Vec::new();
         for rep in 0..self.num_nodes{
             // prepare shares
             // even need to encrypt shares
             if (self.use_fft) || (!self.use_fft && rep >= self.num_faults){
-                let shares_party = party_wise_shares[rep].clone();
-                let nonce_share = nonce_evaluations[rep].clone().to_bytes_be();
-                let blinding_nonce_share = nonce_blinding_poly_evaluations[rep].clone().to_bytes_be();
-                
-                let shares_full = (shares_party, nonce_share, blinding_nonce_share);
-                let serialized_shares = shares_full;
-                let shares_ser = bincode::serialize(&serialized_shares).unwrap();
+                let shares_party = shares_party_wise[rep].clone();
+                let nonce_shares = nonce_shares_party_wise[rep].clone();
+                let blinding_shares = blinding_shares_party_wise[rep].clone();
+                let nonce_blinding_poly_shares = blinding_nonce_shares_party_wise[rep].clone();
 
+                let merkle_proofs = merkle_proofs_party_wise[rep].clone();
+                let blinding_merkle_proofs = blinding_merkle_proofs_party_wise[rep].clone();
+                
+                let shares_struct = AcssSKEShares{
+                    evaluations: (shares_party, nonce_shares, merkle_proofs),
+                    blinding_evaluations: (blinding_shares, nonce_blinding_poly_shares, blinding_merkle_proofs),
+                    dzk_iters: dzk_proofs[rep].clone(),
+                    rep: rep
+                };
+
+                let shares_ser = bincode::serialize(&shares_struct).unwrap();
+                
                 let sec_key = self.symmetric_keys_avid.keys_from_me.get(&rep).unwrap().clone();
                 let enc_shares = encrypt(sec_key.as_slice(), shares_ser);
                 
@@ -305,8 +377,10 @@ impl Context{
                 shares.push((rep, Some(ser_enc_msg)));
             }
         }
+
+        let ser_broadcast_vec: Vec<u8> = bincode::serialize(&va_comm).unwrap();
         // Reliably broadcast this vector
-        let _rbc_status = self.inp_ctrbc.send(ser_vec).await;
+        let _rbc_status = self.inp_ctrbc.send(ser_broadcast_vec).await;
         
         // Invoke AVID on vectors of shares
         // Use AVID to send the shares to parties

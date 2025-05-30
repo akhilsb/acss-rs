@@ -1,10 +1,10 @@
-use consensus::reconstruct_data;
+use consensus::{reconstruct_data, VACommitment};
 use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};
 
-use crate::{Context, ACSSVAState, VACommitment, ProtMsg};
+use crate::{Context, ACSSVAState, ProtMsg};
 use consensus::{PointBV};
 
 impl Context{

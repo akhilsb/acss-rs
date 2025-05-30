@@ -13,7 +13,7 @@ use network::{
     plaintcp::{CancelHandler},
     Acknowledgement,
 };
-use consensus::{LargeField};
+use consensus::{LargeField, LargeFieldSSS, FoldingDZKContext};
 
 use tokio::{sync::{
     mpsc::{Receiver, Sender, channel},
@@ -46,6 +46,7 @@ pub struct Context {
 
     pub acss_ab_state: HashMap<usize,ACSSABState>,
     pub avss_state: ACSSABState,
+    pub folding_dzk_context: FoldingDZKContext,
 
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize,
@@ -146,9 +147,42 @@ impl Context {
         let key1 = [29u8; 16];
         let key2 = [23u8; 16];
         let hashstate = HashState::new(key0, key1, key2);
+        let hashstate2 =  HashState::new(key0, key1, key2);
 
         let threshold:usize = 10000;
         let rbc_start_id = threshold*config.id;
+
+        let lf_uv_sss = LargeFieldSSS::new_with_vandermonde(
+            config.num_faults +1,
+            config.num_nodes
+        );
+
+        // Prepare dZK context for halving degrees
+        let mut start_degree = config.num_faults as isize;
+        let end_degree = 2 as usize;
+        let mut ss_contexts = HashMap::default();
+        while start_degree > 0 {
+            let split_point;
+            if start_degree % 2 == 0{
+                split_point = start_degree/2;
+            }
+            else{
+                split_point = (start_degree+1)/2;
+            }
+            start_degree = start_degree - split_point;
+            ss_contexts.insert(start_degree,split_point);
+        }
+        //ss_contexts.insert(start_degree, lf_dzk_sss);
+
+        // Folding context
+        let folding_context = FoldingDZKContext{
+            large_field_uv_sss: lf_uv_sss.clone(),
+            hash_context: hashstate2,
+            poly_split_evaluation_map: ss_contexts,
+            evaluation_points: (1..config.num_nodes+1).into_iter().collect(),
+            recon_threshold: config.num_faults+1,
+            end_degree_threshold: end_degree,
+        };
         
         let (asks_req_send_channel, asks_req_recv_channel) = channel(10000);
         let (asks_out_send_channel, asks_out_recv_channel) = channel(10000);
@@ -176,6 +210,7 @@ impl Context {
 
                 acss_ab_state: HashMap::default(),
                 avss_state: ACSSABState::new(),
+                folding_dzk_context: folding_context,
 
                 threshold: 10000,
 

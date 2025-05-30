@@ -12,6 +12,8 @@ mod ra;
 mod avss;
 
 mod ske;
+
+mod pub_rec;
 // mod echo;
 // pub use echo::*;
 
