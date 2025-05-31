@@ -30,6 +30,9 @@ impl Context{
         let shares_deser = shares_deser.unwrap();
         log::info!("Received ACSS terminated event for instance {}, dealer: {}, with shares: {}", inst, sender, shares_deser.len());
         
+        // TODO: Temporary: Test public reconstruction
+        let _status = self.pub_rec_req_send_channel.send((inst, sender)).await;
+        
         let inst_key = (inst+1)/2;
         let first_or_second = inst%2;
 

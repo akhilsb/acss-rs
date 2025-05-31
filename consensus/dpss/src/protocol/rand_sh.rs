@@ -1,7 +1,9 @@
-use consensus::LargeFieldSSS;
+use consensus::{LargeFieldSSS, vandermonde_matrix, inverse_vandermonde, matrix_vector_multiply};
 use crypto::{LargeField, LargeFieldSer};
-use lambdaworks_math::traits::ByteConversion;
+use lambdaworks_math::{traits::ByteConversion, polynomial::Polynomial};
+use rayon::prelude::IntoParallelIterator;
 use types::{WrapperMsg, Replica, RBCSyncMsg, SyncMsg, SyncState};
+use rayon::prelude::{ParallelIterator};
 
 use crate::{Context, msg::ProtMsg};
 
@@ -87,28 +89,35 @@ impl Context{
         self.dpss_state.pub_rec_echo1s.insert(sender, shares);
         if self.dpss_state.pub_rec_echo1s.len() == self.num_faults + 1{
             // Reconstruct all shares for polynomials
+            let mut evaluation_indices = Vec::new();
             let mut vec_shares_indices = Vec::new();
             for _ in 0..shares_len{
                 vec_shares_indices.push(Vec::new());
             }
             for rep in 0..self.num_nodes{
                 if self.dpss_state.pub_rec_echo1s.contains_key(&rep){
+                    evaluation_indices.push(LargeField::from((rep+1) as u64));
                     let shares_sub_poly = self.dpss_state.pub_rec_echo1s.get(&rep).unwrap().clone();
                     for (index, shares_ind) in (0..shares_len).into_iter().zip(shares_sub_poly.into_iter()){
-                        vec_shares_indices[index].push(((rep+1), shares_ind));
+                        vec_shares_indices[index].push(shares_ind);
                     }
                 }
             }
 
-            // Reconstruct secret
-            let mut secrets = Vec::new();
-            for shares in vec_shares_indices{
-                secrets.push(self.large_field_shamir_ss.recover(shares.as_slice()));
-            }
+            // Interpolate polynomials
+            let secret_evaluation_point= LargeField::from(0 as u64);
 
+            // Generate vandermonde matrix
+            let vandermonde = vandermonde_matrix(evaluation_indices.clone());
+            let inverse_vandermonde = inverse_vandermonde(vandermonde);
+
+            let l2_shares : Vec<LargeFieldSer> = vec_shares_indices.into_par_iter().map(|evals|{
+                let coefficients = matrix_vector_multiply(&inverse_vandermonde, &evals);
+                return Polynomial::new(&coefficients).evaluate(&secret_evaluation_point).to_bytes_be();
+            }).collect();
+            
             // Broadcast secrets
-            let secrets_ser = secrets.into_iter().map(|x| x.to_bytes_be()).collect();
-            self.broadcast(ProtMsg::PubRecEcho2(secrets_ser)).await;
+            self.broadcast(ProtMsg::PubRecEcho2(l2_shares)).await;
         }
     }
 
@@ -136,13 +145,14 @@ impl Context{
             }
 
             // Interpolate entire polynomial
-            let vandermonde_matrix = LargeFieldSSS::vandermonde_matrix(ht_indices);
-            let vandermonde_inverse = LargeFieldSSS::inverse_vandermonde(vandermonde_matrix);
+            let vandermonde_matrix = vandermonde_matrix(ht_indices);
+            let vandermonde_inverse = inverse_vandermonde(vandermonde_matrix);
             
-            let mut secrets_blinded = Vec::new();
-            for shares in vec_shares_indices{
-                secrets_blinded.extend(self.large_field_shamir_ss.polynomial_coefficients_with_vandermonde_matrix(&vandermonde_inverse, &shares));
-            }
+            let secrets_blinded: Vec<LargeField> = vec_shares_indices.into_par_iter().map(|evals|{
+                let coefficients = matrix_vector_multiply(&vandermonde_inverse, &evals);
+                return Polynomial::new(&coefficients).coefficients;
+            }).flatten().collect();
+
             log::info!("Finished reconstruction of secrets, total length: {}", secrets_blinded.len());
             self.terminate("Term".to_string()).await;
         }

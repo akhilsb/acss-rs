@@ -18,8 +18,8 @@ impl Context{
         
         let collection_evaluation_points: Vec<Vec<Polynomial<LargeField>>> = evaluation_points.into_par_iter().map(|element|{
             // Compute t+1 powers
-            let mut powers = vec![element];
-            let mut element_power = element;
+            let mut powers = vec![LargeField::one()];
+            let mut element_power = LargeField::one();
             for _ in 0..group_degree-1{
                 element_power = element_power*element;
                 powers.push(element_power.clone());
@@ -46,8 +46,8 @@ impl Context{
         
         let collection_evaluation_points: Vec<Vec<LargeField>> = evaluation_points.into_par_iter().map(|element|{
             // Compute t+1 powers
-            let mut powers = vec![element];
-            let mut element_power = element;
+            let mut powers = vec![LargeField::one()];
+            let mut element_power = LargeField::one();
             for _ in 0..group_degree-1{
                 element_power = element_power*element;
                 powers.push(element_power.clone());
@@ -446,7 +446,7 @@ impl Context{
             }
             for party in 0..self.num_nodes{
                 if share_map.contains_key(&party){
-                    eval_points.push(LargeField::from(party as u64));
+                    eval_points.push(LargeField::from((party+1) as u64));
                     let shares_party = share_map.get(&party).unwrap();
                     for (index,share) in shares_party.into_iter().enumerate(){
                         shares_indexed[index].push(share.clone());
@@ -497,6 +497,7 @@ impl Context{
 
         let share_map = acss_ab_state.public_reconstruction_l2_shares.get_mut(&source_party).unwrap();
         let shares_deser: Vec<LargeField> = shares.into_iter().map(|el| LargeField::from_bytes_be(el.as_slice()).unwrap()).collect();
+        
         let tot_sharings_len = shares_deser.len();
         share_map.insert(share_sender, shares_deser);
 
@@ -510,7 +511,7 @@ impl Context{
             }
             for party in 0..self.num_nodes{
                 if share_map.contains_key(&party){
-                    evaluation_points.push(LargeField::from(party as u64));
+                    evaluation_points.push(LargeField::from((party+1) as u64));
                     let shares_party = share_map.get(&party).unwrap();
                     for (index, share) in shares_party.into_iter().enumerate(){
                         shares_indexed[index].push(share.clone());
