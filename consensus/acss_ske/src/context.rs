@@ -10,23 +10,29 @@ use config::Node;
 use fnv::FnvHashMap;
 use lambdaworks_math::{ fft::cpu::roots_of_unity::get_powers_of_primitive_root, field::traits::RootsConfig};
 use network::{
-    plaintcp::{CancelHandler},
+    plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
 use consensus::{LargeField, LargeFieldSSS, FoldingDZKContext};
 
 use tokio::{sync::{
-    mpsc::{Receiver, Sender, channel},
+    mpsc::{Receiver, Sender, channel, unbounded_channel, UnboundedReceiver},
     oneshot,
 }};
 // use tokio_util::time::DelayQueue;
-use types::{Replica};
+use types::{Replica, WrapperMsg};
 
 use crypto::{aes_hash::HashState, hash::Hash};
 
-use crate::protocol::{ACSSABState, SymmetricKeyState};
+use crate::{protocol::{ACSSABState, SymmetricKeyState}, msg::ProtMsg};
+
+use crate::Handler;
 
 pub struct Context {
+    /// Networking context
+    pub net_send: TcpReliableSender<Replica, WrapperMsg<ProtMsg>, Acknowledgement>,
+    pub net_recv: UnboundedReceiver<WrapperMsg<ProtMsg>>,
+    
     /// Data context
     pub num_nodes: usize,
     pub myid: usize,
@@ -94,9 +100,7 @@ impl Context {
         output_pubrec: Sender<(usize, Replica, Vec<LargeField>)>, 
         use_fft: bool,
         _byz: bool
-    ) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
-        // Add a separate configuration for RBC service. 
-
+    ) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> { 
         let mut asks_config = config.clone();
         let mut ctrbc_config = config.clone();
         let mut avid_config = config.clone();
@@ -124,19 +128,32 @@ impl Context {
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
         }
 
+        log::info!("Consensus addresses: {:?}", consensus_addrs);
+        let my_port = consensus_addrs.get(&config.id).unwrap();
+        let my_address = to_socket_address("0.0.0.0", my_port.port());
         // let mut syncer_map: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         // syncer_map.insert(0, config.client_addr);
+
+        // Setup networking
+        let (tx_net_to_consensus, rx_net_to_consensus) = unbounded_channel();
+        TcpReceiver::<Acknowledgement, WrapperMsg<ProtMsg>, _>::spawn(
+            my_address,
+            Handler::new(tx_net_to_consensus),
+        );
 
         // let syncer_listen_port = config.client_port;
         // let syncer_l_address = to_socket_address("0.0.0.0", syncer_listen_port);
 
-        // // The server must listen to the client's messages on some port that is not being used to listen to other servers
+        // The server must listen to the client's messages on some port that is not being used to listen to other servers
         // let (tx_net_to_client, rx_net_from_client) = unbounded_channel();
         // TcpReceiver::<Acknowledgement, SyncMsg, _>::spawn(
         //     syncer_l_address,
         //     SyncHandler::new(tx_net_to_client),
         // );
 
+        let consensus_net = TcpReliableSender::<Replica, WrapperMsg<ProtMsg>, Acknowledgement>::with_peers(
+            consensus_addrs.clone(),
+        );
         // let sync_net =
         //     TcpReliableSender::<Replica, SyncMsg, Acknowledgement>::with_peers(syncer_map);
         
@@ -197,6 +214,9 @@ impl Context {
         let (ra_out_send_channel, ra_out_recv_channel) = channel(10000);
         tokio::spawn(async move {
             let mut c = Context {
+                net_send: consensus_net,
+                net_recv: rx_net_to_consensus,
+
                 num_nodes: config.num_nodes,
                 sec_key_map: HashMap::default(),
                 hash_context: hashstate,
@@ -292,6 +312,15 @@ impl Context {
         Ok((exit_tx, vector_statuses))
     }
 
+    pub async fn broadcast(&mut self, protmsg: ProtMsg) {
+        let sec_key_map = self.sec_key_map.clone();
+        for (replica, sec_key) in sec_key_map.into_iter() {
+            let wrapper_msg = WrapperMsg::new(protmsg.clone(), self.myid, &sec_key.as_slice());
+            let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(replica, wrapper_msg).await;
+            self.add_cancel_handler(cancel_handler);
+        }
+    }
+
     pub fn add_cancel_handler(&mut self, canc: CancelHandler<Acknowledgement>) {
         self.cancel_handlers.entry(0).or_default().push(canc);
     }
@@ -302,6 +331,15 @@ impl Context {
         loop {
             tokio::select! {
                 // Receive exit handlers
+                msg = self.net_recv.recv() => {
+                    // Received messages are processed here
+                    log::trace!("Got a consensus message from the network: {:?}", msg);
+                    if msg.is_none(){
+                        log::error!("Got none from the consensus layer, most likely it closed");
+                        break;
+                    }
+                    self.process_msg(msg.unwrap()).await;
+                },
                 exit_val = &mut self.exit_rx => {
                     exit_val.map_err(anyhow::Error::new)?;
                     log::info!("Termination signal received by the server. Exiting.");
@@ -320,9 +358,10 @@ impl Context {
                     self.init_acss_ab(secrets_field, id).await;
                 },
                 avss_msg = self.inp_pub_rec_in.recv() =>{
-                    let (_instance_id, _cheating_party) = avss_msg.ok_or_else(||
+                    let (instance_id, cheating_party) = avss_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
+                    self.init_pubrec(instance_id, cheating_party).await;
                     // if sharing {
                     //     let secrets = secrets.unwrap();
                     //     log::info!("Received request to start AVSS for {} secrets at time: {:?}",secrets.len() , SystemTime::now()

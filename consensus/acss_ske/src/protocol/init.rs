@@ -1,3 +1,5 @@
+use std::ops::Div;
+
 use crate::{Context, msg::AcssSKEShares};
 use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
@@ -95,6 +97,8 @@ impl Context{
                 secrets.push(rand_field_element());
             }
         }
+
+        log::info!("Sharing secrets {:?}", secrets);
 
         let tot_sharings = secrets.len();
         let mut handles = Vec::new();
@@ -456,6 +460,7 @@ impl Context{
             return;
         }
 
+        log::info!("Successfully verified commitments of shares sent by sender {} in instance_id {}", sender, instance_id);
         // Blinding share verification next
         let blinding_shares: Vec<LargeField> = shares_full.blinding_evaluations.0.into_iter().map(|el| 
             LargeField::from_bytes_be(el.as_slice()).unwrap()
@@ -481,7 +486,7 @@ impl Context{
             return;
         }
 
-
+        log::info!("Successfully verified blinding commitments of shares sent by sender {} in instance_id {}", sender, instance_id);
         // Finally, verify DZK proofs
         let grouped_points = Self::group_points_for_public_reconstruction(
             shares, 
@@ -509,30 +514,30 @@ impl Context{
             let share_merkle_root = va_commitment.column_roots[index].clone();
             let blinding_merkle_root = va_commitment.blinding_column_roots[index].clone();
             let combined_root = self.hash_context.hash_two(share_merkle_root, blinding_merkle_root);
+            let root_fe = LargeField::from_bytes_be(combined_root.as_slice()).unwrap();
 
             let share_point = dzk_aggregated_points[index].clone();
             let blinding_share_point = blinding_shares[index].clone();
             
+            //log::info!()
             let status = self.folding_dzk_context.verify_dzk_proof(
                 dzk_proof, 
                 dzk_roots, 
                 dzk_polynomial, 
                 combined_root, 
-                share_point, 
+                (share_point-blinding_share_point).div(root_fe), 
                 blinding_share_point, 
-                index+1
+                self.myid+1
             );
 
             if !status{
-                log::error!("DZK proof verification failed for instance {} from sender {} at index {}", instance_id, sender, index);
+                log::error!("DZK proof verification failed for instance {} from sender {} at index {} with blinding_share_point {}, agg_share_point: {}", instance_id, sender, index, blinding_share_point, share_point);
+                return;
             }
         }
 
         
         log::info!("Share from {} verified", sender);
-        // If successful, add to verified list
-        // Reborrow share
-        
         acss_ab_state.verification_status.insert(sender,true);
         // Start reliable agreement
         let _status = self.inp_ra_channel.send((sender,1,instance_id)).await;

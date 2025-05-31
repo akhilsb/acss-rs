@@ -20,6 +20,12 @@ pub struct ACSSABState{
     pub verification_status: HashMap<Replica, bool>,
     pub acss_status: HashSet<Replica>,
 
+    // L1 Shares and L2 Shares
+    pub public_reconstruction_l1_shares: HashMap<Replica, HashMap<Replica, Vec<LargeField>>>,
+    pub public_reconstruction_l1_status: HashSet<Replica>,
+    pub public_reconstruction_l2_shares: HashMap<Replica, HashMap<Replica, Vec<LargeField>>>,
+    pub public_reconstruction_l2_status: HashSet<Replica>,
+
     pub dzk_poly: HashMap<Replica,Polynomial<LargeField>>,
     pub commitment_root_fe: HashMap<Replica, Hash>,
 }
@@ -33,6 +39,11 @@ impl ACSSABState{
             ra_outputs: HashSet::default(),
             verification_status: HashMap::default(),
             acss_status: HashSet::default(),
+
+            public_reconstruction_l1_shares: HashMap::default(),
+            public_reconstruction_l1_status: HashSet::default(),
+            public_reconstruction_l2_shares: HashMap::default(),
+            public_reconstruction_l2_status: HashSet::default(),
 
             dzk_poly: HashMap::default(),
             commitment_root_fe: HashMap::default(),
