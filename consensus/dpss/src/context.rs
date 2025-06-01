@@ -19,7 +19,7 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::{SyncHandler, LargeFieldSSS, LargeField};
+use consensus::{SyncHandler, LargeFieldSSS, LargeField, LargeFieldSer};
 use crypto::{aes_hash::HashState, hash::Hash};
 
 use crate::{msg::ProtMsg, Handler, protocol::DPSSState};
@@ -69,6 +69,9 @@ pub struct Context {
     pub acss_req: Sender<(usize, Vec<LargeField>)>,
     pub acss_out_recv: Receiver<(usize, usize, Hash, Option<Vec<LargeField>>)>,
 
+    pub bin_aa_req: Sender<(usize, i64, Vec<LargeFieldSer>)>,
+    pub bin_aa_out_recv: Receiver<(usize, i64)>,
+
     pub acs_term_event: Sender<(usize,usize)>,
     pub acs_out_recv: Receiver<(usize,Vec<usize>)>,
 
@@ -96,18 +99,22 @@ impl Context {
 
         let mut acss_config = config.clone();
         let mut acs_config = config.clone();
+        let mut ba_config = config.clone();
 
         let port_acss: u16 = 150;
         let port_acs: u16 = 900;
+        let port_bba: u16 = 1050;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
             
             let acss_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acss);
             let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acs);
+            let ba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_bba);
 
             acss_config.net_map.insert(*replica, acss_address.to_string());
             acs_config.net_map.insert(*replica, rbc_address.to_string());
+            ba_config.net_map.insert(*replica, ba_address.to_string());
 
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
 
@@ -156,6 +163,9 @@ impl Context {
             config.num_nodes
         );
         // Prepare ACSS context
+        let (bin_aa_req, bin_aa_req_recv) = channel(10000);
+        let (bin_aa_out_send, bin_aa_out_recv) = channel(10000);
+        
         let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
         let (acss_out_send_channel, acss_out_recv_channel) = channel(10000);
         
@@ -201,6 +211,9 @@ impl Context {
                 acss_req: acss_req_send_channel,
                 acss_out_recv: acss_out_recv_channel,
 
+                bin_aa_req: bin_aa_req,
+                bin_aa_out_recv: bin_aa_out_recv,
+
                 acs_term_event: acs_req_send_channel,
                 acs_out_recv: acs_out_recv_channel,
 
@@ -244,6 +257,17 @@ impl Context {
         //         false
         //     );
         // }
+
+        let _ba_serv_status = binary_ba::Context::spawn(
+            ba_config,
+            bin_aa_req_recv,
+            bin_aa_out_send,
+            false
+        );
+
+        if _ba_serv_status.is_err() {
+            log::error!("Error spawning BA because of {:?}", _ba_serv_status.err().unwrap());
+        }
 
         let _acs_serv_status = acs::Context::spawn(
             acs_config,
