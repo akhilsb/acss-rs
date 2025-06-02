@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     net::{SocketAddr, SocketAddrV4},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -22,7 +22,7 @@ use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 use consensus::{SyncHandler, LargeFieldSSS, LargeField, LargeFieldSer};
 use crypto::{aes_hash::HashState, hash::Hash};
 
-use crate::{msg::ProtMsg, Handler, protocol::DPSSState};
+use crate::{msg::ProtMsg, Handler, protocol::{DPSSState, BAState}};
 
 pub struct Context {
     /// Networking context
@@ -35,7 +35,6 @@ pub struct Context {
     pub myid: usize,
     pub num_faults: usize,
     _byz: bool,
-
 
     pub large_field_shamir_ss: LargeFieldSSS,
     /// Secret Key map
@@ -51,6 +50,9 @@ pub struct Context {
     pub num_batches: usize,
     pub per_batch: usize,
 
+    pub coin_batch: usize,
+    pub coin_shares: VecDeque<LargeField>,
+
     // Maximum number of RBCs that can be initiated by a node. Keep this as an identifier for RBC service. 
     pub threshold: usize, 
 
@@ -61,6 +63,7 @@ pub struct Context {
 
     ///// State for GatherState and ACS
     pub dpss_state: DPSSState,
+    pub ba_state: BAState,
 
     pub completed_batches: HashMap<Replica, HashSet<usize>>,
     pub acs_input_set: HashSet<Replica>,
@@ -71,6 +74,9 @@ pub struct Context {
 
     pub bin_aa_req: Sender<(usize, i64, Vec<LargeFieldSer>)>,
     pub bin_aa_out_recv: Receiver<(usize, i64)>,
+
+    pub fin_mvba_req_send: Sender<(usize, usize, Vec<LargeFieldSer>)>,
+    pub fin_mvba_out_recv: Receiver<(usize, usize)>,
 
     pub acs_term_event: Sender<(usize,usize)>,
     pub acs_out_recv: Receiver<(usize,Vec<usize>)>,
@@ -104,8 +110,8 @@ impl Context {
 
         let port_acss: u16 = 150;
         let port_acs: u16 = 900;
-        let port_bba: u16 = 1050;
-        let port_mvba: u16 = 1200;
+        let port_bba: u16 = 1800;
+        let port_mvba: u16 = 2100;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
@@ -169,6 +175,9 @@ impl Context {
         // Prepare ACSS context
         let (bin_aa_req, bin_aa_req_recv) = channel(10000);
         let (bin_aa_out_send, bin_aa_out_recv) = channel(10000);
+
+        let (fin_mvba_req_send, fin_mvba_req_recv) = channel(10000);
+        let (fin_mvba_out_send, fin_mvba_out_recv) = channel(10000);
         
         let (acss_req_send_channel, acss_req_recv_channel) = channel(10000);
         let (acss_out_send_channel, acss_out_recv_channel) = channel(10000);
@@ -201,10 +210,13 @@ impl Context {
 
                 max_id: rbc_start_id, 
                 dpss_state: DPSSState::new(),
+                ba_state: BAState::new(),
 
                 num_batches: num_batches,
                 per_batch: per_batch, 
-
+                
+                coin_batch: 20,
+                coin_shares: VecDeque::new(),
                 
                 completed_batches: HashMap::default(),
 
@@ -217,6 +229,9 @@ impl Context {
 
                 bin_aa_req: bin_aa_req,
                 bin_aa_out_recv: bin_aa_out_recv,
+
+                fin_mvba_req_send: fin_mvba_req_send,
+                fin_mvba_out_recv: fin_mvba_out_recv,
 
                 acs_term_event: acs_req_send_channel,
                 acs_out_recv: acs_out_recv_channel,
@@ -248,6 +263,17 @@ impl Context {
             );
         }
 
+        let _acs_serv_status = acs::Context::spawn(
+            acs_config,
+            acs_req_recv_channel, 
+            acs_out_send_channel, 
+            false
+        );
+
+        if _acs_serv_status.is_err() {
+            log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
+        }
+
         let _ba_serv_status = binary_ba::Context::spawn(
             ba_config,
             bin_aa_req_recv,
@@ -259,15 +285,15 @@ impl Context {
             log::error!("Error spawning BA because of {:?}", _ba_serv_status.err().unwrap());
         }
 
-        let _acs_serv_status = acs::Context::spawn(
-            acs_config,
-            acs_req_recv_channel, 
-            acs_out_send_channel, 
+        let _fin_mvba_status = fin_mvba::Context::spawn(
+            mvba_config,
+            fin_mvba_req_recv,
+            fin_mvba_out_send,
             false
         );
 
-        if _acs_serv_status.is_err() {
-            log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
+        if _fin_mvba_status.is_err() {
+            log::error!("Error spawning acs because of {:?}", _fin_mvba_status.err().unwrap());
         }
 
         // let _acs_serv_status = ibft::Context::spawn(
@@ -351,6 +377,9 @@ impl Context {
                             for _instance in 0..self.num_batches{
                                 let _status = self.start_acss(self.per_batch).await;
                             }
+                            let _status = self.start_acss(self.coin_batch).await;
+                            let _status = self.start_acss(self.coin_batch).await;
+                            // Start code from here
                         },
                         SyncState::STOP =>{
                             // Code used for internal purposes
@@ -377,7 +406,21 @@ impl Context {
                     )?;
                     log::debug!("Received message from RBC channel {:?}", acs_output);
                     self.process_consensus_output(acs_output.1).await;
-                }
+                },
+                bin_aa_out_msg = self.bin_aa_out_recv.recv() => {
+                    let bin_aa_out_msg = bin_aa_out_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    log::info!("Received message from Binary AA channel {:?}", bin_aa_out_msg);
+                    self.process_bin_aa_output(bin_aa_out_msg.0, bin_aa_out_msg.1).await;
+                },
+                fin_mvba_out_msg = self.fin_mvba_out_recv.recv() => {
+                    let fin_mvba_out_msg = fin_mvba_out_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    log::debug!("Received message from Fin MVBA channel {:?}", fin_mvba_out_msg);
+                    //self.process_fin_mvba_output(fin_mvba_out_msg.0, fin_mvba_out_msg.1).await;
+                },
             };
         }
         Ok(())

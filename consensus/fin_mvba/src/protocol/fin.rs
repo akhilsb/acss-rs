@@ -88,6 +88,9 @@ impl Context{
                 }
             }
 
+            log::info!("Initializing L2 RBC for instance {} and round {}, vec: {:?}", instance_id, round, l2_rbc_vec);
+            
+
             let ctrbc_msg = (instance_id, round, 2 as usize, l2_rbc_vec);
             let ser_msg = bincode::serialize(&ctrbc_msg).unwrap();
             let _status = self.ctrbc_req.send(ser_msg).await;
@@ -186,8 +189,9 @@ impl Context{
             }
         }
 
-        if mvba_round_state.l2_approved_rbcs.len() >= self.num_nodes - self.num_faults && !mvba_round_state.coin_broadcasted{
+        if mvba_round_state.l2_approved_rbcs.len() >= self.num_nodes - self.num_faults && !mvba_round_state.l3_witness_sent{
             // Craft an L3 witness message
+            log::info!("Broadcasting L3 witness for instance {} and round {}", instance_id, round);
             let witness_parties: Vec<usize> = mvba_round_state.l2_approved_rbcs.clone().into_iter().collect();
 
             let witness_msg = ProtMsg::L3Witness(instance_id, round, witness_parties, self.myid);
@@ -281,6 +285,8 @@ impl Context{
                 log::error!("Error in coin tossing: Coin shares are empty for instance {}", instance_id);
                 return;
             }
+            log::info!("Broadcasting coin for instance {} and round {}", instance_id, round);
+            mvba_round_state.coin_broadcasted = true;
 
             let coin_share = instance_coin_shares.pop_front().unwrap();
             
@@ -347,8 +353,10 @@ impl Context{
             let mut rng = StdRng::from_seed(coin);
             let leader_id = rng.gen_range(0, self.num_nodes);
             
+            log::info!("Leader elected for instance {} and round {}: {}", instance_id, round, leader_id);
             mvba_round_state.leader_id = Some(leader_id);
             if mvba_round_state.l2_approved_rbcs.contains(&leader_id){
+                log::info!("Leader approved for Binary BA in instance {}", instance_id);
                 // Input this to BA
                 // Compile coin shares
                 let mut coin_shares_ba = Vec::new();
@@ -365,7 +373,7 @@ impl Context{
                     coin_shares_ba.push(coin_shares.pop_front().unwrap());
                 }
                 let bin_aa_instance = 100*instance_id + round;
-                let _status = self.bin_aa_req.send((bin_aa_instance, 2, coin_shares_ba));
+                let _status = self.bin_aa_req.send((bin_aa_instance, 2, coin_shares_ba)).await;
             }
         }
         self.verify_round_termination(instance_id, round).await;
@@ -439,7 +447,7 @@ impl Context{
                     }
                     log::info!("Consensus output in instance {} is {:?}", instance_id, rbc_outputs);
                     let median_value = rbc_outputs[self.num_faults+1].clone();
-                    let _status = self.out_mvba_values.send((instance_id, median_value));
+                    let _status = self.out_mvba_values.send((instance_id, median_value)).await;
                 }
                 else{
                     log::info!("Did not terminate leader's RBC yet in instance id {}, waiting for it", instance_id);

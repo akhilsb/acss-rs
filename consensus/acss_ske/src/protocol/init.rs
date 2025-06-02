@@ -98,8 +98,6 @@ impl Context{
             }
         }
 
-        log::info!("Sharing secrets {:?}", secrets);
-
         let tot_sharings = secrets.len();
         let mut handles = Vec::new();
         let mut _indices;

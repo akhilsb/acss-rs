@@ -74,8 +74,8 @@ impl Context {
         let mut rbc_config = config.clone();
         let mut ba_config = config.clone();
 
-        let port_rbc: u16 = 0;
-        let port_bba: u16 = 150;        
+        let port_rbc: u16 = 150;
+        let port_bba: u16 = 300;        
 
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");

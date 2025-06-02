@@ -25,7 +25,7 @@ impl Context{
         let mut msgs_to_send = Vec::new();
         if self.round_state.contains_key(&instance_id){
             let baa_rnd_state_tup = self.round_state.get_mut(&instance_id).unwrap();
-            if !baa_rnd_state_tup.1.contains(&baa_round){
+            if baa_rnd_state_tup.1.contains(&baa_round){
                 return;
             }
             
@@ -65,8 +65,11 @@ impl Context{
                 if echo3.is_some(){
                     msgs_to_send.push(ProtMsg::FinBinAAEcho3(echo3.unwrap(), self.myid, instance_id,baa_round));
                     let term = round_state.add_echo3(echo3.unwrap(), self.myid);
-                    if term && !round_state.contains_coin(self.myid){
+                    if term && !round_state.contains_coin(self.myid) && self.coin_shares.contains_key(&instance_id){
                         // Create partial signature and broadcast
+                        if !self.coin_shares.contains_key(&instance_id){
+                            return;
+                        }
                         let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
                         let coin_share = coin_shares.pop_front();
                         if coin_share.is_none(){
@@ -124,7 +127,7 @@ impl Context{
         log::info!("Received ECHO2 message from node {} with content {:?} for lround {}, bround {}",echo2_sender,msg,instance_id,baa_round);
         if self.round_state.contains_key(&instance_id){
             let baa_rnd_state_tup = self.round_state.get_mut(&instance_id).unwrap();
-            if !baa_rnd_state_tup.1.contains(&baa_round){
+            if baa_rnd_state_tup.1.contains(&baa_round){
                 return;
             }
             let baa_rnd_state = &mut baa_rnd_state_tup.0;
@@ -136,7 +139,7 @@ impl Context{
                     let term = round_state.add_echo3(echo3.unwrap(), self.myid);
                     msgs_to_send.push(ProtMsg::FinBinAAEcho3(echo3.unwrap(), self.myid, instance_id,baa_round));
                     log::info!("Sending echo3 message {} for lround {}, bround {}",echo3.unwrap(),instance_id,baa_round);
-                    if term{
+                    if term && !round_state.contains_coin(self.myid) && self.coin_shares.contains_key(&instance_id){
                         // Create partial signature and broadcast
                         // Create and broadcast coin
                         let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
@@ -194,7 +197,7 @@ impl Context{
         log::info!("Received ECHO3 message from node {} with content {:?} for lround {}, bround {}",echo3_sender,msg,instance_id,baa_round);
         if self.round_state.contains_key(&instance_id){
             let baa_rnd_state_tup = self.round_state.get_mut(&instance_id).unwrap();
-            if !baa_rnd_state_tup.1.contains(&baa_round){
+            if baa_rnd_state_tup.1.contains(&baa_round){
                 return;
             }
             let baa_rnd_state = &mut baa_rnd_state_tup.0;
@@ -206,7 +209,7 @@ impl Context{
                     msg,
                     echo3_sender
                 );
-                if term{
+                if term && !round_state.contains_coin(self.myid) && self.coin_shares.contains_key(&instance_id){
                     // TODO: Broadcasting common coin
                     let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
                     let coin_share = coin_shares.pop_front();
@@ -263,7 +266,7 @@ impl Context{
         if self.round_state.contains_key(&instance_id){
             
             let baa_rnd_state_tup = self.round_state.get_mut(&instance_id).unwrap();
-            if !baa_rnd_state_tup.1.contains(&baa_round){
+            if baa_rnd_state_tup.1.contains(&baa_round){
                 return;
             }
 
@@ -315,8 +318,10 @@ impl Context{
             // Find target proposal that was elected
             self.terminated_rounds.insert(instance_id);
             log::info!("Terminating BAA round {} for instance {}, broadcasting value {:?}",baa_round,instance_id,term_val);
-            let _status = self.out_bin_ba_values.send((instance_id, term_val));
-
+            let _status = self.out_bin_ba_values.send((instance_id, term_val)).await;
+            if _status.is_err(){
+                log::error!("Failed to send BAA value for instance {}",instance_id);
+            }
         }
     }
 }

@@ -33,7 +33,6 @@ signal-hook = "0"
 # Local randomness
 rand = "0.6"
 rand_core = "0.6.4"
-rand_chacha = "0.3"
 
 # Big Integers for field operations
 num-bigint-dig = "0.4"

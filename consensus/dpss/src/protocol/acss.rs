@@ -30,9 +30,6 @@ impl Context{
         let shares_deser = shares_deser.unwrap();
         log::info!("Received ACSS terminated event for instance {}, dealer: {}, with shares: {}", inst, sender, shares_deser.len());
         
-        // TODO: Temporary: Test public reconstruction
-        let _status = self.pub_rec_req_send_channel.send((inst, sender)).await;
-        
         let inst_key = (inst+1)/2;
         let first_or_second = inst%2;
 
@@ -87,6 +84,9 @@ impl Context{
             self.broadcast(sec_eq_c2).await;
 
             self.check_acss_and_secret_equivalence_termination(sender).await;
+        }
+        if !self.ba_state.shares_generated{
+            self.gen_rand_shares().await;
         }
     }
 
@@ -182,7 +182,7 @@ impl Context{
         }
         let acss_share_map = self.dpss_state.acss_map.get(&origin).unwrap();
 
-        if acss_share_map.len()< self.num_batches{
+        if acss_share_map.len()< self.num_batches+1{
             return;
         }
 
@@ -191,7 +191,11 @@ impl Context{
         }
 
         let mut all_instances_term = true;
-        for batch in 1..self.num_batches+1{
+        for batch in 1..self.num_batches+2{
+            if !acss_share_map.contains_key(&batch){
+                all_instances_term = false;
+                continue;
+            }
             let (c1,c2) = acss_share_map.get(&batch).unwrap();
             if c1.is_some() && c2.is_some(){
                 all_instances_term = all_instances_term && true;
