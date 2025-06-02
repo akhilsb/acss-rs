@@ -8,8 +8,10 @@ use rayon::prelude::{ParallelIterator};
 use crate::{Context, msg::ProtMsg};
 
 impl Context{
-    pub async fn process_consensus_output(&mut self, acs_output: Vec<Replica>){
+    pub async fn process_consensus_output(&mut self, mut acs_output: Vec<Replica>){
         self.dpss_state.acs_output.extend(acs_output.clone());
+        acs_output.sort();
+        self.ba_state.acs_output_sorted.extend(acs_output);
         // Generate random shares
         self.gen_rand_shares().await;
     }

@@ -419,7 +419,7 @@ impl Context {
                         anyhow!("Networking layer has closed")
                     )?;
                     log::debug!("Received message from Fin MVBA channel {:?}", fin_mvba_out_msg);
-                    //self.process_fin_mvba_output(fin_mvba_out_msg.0, fin_mvba_out_msg.1).await;
+                    self.process_fin_mvba_output(fin_mvba_out_msg.0, fin_mvba_out_msg.1).await;
                 },
             };
         }
