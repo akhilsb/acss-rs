@@ -313,6 +313,7 @@ impl Context{
         }
         else {
             // Find target proposal that was elected
+            self.terminated_rounds.insert(instance_id);
             log::info!("Terminating BAA round {} for instance {}, broadcasting value {:?}",baa_round,instance_id,term_val);
             let _status = self.out_bin_ba_values.send((instance_id, term_val));
 

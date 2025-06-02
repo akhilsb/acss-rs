@@ -100,10 +100,12 @@ impl Context {
         let mut acss_config = config.clone();
         let mut acs_config = config.clone();
         let mut ba_config = config.clone();
+        let mut mvba_config = config.clone();
 
         let port_acss: u16 = 150;
         let port_acs: u16 = 900;
         let port_bba: u16 = 1050;
+        let port_mvba: u16 = 1200;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
@@ -111,10 +113,12 @@ impl Context {
             let acss_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acss);
             let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acs);
             let ba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_bba);
+            let mvba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_mvba);
 
             acss_config.net_map.insert(*replica, acss_address.to_string());
             acs_config.net_map.insert(*replica, rbc_address.to_string());
             ba_config.net_map.insert(*replica, ba_address.to_string());
+            mvba_config.net_map.insert(*replica, mvba_address.to_string());
 
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
 
@@ -233,12 +237,6 @@ impl Context {
         });
         let _acss_serv_status;
         if low_or_high{
-            // _acss_serv_status = acss_bv::Context::spawn(
-            //     acss_config,
-            //     acss_req_recv_channel,
-            //     acss_out_send_channel, 
-            //     false
-            // );
             _acss_serv_status = acss_ske::Context::spawn(
                 acss_config,
                 acss_req_recv_channel,
@@ -249,14 +247,6 @@ impl Context {
                 false
             );
         }
-        // else{
-        //     _acss_serv_status = hacss::Context::spawn(
-        //         acss_config,
-        //         acss_req_recv_channel,
-        //         acss_out_send_channel, 
-        //         false
-        //     );
-        // }
 
         let _ba_serv_status = binary_ba::Context::spawn(
             ba_config,

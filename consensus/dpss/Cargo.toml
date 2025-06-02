@@ -16,6 +16,7 @@ acss_ske = {package = "acss_ske", path = "../acss_ske"}
 acs = {package = "acs", path = "../acs"}
 ibft = {package = "ibft", path = "../ibft"}
 binary_ba = {package = "binary_ba", path = "../binary_ba"}
+fin_mvba = {package = "fin_mvba", path = "../fin_mvba"}
 
 tokio = { version = "1.0", features = ["full"] }
 futures = "^0.3"
