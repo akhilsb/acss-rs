@@ -213,7 +213,7 @@ impl Context{
         let mut shares_proofs_dzk: Vec<Vec<DZKProof>> = Vec::new();
         let mut dzk_broadcast_polys = Vec::new();
         let mut hashes = Vec::new();
-        for _ in 0..dzk_share_polynomials.len(){
+        for _ in 0..self.num_nodes{
             shares_proofs_dzk.push(Vec::new());
         }
         for (dzk_poly,column_root) in dzk_share_polynomials.into_iter().zip(column_wise_roots.into_iter()){
@@ -234,7 +234,7 @@ impl Context{
             let coeffs_const_size: Vec<LargeFieldSer> = self.folding_dzk_context.gen_dzk_proof(
                 &mut eval_points, 
                 &mut trees, 
-                coefficients.coefficients, 
+                coefficients.coefficients.clone(), 
                 iteration, 
                 root.to_bytes_be()
             ).into_iter().map(|x| x.to_bytes_be()).collect();
@@ -268,6 +268,40 @@ impl Context{
             hashes.push(merkle_roots);
         }
         (shares_proofs_dzk,dzk_broadcast_polys,hashes)
+    }
+
+    pub async fn init_pubrec_quad(&mut self, instance_id: usize, party: Replica){
+        log::info!("Received request to publicly reconstruct secrets in instance {} with quadratic cost", instance_id);
+        if !self.acss_ab_state.contains_key(&instance_id){
+            log::error!("No ACSS AB state found for instance {}", instance_id);
+            return;
+        }
+        let acss_ab_state = self.acss_ab_state.get(&instance_id).unwrap();
+        if !acss_ab_state.shares.contains_key(&party){
+            log::error!("No shares found for party {:?} in instance {}", party, instance_id);
+            return;
+        }
+        let acss_all_shares = acss_ab_state.shares.get(&party).unwrap();
+        let shares: Vec<LargeFieldSer> = acss_all_shares.evaluations.0.clone();
+
+        let nonce_shares = acss_all_shares.evaluations.1.clone();
+        let mps = acss_all_shares.evaluations.2.clone();
+
+        let blinding_shares = acss_all_shares.blinding_evaluations.0.clone();
+        let blinding_nonce_shares = acss_all_shares.blinding_evaluations.1.clone();
+        let blinding_mps = acss_all_shares.blinding_evaluations.2.clone();
+
+        let dzk_proofs = acss_all_shares.dzk_iters.clone();
+        //let evaluation_points = self.gen_evaluation_points();
+        
+        let acss_ske_msg = AcssSKEShares{
+            evaluations: (shares, nonce_shares, mps),
+            blinding_evaluations: (blinding_shares, blinding_nonce_shares, blinding_mps),
+            dzk_iters: dzk_proofs,
+            rep: party,
+        };
+
+        self.broadcast(ProtMsg::PubRec(instance_id, acss_ske_msg)).await;
     }
 
     pub async fn init_pubrec(&mut self, instance_id: usize, party: Replica){
@@ -529,7 +563,7 @@ impl Context{
                 return Polynomial::new(&coefficients).coefficients;
             }).flatten().collect();
 
-            log::info!("Successfully interpolated secrets after l2 public reconstruction for instance id {} and source party {} with secrets: {:?}", instance_id, source_party, secrets);
+            log::info!("Successfully interpolated secrets after l2 public reconstruction for instance id {} and source party {} with secrets_len: {}", instance_id, source_party, secrets.len());
 
             acss_ab_state.public_reconstruction_l2_status.insert(source_party);
             let _status = self.out_pub_rec_out.send((instance_id, source_party, secrets)).await;

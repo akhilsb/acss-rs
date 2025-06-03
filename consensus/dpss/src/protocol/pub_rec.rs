@@ -1,5 +1,6 @@
 use std::collections::{HashSet};
 
+use consensus::{LargeField};
 use types::Replica;
 use crate::Context;
 
@@ -40,29 +41,61 @@ impl BAState{
 
 impl Context{
     pub async fn verify_start_binary_ba(&mut self){
-        if self.ba_state.acs_output_sorted.len() > 0 &&
+        if self.lin_or_quad{
+            if self.ba_state.acs_output_sorted.len() > 0 &&
             self.ba_state.pub_rec_term_parties.len() != self.ba_state.pub_rec_status.len(){
                 for party in self.ba_state.pub_rec_term_parties.iter(){
                     let instance_id = self.ba_state.acs_output_sorted.len() - self.ba_state.acs_output_sorted.iter().position(|&rep| &rep == party ).unwrap();
                     self.ba_state.pub_rec_status.insert(instance_id);
                 }
             }
-        for instance_id in 1..self.num_faults{
+        
+            // Termination verification
+            if self.ba_state.ba_term_status.contains(&self.num_faults) &&
+                self.ba_state.mvba_term_status.contains(&self.num_faults) &&
+                self.ba_state.pub_rec_status.contains(&self.num_faults){
+                    // Terminate
+                    log::info!("All BA instances terminated, terminating protocol");
+                    self.terminate("Terminate".to_string()).await;
+                    return;
+                }
+            for instance_id in 1..self.num_faults+1{
+                if !self.ba_state.ba_term_status.contains(&instance_id) && 
+                    self.ba_state.pub_rec_status.contains(&(instance_id-1)){
+                    // Start this BA instance first
+                    self.init_binary_ba(2,instance_id).await;
+                    break;
+                }
+                else{
+                    self.init_binary_ba(2, instance_id).await;
+                    if !self.ba_state.mvba_term_status.contains(&instance_id){
+                        // Start MVBA instance
+                        self.init_fin_mvba(instance_id).await;
+                        break;
+                    }
+                    else{
+                        self.init_fin_mvba(instance_id).await;
+                    }
+                }
+            }
+        }
+        else{
+            if self.ba_state.pub_rec_term_parties.len() == self.num_faults{
+                self.terminate("Terminate".to_string()).await;
+                return;
+            }
+            let instance_id = 1;
             if !self.ba_state.ba_term_status.contains(&instance_id) && 
                 self.ba_state.pub_rec_status.contains(&(instance_id-1)){
                 // Start this BA instance first
                 self.init_binary_ba(2,instance_id).await;
-                break;
             }
             else{
-                self.init_binary_ba(2, instance_id).await;
-                if !self.ba_state.mvba_term_status.contains(&instance_id){
-                    // Start MVBA instance
-                    self.init_fin_mvba(instance_id).await;
-                    break;
-                }
-                else{
-                    self.init_fin_mvba(instance_id).await;
+                if self.ba_state.acs_output_sorted.len() > 0{
+                    // Last t parties pubrec
+                    for party in self.num_faults+1..self.num_nodes-self.num_faults{
+                        let _status = self.pub_rec_req_send_channel.send((1, self.ba_state.acs_output_sorted[party].clone())).await;
+                    }
                 }
             }
         }
@@ -83,7 +116,7 @@ impl Context{
         for _ in 0..5{
             coin_vals.push(self.coin_shares.pop_front().unwrap().to_bytes_be());
         }
-        
+        let _ra_status = self.ra_req_send_channel.send((0, inp, instance)).await;
         let _status = self.bin_aa_req.send((instance, inp as i64, coin_vals)).await;
         self.ba_state.ba_started.insert(instance);
     }
@@ -94,7 +127,7 @@ impl Context{
         }
         if !self.ba_state.secrets_reconstructed || 
             !self.ba_state.shares_generated || 
-            self.coin_shares.len() < 5 ||
+            self.coin_shares.len() < 30 ||
             self.dpss_state.acs_output.len() == 0{
             log::info!("Cannot start FIN MVBA instance {}, prerequisites not met", instance_id);
             return;
@@ -105,7 +138,7 @@ impl Context{
 
         log::info!("Initializing FIN MVBA for instance {} with corrupted party {}", instance_id, corrupted_party);
         let mut coin_vals = Vec::new();
-        for _ in 0..5{
+        for _ in 0..30{
             coin_vals.push(self.coin_shares.pop_front().unwrap().to_bytes_be());
         }
         
@@ -117,14 +150,31 @@ impl Context{
         log::info!("Received binary AA output for instance {}: {}", instance_id, output);
         // Run FIN MVBA for iteration 1
         // Consume randomness
-        self.ba_state.ba_term_status.insert(instance_id);
-        self.verify_start_binary_ba().await;
+        if self.opt_or_pess{
+            self.terminate("Terminate".to_string()).await;
+        }
+        else{
+            self.ba_state.ba_term_status.insert(instance_id);
+            self.verify_start_binary_ba().await;
+        }
+    }
+
+    pub async fn process_ra_output(&mut self, instance_id: usize, output: i64){
+        log::info!("Received Reliable Agreement output for instance {}: {}", instance_id, output);
+        if self.opt_or_pess{
+            self.terminate("Terminate".to_string()).await;
+            
+        }
+        else{
+            self.ba_state.ba_term_status.insert(instance_id);
+            self.verify_start_binary_ba().await;
+        }
     }
 
     pub async fn process_fin_mvba_output(&mut self, instance_id: usize, corrupted_party: usize){
         log::info!("Received FIN MVBA output for instance {}: corrupted party {}", instance_id, corrupted_party);
         log::info!("Starting public reconstruction for party {}", corrupted_party);
-
+        self.ba_state.mvba_term_status.insert(instance_id);
         if self.ba_state.pub_rec_term_parties.contains(&corrupted_party){
             log::info!("Public reconstruction for party {} already completed", corrupted_party);
             self.ba_state.pub_rec_status.insert(instance_id);
@@ -136,13 +186,14 @@ impl Context{
         }
     }
 
-    pub async fn process_acss_pubrec_output(&mut self, corrupted_party: usize){
-        log::info!("Received public reconstruction output for corrupted party {}", corrupted_party);
+    pub async fn process_acss_pubrec_output(&mut self, corrupted_party: usize, secrets: Vec<LargeField>){
+        log::info!("Received public reconstruction output for corrupted party {} with secrets: {}", corrupted_party, secrets.len());
         
         self.ba_state.pub_rec_term_parties.insert(corrupted_party);
         if self.ba_state.acs_output_sorted.len() > 0{
             // Find instance id
             let instance_id = self.ba_state.acs_output_sorted.len() - self.ba_state.acs_output_sorted.iter().position(|&x| x == corrupted_party).unwrap();
+            log::info!("PubRec terminated for instance id : {}",instance_id);
             self.ba_state.pub_rec_status.insert(instance_id);
         }
         self.verify_start_binary_ba().await;

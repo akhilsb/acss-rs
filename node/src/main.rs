@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let vss_type = m
         .value_of("protocol")
         .expect("Unable to detect protocol to run");
-    let _input_value = m.value_of("input").expect("Unable to read input string");
+    
     let syncer_file = m
         .value_of("syncer")
         .expect("Unable to parse syncer ip file");
@@ -33,17 +33,25 @@ async fn main() -> Result<()> {
         .value_of("per")
         .expect("Unable to parse per batch")
         .parse::<usize>().unwrap();
+    let lin_quad = m
+        .value_of("lin")
+        .expect("Unable to parse per lin_quad")
+        .parse::<bool>().unwrap();
+    let opt_pess = m
+        .value_of("opt")
+        .expect("Unable to parse per lin_quad")
+        .parse::<bool>().unwrap();
     // let broadcast_msgs_file = m
     //     .value_of("bfile")
     //     .expect("Unable to parse broadcast messages file");
-    let byz_flag = m.value_of("byz").expect("Unable to parse Byzantine flag");
-    let node_normal: bool = match byz_flag {
-        "true" => true,
-        "false" => false,
-        _ => {
-            panic!("Byz flag invalid value");
-        }
-    };
+    // let byz_flag = m.value_of("byz").expect("Unable to parse Byzantine flag");
+    // let node_normal: bool = match byz_flag {
+    //     "true" => true,
+    //     "false" => false,
+    //     _ => {
+    //         panic!("Byz flag invalid value");
+    //     }
+    // };
     let conf_file = std::path::Path::new(conf_str);
     let str = String::from(conf_str);
     let mut config = match conf_file
@@ -79,8 +87,9 @@ async fn main() -> Result<()> {
                 dpss::Context::spawn(config, 
                     batches, 
                     per_batch, 
-                    true,
-                    node_normal
+                    opt_pess,
+                    lin_quad,
+                    false
                 ).unwrap();
         }
         "sync" => {

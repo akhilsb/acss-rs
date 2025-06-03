@@ -36,6 +36,10 @@ pub struct Context {
     pub num_faults: usize,
     _byz: bool,
 
+    pub opt_or_pess: bool,
+    pub lin_or_quad: bool,
+    pub terminated: bool,
+
     pub large_field_shamir_ss: LargeFieldSSS,
     /// Secret Key map
     pub sec_key_map: HashMap<Replica, Vec<u8>>,
@@ -76,13 +80,16 @@ pub struct Context {
     pub bin_aa_out_recv: Receiver<(usize, i64)>,
 
     pub fin_mvba_req_send: Sender<(usize, usize, Vec<LargeFieldSer>)>,
-    pub fin_mvba_out_recv: Receiver<(usize, usize)>,
+    pub fin_mvba_out_recv: Receiver<(usize, Vec<usize>)>,
 
-    pub acs_term_event: Sender<(usize,usize)>,
+    pub acs_term_event: Sender<(usize,usize, Vec<LargeFieldSer>)>,
     pub acs_out_recv: Receiver<(usize,Vec<usize>)>,
 
     pub pub_rec_req_send_channel: Sender<(usize, Replica)>,
-    pub pub_rec_out_recv_channel: Receiver<(usize, Replica, Vec<LargeField>)>
+    pub pub_rec_out_recv_channel: Receiver<(usize, Replica, Vec<LargeField>)>,
+
+    pub ra_req_send_channel: Sender<(usize, usize, usize)>,
+    pub ra_out_recv_channel: Receiver<(usize, usize, usize)>,
 }
 
 // s = num_batches*per_batch
@@ -97,8 +104,10 @@ impl Context {
         config: Node,
         num_batches: usize,
         per_batch: usize,
-        low_or_high: bool,
-        byz: bool) -> anyhow::Result<oneshot::Sender<()>> {
+        opt_or_pess: bool,
+        lin_or_quad: bool,
+        byz: bool
+    ) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -107,11 +116,13 @@ impl Context {
         let mut acs_config = config.clone();
         let mut ba_config = config.clone();
         let mut mvba_config = config.clone();
+        let mut ra_config = config.clone();
 
         let port_acss: u16 = 150;
         let port_acs: u16 = 900;
         let port_bba: u16 = 1800;
         let port_mvba: u16 = 2100;
+        let port_ra: u16 = 2700;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
@@ -120,11 +131,13 @@ impl Context {
             let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_acs);
             let ba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_bba);
             let mvba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_mvba);
+            let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
 
             acss_config.net_map.insert(*replica, acss_address.to_string());
             acs_config.net_map.insert(*replica, rbc_address.to_string());
             ba_config.net_map.insert(*replica, ba_address.to_string());
             mvba_config.net_map.insert(*replica, mvba_address.to_string());
+            ra_config.net_map.insert(*replica, ra_address.to_string());
 
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
 
@@ -188,6 +201,9 @@ impl Context {
         let (acs_req_send_channel, acs_req_recv_channel) = channel(10000);
         let (acs_out_send_channel, acs_out_recv_channel) = channel(10000);
 
+        let (ra_req_send_channel, ra_req_recv_channel) = channel(10000);
+        let (ra_out_send_channel, ra_out_recv_channel) = channel(10000);        
+
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -199,6 +215,12 @@ impl Context {
                 hash_context: hashstate,
                 myid: config.id,
                 _byz: byz,
+                terminated: false,
+
+                // Protocol configuration
+                opt_or_pess: opt_or_pess,
+                lin_or_quad: lin_or_quad,
+
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,
@@ -215,7 +237,7 @@ impl Context {
                 num_batches: num_batches,
                 per_batch: per_batch, 
                 
-                coin_batch: 20,
+                coin_batch: 60,
                 coin_shares: VecDeque::new(),
                 
                 completed_batches: HashMap::default(),
@@ -238,6 +260,9 @@ impl Context {
 
                 pub_rec_req_send_channel: pub_rec_req_send_channel,
                 pub_rec_out_recv_channel: pub_rec_out_recv_channel,
+
+                ra_req_send_channel: ra_req_send_channel,
+                ra_out_recv_channel: ra_out_recv_channel,
             };
 
             // Populate secret keys from config
@@ -250,25 +275,35 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
-        let _acss_serv_status;
-        if low_or_high{
-            _acss_serv_status = acss_ske::Context::spawn(
-                acss_config,
-                acss_req_recv_channel,
-                acss_out_send_channel, 
-                pub_rec_req_recv_channel,
-                pub_rec_out_send_channel,
-                false,
+        let ibft_or_acs = true;
+        let _acss_serv_status = acss_ske::Context::spawn(
+            acss_config,
+            acss_req_recv_channel,
+            acss_out_send_channel, 
+            pub_rec_req_recv_channel,
+            pub_rec_out_send_channel,
+            false,
+            lin_or_quad,
+            false
+        );
+
+        let _acs_serv_status; 
+        if ibft_or_acs{
+            _acs_serv_status = acs::Context::spawn(
+                acs_config,
+                acs_req_recv_channel, 
+                acs_out_send_channel, 
                 false
             );
         }
-
-        let _acs_serv_status = acs::Context::spawn(
-            acs_config,
-            acs_req_recv_channel, 
-            acs_out_send_channel, 
-            false
-        );
+        else{
+            _acs_serv_status = ibft::Context::spawn(
+                acs_config,
+                acs_req_recv_channel,
+                acs_out_send_channel,
+                false
+            )
+        }
 
         if _acs_serv_status.is_err() {
             log::error!("Error spawning acs because of {:?}", _acs_serv_status.err().unwrap());
@@ -285,17 +320,38 @@ impl Context {
             log::error!("Error spawning BA because of {:?}", _ba_serv_status.err().unwrap());
         }
 
-        let _fin_mvba_status = fin_mvba::Context::spawn(
-            mvba_config,
-            fin_mvba_req_recv,
-            fin_mvba_out_send,
-            false
-        );
+        let _fin_mvba_status ;
+        if ibft_or_acs{
+            _fin_mvba_status = fin_mvba::Context::spawn(
+                mvba_config,
+                fin_mvba_req_recv,
+                fin_mvba_out_send,
+                false
+            );
+        }
+        else{
+            _fin_mvba_status = ibft::Context::spawn(
+                mvba_config,
+                fin_mvba_req_recv,
+                fin_mvba_out_send,
+                false
+            )
+        }
 
         if _fin_mvba_status.is_err() {
             log::error!("Error spawning acs because of {:?}", _fin_mvba_status.err().unwrap());
         }
 
+        let _ra_status = ra::Context::spawn(
+            ra_config,
+            ra_req_recv_channel,
+            ra_out_send_channel,
+            false,
+        );
+
+        if _ra_status.is_err() {
+            log::error!("Error spawning ra because of {:?}", _ra_status.err().unwrap());
+        }
         // let _acs_serv_status = ibft::Context::spawn(
         //     acs_config,
         //     acs_req_recv_channel, 
@@ -419,7 +475,22 @@ impl Context {
                         anyhow!("Networking layer has closed")
                     )?;
                     log::debug!("Received message from Fin MVBA channel {:?}", fin_mvba_out_msg);
-                    self.process_fin_mvba_output(fin_mvba_out_msg.0, fin_mvba_out_msg.1).await;
+                    let median_value = fin_mvba_out_msg.1[self.num_faults+1].clone();
+                    self.process_fin_mvba_output(fin_mvba_out_msg.0, median_value).await;
+                },
+                pub_rec_out_msg = self.pub_rec_out_recv_channel.recv() => {
+                    let pub_rec_out_msg = pub_rec_out_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    log::debug!("Received message from Pub Rec channel {:?}", pub_rec_out_msg);
+                    self.process_acss_pubrec_output(pub_rec_out_msg.1, pub_rec_out_msg.2).await;
+                },
+                ra_out_msg = self.ra_out_recv_channel.recv() => {
+                    let ra_out_msg = ra_out_msg.ok_or_else(||
+                        anyhow!("Networking layer has closed")
+                    )?;
+                    log::debug!("Received message from RA channel {:?}", ra_out_msg);
+                    self.process_ra_output(ra_out_msg.1, ra_out_msg.2 as i64).await;
                 },
             };
         }

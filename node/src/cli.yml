@@ -23,11 +23,7 @@ args:
         long: protocol
         help: Protocol to run
         takes_value: true
-    - input:
-        short: i
-        long: input
-        help: Input value to run protocol on
-        takes_value: true
+    
     - syncer:
         short: y
         long: syncer
@@ -48,8 +44,14 @@ args:
     #     long: bfile
     #     help: The location of a file containing the list of all messages to be reliably broadcasted
     #     takes_value: true
-    - byz:
-        short: b
-        long: byzantine
-        help: Byzantine faulty or normal node
+    - lin:
+        short: l
+        long: lin
+        help: Linear public reconstruction
+        takes_value: true
+    
+    - opt:
+        short: o
+        long: opt
+        help: Optimistic or pessimistic
         takes_value: true

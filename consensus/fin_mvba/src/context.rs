@@ -53,19 +53,22 @@ pub struct Context {
     pub bin_aa_req: Sender<(usize, i64, Vec<LargeFieldSer>)>,
     pub bin_aa_out_recv: Receiver<(usize, i64)>,
 
+    pub ra_aa_req: Sender<(usize, usize, usize)>,
+    pub ra_aa_out_recv: Receiver<(usize, usize, usize)>,
+
     pub ctrbc_req: Sender<Vec<u8>>,
     pub ctrbc_out_recv: Receiver<(usize, usize, Vec<u8>)>,
 
     /// Input and output request channels
     /// First: Instance id, Second: Number of secrets, Third: Reconstruction to all or none, Fourth: Request for reconstruction/sharing, Fifth: Reconstruction ID
     pub inp_mvba_requests: Receiver<(usize, usize, Vec<LargeFieldSer>)>,
-    pub out_mvba_values: Sender<(usize, usize)>
+    pub out_mvba_values: Sender<(usize, Vec<usize>)>
 }
 
 impl Context {
     pub fn spawn(config: Node,
         input_reqs: Receiver<(usize, usize, Vec<LargeFieldSer>)>, 
-        output_shares: Sender<(usize, usize)>,
+        output_shares: Sender<(usize, Vec<usize>)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<anyhow::Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 
@@ -73,18 +76,22 @@ impl Context {
         
         let mut rbc_config = config.clone();
         let mut ba_config = config.clone();
+        let mut ra_config = config.clone();
 
         let port_rbc: u16 = 150;
-        let port_bba: u16 = 300;        
+        let port_bba: u16 = 300;
+        let port_ra: u16 = 450;
 
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
             
             let rbc_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_rbc);
             let bba_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_bba);
-            
+            let ra_address: SocketAddr = SocketAddr::new(address.ip(), address.port() + port_ra);
+
             rbc_config.net_map.insert(*replica, rbc_address.to_string());
             ba_config.net_map.insert(*replica, bba_address.to_string());
+            ra_config.net_map.insert(*replica, ra_address.to_string());
 
             consensus_addrs.insert(*replica, SocketAddr::from(address.clone()));
         }
@@ -117,6 +124,8 @@ impl Context {
         let (bin_aa_req, bin_aa_req_recv) = channel(10000);
         let (bin_aa_out_send, bin_aa_out_recv) = channel(10000);
 
+        let (ra_aa_req, ra_aa_req_recv) = channel(10000);
+        let (ra_aa_out_send, ra_aa_out_recv) = channel(10000);
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -141,6 +150,9 @@ impl Context {
 
                 bin_aa_req: bin_aa_req,
                 bin_aa_out_recv: bin_aa_out_recv,
+
+                ra_aa_req: ra_aa_req,
+                ra_aa_out_recv: ra_aa_out_recv,
 
                 inp_mvba_requests: input_reqs,
                 out_mvba_values: output_shares
@@ -174,6 +186,16 @@ impl Context {
         );
 
         statuses.push(_ba_serv_status);
+
+        let _ra_serv_status = ra::Context::spawn(
+            ra_config,
+            ra_aa_req_recv,
+            ra_aa_out_send,
+            false
+        );
+
+        statuses.push(_ra_serv_status);
+
         // Initialize ctrbc context and binary ba contexts
         Ok((exit_tx, statuses))
     }
@@ -253,6 +275,22 @@ impl Context {
                             deser_msg.3
                         ).await;
                     }
+                },
+                bin_aa_msg = self.bin_aa_out_recv.recv() =>{
+                    if bin_aa_msg.is_none(){
+                        log::error!("Request channel closed");
+                        return;
+                    }
+                    let bin_aa_msg = bin_aa_msg.unwrap();
+                    self.process_bba_termination(bin_aa_msg.0, bin_aa_msg.1 as usize).await;
+                },
+                ra_msg = self.ra_aa_out_recv.recv() =>{
+                    if ra_msg.is_none(){
+                        log::error!("Request channel closed");
+                        return;
+                    }
+                    let ra_aa_msg = ra_msg.unwrap();
+                    self.process_ra_termination(ra_aa_msg.1, ra_aa_msg.2 as usize).await;
                 }
             };
         }

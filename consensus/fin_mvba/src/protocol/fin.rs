@@ -355,25 +355,33 @@ impl Context{
             
             log::info!("Leader elected for instance {} and round {}: {}", instance_id, round, leader_id);
             mvba_round_state.leader_id = Some(leader_id);
+
+            let mut coin_shares_ba = Vec::new();
+            if !self.coin_shares.contains_key(&instance_id){
+                log::error!("Error in coin tossing: Coin shares not found for instance {}", instance_id);
+                return;
+            }
+            let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
+            for _ in 0..5{
+                if coin_shares.len() == 0{
+                    log::error!("Error in coin tossing: Not enough coins left for instance {}", instance_id);
+                    return;
+                }
+                coin_shares_ba.push(coin_shares.pop_front().unwrap());
+            }
+
+            let bin_aa_instance = 100*instance_id + round;
             if mvba_round_state.l2_approved_rbcs.contains(&leader_id){
                 log::info!("Leader approved for Binary BA in instance {}", instance_id);
                 // Input this to BA
                 // Compile coin shares
-                let mut coin_shares_ba = Vec::new();
-                if !self.coin_shares.contains_key(&instance_id){
-                    log::error!("Error in coin tossing: Coin shares not found for instance {}", instance_id);
-                    return;
-                }
-                let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
-                for _ in 0..5{
-                    if coin_shares.len() == 0{
-                        log::error!("Error in coin tossing: Not enough coins left for instance {}", instance_id);
-                        return;
-                    }
-                    coin_shares_ba.push(coin_shares.pop_front().unwrap());
-                }
-                let bin_aa_instance = 100*instance_id + round;
+                let _ra_status  = self.ra_aa_req.send((0, 2, bin_aa_instance)).await;
                 let _status = self.bin_aa_req.send((bin_aa_instance, 2, coin_shares_ba)).await;
+            }
+            else{
+                log::info!("Leader not approved for Binary BA in instance {}", instance_id);
+                let _status = self.ra_aa_req.send((0, 0, bin_aa_instance)).await;
+                let _status = self.bin_aa_req.send((bin_aa_instance, 0, coin_shares_ba)).await;
             }
         }
         self.verify_round_termination(instance_id, round).await;
@@ -404,9 +412,43 @@ impl Context{
         }
 
         let mvba_round_state = mvba_exec_state.mvbas.get_mut(&round).unwrap();
+        
+        if mvba_round_state.bba_output.is_none(){
+            mvba_round_state.bba_output = Some(output_val);
+    
+            self.verify_round_termination(instance_id, round).await
+        }
+    }
+
+    pub async fn process_ra_termination(&mut self, 
+        ra_instance_id: usize,
+        output_val: usize,
+    ){
+        log::info!("Received RA termination for instance {} with output value {}", ra_instance_id, output_val);
+        let instance_id = ra_instance_id/100;
+        let round = ra_instance_id % 100;
+
+        if !self.round_state.contains_key(&instance_id){
+            let mvba_round_state = MVBAExecState::new(instance_id);
+            self.round_state.insert(instance_id, mvba_round_state);
+        }
+        
+        let mvba_exec_state = self.round_state.get_mut(&instance_id).unwrap();
+        if !mvba_exec_state.mvbas.contains_key(&round){
+            let mvba_round_state = MVBARoundState::new(
+                instance_id,
+                round,
+                self.num_faults,
+                self.num_nodes
+            );
+            mvba_exec_state.add_mvba_round(mvba_round_state);
+        }
+
+        let mvba_round_state = mvba_exec_state.mvbas.get_mut(&round).unwrap();
         mvba_round_state.bba_output = Some(output_val);
         self.verify_round_termination(instance_id, round).await;
     }
+
 
     pub async fn verify_round_termination(&mut self, instance_id: usize, round: usize){
         if !self.round_state.contains_key(&instance_id){
@@ -426,7 +468,7 @@ impl Context{
         }
 
         let mvba_round_state = mvba_exec_state.mvbas.get_mut(&round).unwrap();
-        if mvba_round_state.bba_output.is_some() && mvba_round_state.leader_id.is_some(){
+        if mvba_round_state.bba_output.is_some() && mvba_round_state.leader_id.is_some() && mvba_exec_state.output.is_none(){
             // Round is terminated
             log::info!("Round {} for instance {} is terminated with output {}", round, instance_id, mvba_round_state.bba_output.unwrap());
             let bba_output = mvba_round_state.bba_output.unwrap();
@@ -446,8 +488,8 @@ impl Context{
                         }
                     }
                     log::info!("Consensus output in instance {} is {:?}", instance_id, rbc_outputs);
-                    let median_value = rbc_outputs[self.num_faults+1].clone();
-                    let _status = self.out_mvba_values.send((instance_id, median_value)).await;
+                    mvba_exec_state.output = Some(rbc_outputs.clone());
+                    let _status = self.out_mvba_values.send((instance_id, rbc_outputs)).await;
                 }
                 else{
                     log::info!("Did not terminate leader's RBC yet in instance id {}, waiting for it", instance_id);

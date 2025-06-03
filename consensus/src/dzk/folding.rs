@@ -146,6 +146,88 @@ impl FoldingDZKContext{
         return Some((poly_coeffs,nonce_coeffs,bpoly_coeffs,bnonce_coeffs));
     }
 
+    pub fn verify_dzk_proof_alt(&self,
+        dzk_proof: DZKProof, 
+        dzk_roots: Vec<Hash>, 
+        dzk_poly: Vec<LargeFieldSer>, 
+        column_root: Hash, 
+        row_share: LargeField,
+        evaluation_point: usize
+    ) -> bool{
+        // Verify dzk proof finally
+        // Start from the lowest level
+        // Calculate aggregated roots first
+        let mut rev_agg_roots: Vec<Hash> = Vec::new();
+        let mut rev_roots: Vec<Hash> = Vec::new();
+
+        let dzk_share = row_share;
+        
+        // First root comes from the share and blinding polynomials
+        let mut agg_root = column_root;
+        let mut aggregated_roots = Vec::new();
+        for index in 0..dzk_roots.len(){
+            agg_root = self.hash_context.hash_two(agg_root , dzk_roots[index]);
+            aggregated_roots.push(agg_root.clone());
+        }
+        rev_agg_roots.extend(aggregated_roots.into_iter().rev());
+        rev_roots.extend(dzk_roots.into_iter().rev());
+        
+        let first_poly: Vec<LargeField> = dzk_poly.into_iter().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
+        let mut degree_poly = first_poly.len()-1;
+
+        // Evaluate points according to this polynomial
+        let mut point = self.large_field_uv_sss.mod_evaluate_at(first_poly.as_slice(), evaluation_point);
+
+        let g_0_pts: Vec<LargeField> = dzk_proof.g_0_x.into_iter().rev().map(|x | LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
+        let g_1_pts: Vec<LargeField> = dzk_proof.g_1_x.into_iter().rev().map(|x| LargeField::from_bytes_be(x.as_slice()).unwrap()).collect();
+        let proofs: Vec<Proof> = dzk_proof.proof.into_iter().rev().collect();
+        
+        for (index, (g_0, g_1)) in (0..g_0_pts.len()).into_iter().zip(g_0_pts.into_iter().zip(g_1_pts.into_iter())){
+            
+            
+            // First, Compute Fiat-Shamir Heuristic point
+            // log::info!("Aggregated Root Hash: {:?}, g_0: {:?}, g_1: {:?}, poly_folded: {:?}", rev_agg_root_vec[index], g_0, g_1, first_poly);
+            let root = LargeField::from_bytes_be(rev_agg_roots[index].as_slice()).unwrap();
+            
+            let fiat_shamir_hs_point = &g_0 + &root*&g_1;
+            if point != fiat_shamir_hs_point{
+                log::error!("DZK Proof verification failed at verifying equality of Fiat-Shamir heuristic at iteration {}",index);
+                return false;
+            }
+
+            // Second, modify point to reflect the value before folding
+            // Where was the polynomial split?
+            let split_point = *self.poly_split_evaluation_map.get(&(degree_poly as isize)).unwrap() as usize;
+
+            let pt_bigint = LargeField::from(evaluation_point as u64);
+            let pow_bigint = pt_bigint.pow(UnsignedInteger::<4>::from(split_point as u64));
+            //let pow_bigint = LargeFieldSSS::mod_pow(&pt_bigint,&LargeField::from(split_point), &self.large_field_uv_sss.prime);
+            let agg_point = &g_0 + &pow_bigint*&g_1;
+            point = agg_point;
+            // update degree of the current polynomial
+            degree_poly = degree_poly + split_point;
+
+            // Third, check Merkle Proof of point
+            let merkle_proof = &proofs[index];
+            if !merkle_proof.validate(
+                &self.hash_context) || 
+                    do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                    rev_roots[index] != merkle_proof.root(){
+                log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
+                log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_roots[index].clone(),merkle_proof.root());
+                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
+                return false; 
+            }
+        }
+        // Verify final point's equality with the original accumulated point
+        if point != dzk_share{
+            log::error!("DZK Point does not match the first level point {:?} {:?} for {}'s column", point, dzk_share, evaluation_point);
+            return false;
+        }
+        true
+    }
+
+
     pub fn verify_dzk_proof(&self,
         dzk_proof: DZKProof, 
         dzk_roots: Vec<Hash>, 

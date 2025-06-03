@@ -19,7 +19,7 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use consensus::{LargeFieldSSS};
+use consensus::{LargeFieldSSS, LargeFieldSer};
 use crypto::{aes_hash::HashState, LargeField, hash::Hash};
 
 use crate::{msg::ProtMsg, Handler, protocol::ACSState};
@@ -75,7 +75,7 @@ pub struct Context {
     //pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
     //pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
-    pub event_recv_channel: Receiver<(usize,usize)>,
+    pub event_recv_channel: Receiver<(usize,usize, Vec<LargeFieldSer>)>,
     pub acs_out_channel: Sender<(usize,Vec<usize>)>,
 
     pub asks_req: Sender<(usize, usize, bool, bool, Option<Vec<LargeField>>,Option<usize>)>,
@@ -98,7 +98,7 @@ pub struct Context {
 impl Context {
     pub fn spawn(
         config: Node,
-        term_event_channel: Receiver<(usize,usize)>,
+        term_event_channel: Receiver<(usize,usize, Vec<LargeFieldSer>)>,
         acs_out_channel: Sender<(usize,Vec<usize>)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 

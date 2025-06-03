@@ -86,6 +86,9 @@ pub struct Context {
     pub recv_out_ra: Receiver<(usize,Replica,usize)>,
 
     pub use_fft: bool,
+    // Public reconstruction flag. If false, parties broadcast shares to everyone. 
+    // If true, parties use public reconstruction with linear cost
+    pub lin_or_quad: bool,
     pub roots_of_unity: Vec<LargeField>,
 
     pub avss_inst_id: usize,
@@ -99,6 +102,7 @@ impl Context {
         input_pubrec: Receiver<(usize, Replica)>,
         output_pubrec: Sender<(usize, Replica, Vec<LargeField>)>, 
         use_fft: bool,
+        lin_or_quad: bool,
         _byz: bool
     ) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> { 
         let mut asks_config = config.clone();
@@ -176,7 +180,7 @@ impl Context {
 
         // Prepare dZK context for halving degrees
         let mut start_degree = config.num_faults as isize;
-        let end_degree = 2 as usize;
+        let end_degree = 3 as usize;
         let mut ss_contexts = HashMap::default();
         while start_degree > 0 {
             let split_point;
@@ -259,6 +263,7 @@ impl Context {
                 recv_out_ra: ra_out_recv_channel,
 
                 use_fft: use_fft,
+                lin_or_quad: lin_or_quad,
 
                 avss_inst_id: 200,
 
@@ -361,8 +366,13 @@ impl Context {
                     let (instance_id, cheating_party) = avss_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    self.init_pubrec(instance_id, cheating_party).await;
-                    // if sharing {
+                    if self.lin_or_quad{
+                        self.init_pubrec(instance_id, cheating_party).await;
+                    }
+                    else{
+                        self.init_pubrec_quad(instance_id, cheating_party).await;
+                    }
+                     // if sharing {
                     //     let secrets = secrets.unwrap();
                     //     log::info!("Received request to start AVSS for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
                     //             .duration_since(UNIX_EPOCH)

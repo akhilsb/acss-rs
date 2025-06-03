@@ -193,23 +193,26 @@ impl Context{
 
     // Invoke this function once you terminate the protocol
     pub async fn terminate(&mut self, data: String) {
-        let rbc_sync_msg = RBCSyncMsg{
-            id: 1,
-            msg: data,
-        };
+        if !self.terminated{
+            self.terminated = true;
+            let rbc_sync_msg = RBCSyncMsg{
+                id: 1,
+                msg: data,
+            };
 
-        let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
-        let cancel_handler = self
-            .sync_send
-            .send(
-                0,
-                SyncMsg {
-                    sender: self.myid,
-                    state: SyncState::COMPLETED,
-                    value: ser_msg,
-                },
-            )
-            .await;
-        self.add_cancel_handler(cancel_handler);
+            let ser_msg = bincode::serialize(&rbc_sync_msg).unwrap();
+            let cancel_handler = self
+                .sync_send
+                .send(
+                    0,
+                    SyncMsg {
+                        sender: self.myid,
+                        state: SyncState::COMPLETED,
+                        value: ser_msg,
+                    },
+                )
+                .await;
+            self.add_cancel_handler(cancel_handler);
+        }
     }
 }

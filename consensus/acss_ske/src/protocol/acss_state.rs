@@ -21,6 +21,8 @@ pub struct ACSSABState{
     pub acss_status: HashSet<Replica>,
 
     // L1 Shares and L2 Shares
+    pub public_reconstruction_quad_shares: HashMap<Replica, HashMap<Replica, Vec<LargeField>>>,
+    pub public_reconstruction_quad_status: HashSet<Replica>,
     pub public_reconstruction_l1_shares: HashMap<Replica, HashMap<Replica, Vec<LargeField>>>,
     pub public_reconstruction_l1_status: HashSet<Replica>,
     pub public_reconstruction_l2_shares: HashMap<Replica, HashMap<Replica, Vec<LargeField>>>,
@@ -40,6 +42,8 @@ impl ACSSABState{
             verification_status: HashMap::default(),
             acss_status: HashSet::default(),
 
+            public_reconstruction_quad_shares: HashMap::default(),
+            public_reconstruction_quad_status: HashSet::default(),
             public_reconstruction_l1_shares: HashMap::default(),
             public_reconstruction_l1_status: HashSet::default(),
             public_reconstruction_l2_shares: HashMap::default(),

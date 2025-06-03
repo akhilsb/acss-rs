@@ -9,7 +9,9 @@ pub struct MVBAExecState{
     pub inp_value: Option<usize>,
 
     pub mvbas: HashMap<usize, MVBARoundState>,
-    pub terminated_mvbas: HashSet<usize>
+    pub terminated_mvbas: HashSet<usize>,
+
+    pub output: Option<Vec<usize>>,
 }
 
 impl MVBAExecState {
@@ -19,6 +21,8 @@ impl MVBAExecState {
             inp_value: None, 
             mvbas: HashMap::new(),
             terminated_mvbas: HashSet::new(),
+
+            output: None,
         }
     }
 

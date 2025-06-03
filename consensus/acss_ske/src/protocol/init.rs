@@ -1,5 +1,3 @@
-use std::ops::Div;
-
 use crate::{Context, msg::AcssSKEShares};
 use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
@@ -300,9 +298,10 @@ impl Context{
         // Initialize DZK procedure
         let (dzk_proofs, dzk_broadcast_polys, commitment_hashes) = self.compute_dzk_proofs(
             agg_polys, 
-            root_comm_fe.clone()
+            root_comm_fe
         );
 
+        
         let va_comm: VACommitment = VACommitment{
             instance_id: instance_id,
             column_roots: roots.clone(),
@@ -498,42 +497,25 @@ impl Context{
             return LargeField::from_bytes_be(root_combined.as_slice()).unwrap();
         }).collect();
 
-        let dzk_aggregated_points = Self::aggregate_points_for_dzk(
-            grouped_points, 
+        let dzk_aggregated_points: Vec<LargeField> = grouped_points.into_iter().zip(
+            root_comm_fe.clone().into_iter()).map(|(shares, root)|{
+                return self.folding_dzk_context.gen_agg_poly_dzk(shares, root.to_bytes_be());
+            }).collect();
+
+        let status = self.folding_dzk_context.verify_dzk_proof_row(
+            shares_full.dzk_iters.clone(), 
+            va_commitment.dzk_roots.clone(), 
+            va_commitment.polys.clone(), 
+            root_comm_fe.into_iter().map(|el| el.to_bytes_be()).collect(), 
+            dzk_aggregated_points, 
             blinding_shares.clone(), 
-            root_comm_fe
+            self.myid+1
         );
 
-        for index in 0..self.num_nodes{
-            let dzk_proof = shares_full.dzk_iters[index].clone();
-            let dzk_roots = va_commitment.dzk_roots[index].clone();
-            let dzk_polynomial = va_commitment.polys[index].clone();
-            
-            let share_merkle_root = va_commitment.column_roots[index].clone();
-            let blinding_merkle_root = va_commitment.blinding_column_roots[index].clone();
-            let combined_root = self.hash_context.hash_two(share_merkle_root, blinding_merkle_root);
-            let root_fe = LargeField::from_bytes_be(combined_root.as_slice()).unwrap();
-
-            let share_point = dzk_aggregated_points[index].clone();
-            let blinding_share_point = blinding_shares[index].clone();
-            
-            //log::info!()
-            let status = self.folding_dzk_context.verify_dzk_proof(
-                dzk_proof, 
-                dzk_roots, 
-                dzk_polynomial, 
-                combined_root, 
-                (share_point-blinding_share_point).div(root_fe), 
-                blinding_share_point, 
-                self.myid+1
-            );
-
-            if !status{
-                log::error!("DZK proof verification failed for instance {} from sender {} at index {} with blinding_share_point {}, agg_share_point: {}", instance_id, sender, index, blinding_share_point, share_point);
-                return;
-            }
+        if !status{
+            log::error!("DZK proof verification failed for instance {} from sender {}", instance_id, sender);
+            return;
         }
-
         
         log::info!("Share from {} verified", sender);
         acss_ab_state.verification_status.insert(sender,true);

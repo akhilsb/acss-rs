@@ -11,8 +11,6 @@ impl Context{
         let value = deser_msg.msg;
         if instance == 1 {
             // First instance is for the RBC of the core ACS instance
-            // This 
-            
             //let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
             self.acs_state.broadcast_messages.insert(broadcaster , Vec::new());
             

@@ -32,11 +32,6 @@ impl Context{
     pub async fn process_pre_broadcast(&mut self, inst: usize, broadcaster: usize, rbc_value: Vec<u8>){
         let msg: (Replica, Vec<Replica>, Vec<(Replica,Replica)>) = bincode::deserialize(rbc_value.as_slice()).unwrap();
         
-        // let pre_i = msg.0;
-        // // ASKS instances
-        // let p_i = msg.1;
-        // let justification = msg.2;
-
         if !self.acs_state.vaba_states.contains_key(&inst){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(inst, vaba_context);

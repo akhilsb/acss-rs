@@ -299,7 +299,7 @@ impl RoundStateBin{
         let coin = Polynomial::interpolate(&evaluation_points, &shares).unwrap().evaluate(&LargeField::from(0 as u64));
         let result = (coin.to_bytes_be()[0]%2) == 0;
 
-        log::info!("Coin value {} and round termination value {:?}",result,self.termval);
+        log::info!("Coin value {} from reconstructed coin {:?} and round termination value {:?}",result, coin,self.termval);
         if self.termval.is_some(){
             if (self.termval.unwrap() == 2 && result) || (self.termval.unwrap() == 0 && !result){
                 // Terminate and send message to syncer

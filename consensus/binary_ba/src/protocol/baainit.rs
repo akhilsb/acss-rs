@@ -71,13 +71,12 @@ impl Context{
                             return;
                         }
                         let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
-                        let coin_share = coin_shares.pop_front();
-                        if coin_share.is_none(){
+                        if coin_shares.len() <= baa_round{
                             log::error!("Coins unavailable, abandoning BBA round {} for instance {}", baa_round, instance_id);
                             return;
                         }
                         else{
-                            let coin_share = coin_share.unwrap();
+                            let coin_share = coin_shares[baa_round].clone();
                             log::info!("Sending coin share {:?} for lround {}, bround {}",coin_share,instance_id,baa_round);
                             let prot_msg = ProtMsg::BBACoin(instance_id, baa_round, coin_share, self.myid);
                             round_state.add_partial_coin(self.myid, LargeField::from_bytes_be(&coin_share).unwrap());
@@ -143,15 +142,15 @@ impl Context{
                         // Create partial signature and broadcast
                         // Create and broadcast coin
                         let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
-                        let coin_share = coin_shares.pop_front();
-                        if coin_share.is_none(){
+                        if coin_shares.len() <= baa_round{
                             log::error!("Coins unavailable, abandoning BBA round {} for instance {}", baa_round, instance_id);
+                            return;
                         }
                         else{
-                            let coin_share = coin_share.unwrap();
+                            let coin_share = coin_shares[baa_round].clone();
                             log::info!("Sending coin share {:?} for lround {}, bround {}",coin_share,instance_id,baa_round);
                             let prot_msg = ProtMsg::BBACoin(instance_id, baa_round, coin_share, self.myid);
-                            round_state.coin_shares_vec.insert(self.myid,LargeField::from_bytes_be(&coin_share).unwrap());
+                            round_state.add_partial_coin(self.myid, LargeField::from_bytes_be(&coin_share).unwrap());
                             msgs_to_send.push(prot_msg);
                             terminate = round_state.aggregate_p_coins();
                         }
@@ -212,13 +211,12 @@ impl Context{
                 if term && !round_state.contains_coin(self.myid) && self.coin_shares.contains_key(&instance_id){
                     // TODO: Broadcasting common coin
                     let coin_shares = self.coin_shares.get_mut(&instance_id).unwrap();
-                    let coin_share = coin_shares.pop_front();
-                    if coin_share.is_none(){
+                    if coin_shares.len() <= baa_round{
                         log::error!("Coins unavailable, abandoning BBA round {} for instance {}", baa_round, instance_id);
                         return;
                     }
                     else{
-                        let coin_share = coin_share.unwrap();
+                        let coin_share = coin_shares[baa_round].clone();
                         log::info!("Sending coin share {:?} for lround {}, bround {}",coin_share,instance_id,baa_round);
                         let prot_msg = ProtMsg::BBACoin(instance_id, baa_round, coin_share, self.myid);
                         round_state.coin_shares_vec.insert(self.myid,LargeField::from_bytes_be(&coin_share).unwrap());

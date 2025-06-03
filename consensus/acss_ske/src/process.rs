@@ -31,6 +31,11 @@ impl Context {
         // Verify the message's authenticity before proceeding
         if self.check_proposal(msg) {
             match wrapper_msg.clone().protmsg {
+                ProtMsg::PubRec(instance_id, acss_ske_msg) =>{
+                    // RBC initialized
+                    log::debug!("Received PubRecQuad message for instance id {} from node : {}", instance_id, wrapper_msg.sender);
+                    self.process_pub_rec_quad_msg(instance_id, acss_ske_msg, wrapper_msg.sender).await;
+                }
                 ProtMsg::PubRecL1(instance_id, acss_msg_ske) => {
                     // RBC initialized
                     log::debug!("Received PubRecL1 message for instance id {} from node : {}", instance_id, wrapper_msg.sender);

@@ -14,6 +14,7 @@ pub struct AcssSKEShares{
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ProtMsg{
+    PubRec(usize, AcssSKEShares),
     PubRecL1(usize,AcssSKEShares),
     PubRecL2(usize, Replica,Vec<LargeFieldSer>),
 }

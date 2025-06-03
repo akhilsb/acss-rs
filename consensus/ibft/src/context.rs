@@ -6,6 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use config::Node;
 
+use consensus::LargeFieldSer;
 use fnv::FnvHashMap;
 use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
@@ -48,7 +49,7 @@ pub struct Context {
     //pub acss_req: Sender<(usize, Vec<LargeFieldSer>)>,
     //pub acss_out_recv: Receiver<(usize, usize, Hash, Vec<LargeFieldSer>)>,
 
-    pub event_recv_channel: Receiver<(usize, usize)>,
+    pub event_recv_channel: Receiver<(usize, usize, Vec<LargeFieldSer>)>,
     pub acs_out_channel: Sender<(usize, Vec<usize>)>,
 
     pub ctrbc_req: Sender<Vec<u8>>,
@@ -65,7 +66,7 @@ pub struct Context {
 impl Context {
     pub fn spawn(
         config: Node,
-        term_event_channel: Receiver<(usize,usize)>,
+        term_event_channel: Receiver<(usize,usize, Vec<LargeFieldSer>)>,
         acs_out_channel: Sender<(usize, Vec<usize>)>,
         byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
@@ -232,7 +233,7 @@ impl Context {
                     self.process_msg(msg).await;
                 },
                 term_event = self.event_recv_channel.recv() => {
-                    let (term_party, instance_id) = term_event.ok_or_else(||
+                    let (term_party, instance_id, _randomness) = term_event.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
                     log::debug!("Received ACSS termination event: {:?} for instance id {}", term_party, instance_id);
