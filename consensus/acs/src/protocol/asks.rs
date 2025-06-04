@@ -77,6 +77,7 @@ impl Context{
         // Reconstruction true
         vaba_context.asks_reconstruction_started = true;
         // Wait until receiving all results for ranks
+        self.check_reconstruction_phase_terminated(instance).await;
     }
 
     pub async fn process_asks_reconstruction_result(&mut self, instance: usize, secret_preparer_rep: usize, recon_result: Vec<LargeField>){

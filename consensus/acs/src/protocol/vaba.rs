@@ -296,6 +296,7 @@ impl Context{
             rep_list.insert(broadcaster);
             if rep_list.len() == self.num_nodes - self.num_faults{
                 // Start Reliable Agreement as a termination gadget
+                log::info!("Vote for {} has been validated, starting Reliable Agreement", vote_rep);
                 let status = self.ra_req_send.send((self.num_nodes, vote_rep, inst)).await;
                 if status.is_err(){
                     log::error!("Error sending transaction to the RA queue, abandoning ACS instance");
