@@ -91,6 +91,7 @@ impl Context{
     }
 
     pub async fn process_sec_equivalence_msg(&mut self, inst_key: usize,origin: Replica, sender: Replica, c1_c2: u8, eval_point: LargeFieldSer){
+        log::info!("Received sec_equivalence message from party {} for origin {} in instance key {}",sender, origin, inst_key);
         if self.acs_input_set.contains(&origin){
             return;
         }
@@ -111,7 +112,7 @@ impl Context{
             if c1_val_map.contains_key(&(self.num_nodes+1)){
                 return;
             }
-            if c1_val_map.len() == 2*self.num_faults+1{
+            if c1_val_map.len() >= 2*self.num_faults+1{
                 // Reconstruct degree-t polynomial
                 let mut eval_points = Vec::new();
                 let mut evaluations = Vec::new();
@@ -140,7 +141,7 @@ impl Context{
             if c2_val_map.contains_key(&(self.num_nodes+1)){
                 return;
             }
-            if c2_val_map.len() == 2*self.num_faults+1{
+            if c2_val_map.len() >= 2*self.num_faults+1{
                 // Reconstruct degree-t polynomial
                 let mut eval_points = Vec::new();
                 let mut evaluations = Vec::new();

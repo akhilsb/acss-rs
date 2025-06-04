@@ -41,6 +41,11 @@ async fn main() -> Result<()> {
         .value_of("opt")
         .expect("Unable to parse per lin_quad")
         .parse::<bool>().unwrap();
+    let ibft = m
+        .value_of("ibft")
+        .expect("Unable to parse per ibft")
+        .parse::<bool>().unwrap();
+
     // let broadcast_msgs_file = m
     //     .value_of("bfile")
     //     .expect("Unable to parse broadcast messages file");
@@ -89,6 +94,7 @@ async fn main() -> Result<()> {
                     per_batch, 
                     opt_pess,
                     lin_quad,
+                    ibft,
                     false
                 ).unwrap();
         }

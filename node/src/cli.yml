@@ -55,3 +55,9 @@ args:
         long: opt
         help: Optimistic or pessimistic
         takes_value: true
+
+    - ibft:
+        short: f
+        long: ibft
+        help: Istanbul BFT
+        takes_value: true

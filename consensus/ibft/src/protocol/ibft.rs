@@ -7,7 +7,7 @@ impl Context{
     pub async fn init_acss_term_procedure(&mut self, term_party: Replica, instance_id: usize){
         log::debug!("Sending termination event to the leader {} for ACSS initialized by party {}", self.leader_id,term_party);
         let prot_msg = ProtMsg::ACSSTerm(term_party, instance_id);
-        
+
         let secret_key = self.sec_key_map.get(&self.leader_id).unwrap().clone();
         let wrapper_msg = WrapperMsg::new(prot_msg,self.myid, &secret_key);
 
@@ -33,7 +33,7 @@ impl Context{
             ibft_state.add_consensus_inp(term_party);
         }
 
-        if ibft_state.consensus_inp_set.len() == self.num_nodes - self.num_faults && 
+        if ibft_state.consensus_inp_set.len() >= self.consensus_threshold && 
             self.myid == self.leader_id && 
             !ibft_state.broadcast_started{
 

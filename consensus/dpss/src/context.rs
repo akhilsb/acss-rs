@@ -38,6 +38,8 @@ pub struct Context {
 
     pub opt_or_pess: bool,
     pub lin_or_quad: bool,
+    pub ibft: bool,
+
     pub terminated: bool,
 
     pub large_field_shamir_ss: LargeFieldSSS,
@@ -106,6 +108,7 @@ impl Context {
         per_batch: usize,
         opt_or_pess: bool,
         lin_or_quad: bool,
+        ibft: bool,
         byz: bool
     ) -> anyhow::Result<oneshot::Sender<()>> {
         // Add a separate configuration for RBC service. 
@@ -204,6 +207,7 @@ impl Context {
         let (ra_req_send_channel, ra_req_recv_channel) = channel(10000);
         let (ra_out_send_channel, ra_out_recv_channel) = channel(10000);        
 
+        let coin_secrets = (60/(config.num_faults+1))*(config.num_faults+1);
         tokio::spawn(async move {
             let mut c = Context {
                 net_send: consensus_net,
@@ -220,6 +224,7 @@ impl Context {
                 // Protocol configuration
                 opt_or_pess: opt_or_pess,
                 lin_or_quad: lin_or_quad,
+                ibft: ibft,
 
                 num_faults: config.num_faults,
                 cancel_handlers: HashMap::default(),
@@ -237,7 +242,7 @@ impl Context {
                 num_batches: num_batches,
                 per_batch: per_batch, 
                 
-                coin_batch: 60,
+                coin_batch: coin_secrets,
                 coin_shares: VecDeque::new(),
                 
                 completed_batches: HashMap::default(),
@@ -275,7 +280,7 @@ impl Context {
                 log::error!("Consensus error: {}", e);
             }
         });
-        let ibft_or_acs = true;
+        let ibft_or_acs = ibft;
         let _acss_serv_status = acss_ske::Context::spawn(
             acss_config,
             acss_req_recv_channel,
@@ -476,7 +481,13 @@ impl Context {
                         anyhow!("Networking layer has closed")
                     )?;
                     log::debug!("Received message from Fin MVBA channel {:?}", fin_mvba_out_msg);
-                    let median_value = fin_mvba_out_msg.1[self.num_faults+1].clone();
+                    let median_value;
+                    if self.ibft{
+                        median_value = fin_mvba_out_msg.1[self.num_faults+1].clone();
+                    }
+                    else{
+                        median_value = fin_mvba_out_msg.1[0].clone()
+                    }
                     self.process_fin_mvba_output(fin_mvba_out_msg.0, median_value).await;
                 },
                 pub_rec_out_msg = self.pub_rec_out_recv_channel.recv() => {

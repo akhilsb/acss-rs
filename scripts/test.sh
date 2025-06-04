@@ -17,7 +17,8 @@ TYPE=${TYPE:="release"}
     --batches $2 \
     --per $3 \
     --lin $4 \
-    --opt $5 > logs/syncer.log &
+    --opt $5 \
+    --ibft $6 > logs/syncer.log &
 
 for((i=0;i<4;i++)); do
 ./target/$TYPE/node \
@@ -28,7 +29,8 @@ for((i=0;i<4;i++)); do
     --batches $2 \
     --per $3 \
     --lin $4 \
-    --opt $5 > logs/$i.log &
+    --opt $5 \
+    --ibft $6 > logs/$i.log &
 done
 
 # Kill all nodes sudo lsof -ti:7000-7015 | xargs kill -9
