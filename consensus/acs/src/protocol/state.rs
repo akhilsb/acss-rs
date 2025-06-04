@@ -42,6 +42,7 @@ pub struct VABAState{
     
     pub term_asks_instances: HashSet<Replica>,
     pub pre_broadcast: bool,
+    
     // Pre, ASKS instances terminated, Justify values
     pub pre_justify_votes: HashMap<Replica, (Replica, Vec<Replica>, Vec<(Replica,Replica)>)>,
     // If Pre has been validated, remaining ASKS instances left to be terminated, Justify values remaining

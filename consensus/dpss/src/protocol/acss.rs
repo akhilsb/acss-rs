@@ -167,6 +167,7 @@ impl Context{
                 c2_val_map.contains_key(&(self.num_nodes+1)) &&
                 c1_val_map.get(&(self.num_nodes+1)).unwrap() == c2_val_map.get(&(self.num_nodes+1)).unwrap(){
                 // Add this instance to completed sharings
+                log::info!("Secret equivalence for instance {} and origin {} completed", inst_key, origin);
                 if !self.completed_batches.contains_key(&origin){
                     self.completed_batches.insert(origin, HashSet::default());
                 }
@@ -205,7 +206,7 @@ impl Context{
             }
         }
 
-        if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() == self.num_batches{
+        if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() >= self.num_batches{
             self.acs_input_set.insert(origin);
             log::info!("Sending instance {} to ACS for consensus", origin);
             let _status = self.acs_term_event.send((1,origin, vec![])).await;

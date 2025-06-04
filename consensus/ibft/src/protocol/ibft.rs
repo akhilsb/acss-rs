@@ -7,6 +7,7 @@ impl Context{
     pub async fn init_acss_term_procedure(&mut self, term_party: Replica, instance_id: usize){
         log::debug!("Sending termination event to the leader {} for ACSS initialized by party {}", self.leader_id,term_party);
         let prot_msg = ProtMsg::ACSSTerm(term_party, instance_id);
+        
         let secret_key = self.sec_key_map.get(&self.leader_id).unwrap().clone();
         let wrapper_msg = WrapperMsg::new(prot_msg,self.myid, &secret_key);
 

@@ -105,7 +105,7 @@ impl Context{
         }
         // Go for optimistic termination if all n shares have appeared
         else if size == self.num_nodes{
-            log::info!("Received n ECHO messages for RBC Instance ID {}, terminating",instance_id);
+            log::info!("Received n ECHO messages for ASKS Instance ID {}, terminating",instance_id);
             // Do not reconstruct the entire root again. Just send the merkle proof
             
             let echo_root = asks_state.rbc_state.echo_root.clone();

@@ -30,6 +30,8 @@ pub struct Context {
     //pub sync_recv: UnboundedReceiver<SyncMsg>,
     /// Data context
     pub num_nodes: usize,
+
+    pub consensus_threshold: usize,
     pub myid: usize,
     pub num_faults: usize,
     _byz: bool,
@@ -68,7 +70,9 @@ impl Context {
         config: Node,
         term_event_channel: Receiver<(usize,usize, Vec<LargeFieldSer>)>,
         acs_out_channel: Sender<(usize, Vec<usize>)>,
-        byz: bool) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
+        consensus_threshold: usize,
+        byz: bool
+    ) -> anyhow::Result<(oneshot::Sender<()>, Vec<Result<oneshot::Sender<()>>>)> {
         // Add a separate configuration for RBC service. 
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
@@ -148,6 +152,8 @@ impl Context {
                 _byz: byz,
                 num_faults: config.num_faults,
                 leader_id: 0 as usize,
+
+                consensus_threshold: consensus_threshold,
 
                 cancel_handlers: HashMap::default(),
                 exit_rx: exit_rx,

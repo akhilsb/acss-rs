@@ -9,6 +9,7 @@ use super::VABAState;
 
 impl Context{
     pub async fn process_asks_termination(&mut self, instance: usize, sender: Replica, value: Option<Vec<LargeField>>){
+        log::info!("Processing ASKS termination for instance {} from sender {}", instance, sender);
         if !self.acs_state.vaba_states.contains_key(&instance){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(instance, vaba_context);

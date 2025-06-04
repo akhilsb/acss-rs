@@ -30,20 +30,20 @@ class CommandMaker:
         return f'./genconfig --blocksize 100 --delay 100 --base_port {bport} --client_base_port {client_bport} --NumNodes {num_nodes} --target . --client_run_port {client_run_port} --local true'
 
     @staticmethod
-    def run_primary(key,batches,per,debug=False):
+    def run_primary(key,batches,per, lin, opt,debug=False):
         assert isinstance(key, str)
         assert isinstance(debug, bool)
         #v = '-vvv' if debug else '-vv'
         return (f'./node --config {key} --ip ip_file '
-                f'--protocol acs --input xx --syncer syncer --batches {batches} --per {per} --byzantine false')
+                f'--protocol dpss --syncer syncer --batches {batches} --per {per} --lin {lin} --opt {opt}')
     
     @staticmethod
-    def run_syncer(key,batches,per,debug=False):
+    def run_syncer(key,batches,per, lin, opt,debug=False):
         assert isinstance(key, str)
         assert isinstance(debug, bool)
         #v = '-vvv' if debug else '-vv'
         return (f'./node --config {key} --ip ip_file '
-                f'--protocol sync --input xx --syncer syncer --batches {batches} --per {per} --byzantine false')
+                f'--protocol sync --syncer syncer --batches {batches} --per {per} --lin {lin} --opt {opt}')
 
     @staticmethod
     def unzip_tkeys(fileloc, debug=False):

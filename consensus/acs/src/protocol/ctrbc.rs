@@ -12,6 +12,7 @@ impl Context{
         if instance == 1 {
             // First instance is for the RBC of the core ACS instance
             //let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
+            log::info!("Received L1 CTRBC broadcast from party {}", broadcaster);
             self.acs_state.broadcast_messages.insert(broadcaster , Vec::new());
             
             if self.acs_state.broadcast_messages.len() == self.num_nodes - self.num_faults{
@@ -32,6 +33,7 @@ impl Context{
             self.check_witnesses_rbc_inst(broadcaster).await;
         }
         else if instance == 2 {
+            log::info!("Received L2 CTRBC broadcast from party {}", broadcaster);
             // Second RBC instance is for list of broadcasts
             let replicas_list: Vec<Replica> = bincode::deserialize(value.as_slice()).unwrap();
             self.acs_state.re_broadcast_messages.insert(broadcaster, replicas_list.clone());
@@ -41,7 +43,8 @@ impl Context{
             // Second instance RBC is for VABA instance
             let true_inst_mod = instance - 2;
             let tot_rbcs_per_vaba = 2;
-            
+            log::info!("Received L3 CTRBC broadcast from party {} for true_inst_mod {}", broadcaster, true_inst_mod);
+
             if true_inst_mod % tot_rbcs_per_vaba == 1{
                 let vaba_index = (true_inst_mod/tot_rbcs_per_vaba) + 1;
                 // This broadcast corresponds to Broadcast termination of (pre_v, asks_v, justify_v)

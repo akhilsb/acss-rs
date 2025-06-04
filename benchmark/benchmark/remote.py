@@ -154,7 +154,7 @@ class Bench:
             f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch})',
             f'(cd {self.settings.repo_name} && git pull -f)',
             'source $HOME/.cargo/env',
-            'sudo apt install pkg-config && sudo apt install libssl-dev',
+            'sudo apt-get install -y pkg-config && sudo apt-get install -y libssl-dev',
             'export RUSTFLAGS="-C target-feature=+aes,+ssse3"',
             f'(cd {self.settings.repo_name} && {CommandMaker.compile()})',
             CommandMaker.alias_binaries(
@@ -162,7 +162,7 @@ class Bench:
             )
         ]
         g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
-        print(g.run(' && '.join(cmd), hide=True))
+        print(g.run(' && '.join(cmd)))
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
@@ -246,7 +246,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 2000
+        per_batch = 200000
         exp_vals = self.exp_setup(4)
         import numpy as np
         tri = np.max(exp_vals) - np.min(exp_vals)
@@ -258,7 +258,9 @@ class Bench:
                 cmd = CommandMaker.run_syncer(
                     PathMaker.key_file(i),
                     batches,
-                    per_batch
+                    per_batch,
+                    lin='true',
+                    opt='true'
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
@@ -266,7 +268,9 @@ class Bench:
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
                 batches,
-                per_batch
+                per_batch,
+                lin='true',
+                opt='true'
             )
             unzip_cmd = CommandMaker.unzip_tkeys('data.tar.gz')
             print(unzip_cmd)
@@ -352,7 +356,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 2000
+        per_batch = 200000
 
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
@@ -362,7 +366,9 @@ class Bench:
                 cmd = CommandMaker.run_syncer(
                     PathMaker.key_file(i),
                     batches,
-                    per_batch
+                    per_batch,
+                    lin='true',
+                    opt='true'
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
@@ -370,7 +376,9 @@ class Bench:
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
                 batches,
-                per_batch
+                per_batch,
+                lin='true',
+                opt='true'
             )
             log_file = PathMaker.primary_log_file(i)
             self._background_run(ip, cmd, log_file)

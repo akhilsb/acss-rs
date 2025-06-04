@@ -301,6 +301,7 @@ impl Context {
                 acs_config,
                 acs_req_recv_channel,
                 acs_out_send_channel,
+                config.num_nodes-config.num_faults,
                 false
             )
         }
@@ -334,6 +335,7 @@ impl Context {
                 mvba_config,
                 fin_mvba_req_recv,
                 fin_mvba_out_send,
+                1,
                 false
             )
         }
@@ -433,7 +435,6 @@ impl Context {
                             for _instance in 0..self.num_batches{
                                 let _status = self.start_acss(self.per_batch).await;
                             }
-                            let _status = self.start_acss(self.coin_batch).await;
                             let _status = self.start_acss(self.coin_batch).await;
                             // Start code from here
                         },

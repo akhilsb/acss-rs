@@ -22,6 +22,7 @@ impl Context{
         // Start ASKS
         // (Instance ID, Number of secrets to be proposed, All_to_all reconstruction, Reconstruction Request?, Reconstruction_related_data) 
         let status = self.asks_req.send((instance,1, true, false, None, None)).await;
+        log::info!("Sent ASKS request for instance {} with status: {:?}", instance, status);
         self.broadcast_pre(instance).await;
         if status.is_err(){
             log::error!("Error sending transaction to the ASKS queue, abandoning ACS instance");
@@ -30,6 +31,7 @@ impl Context{
     }
 
     pub async fn process_pre_broadcast(&mut self, inst: usize, broadcaster: usize, rbc_value: Vec<u8>){
+        log::info!("Received pre-broadcast for instance {} from Replica {}", inst, broadcaster);
         let msg: (Replica, Vec<Replica>, Vec<(Replica,Replica)>) = bincode::deserialize(rbc_value.as_slice()).unwrap();
         
         if !self.acs_state.vaba_states.contains_key(&inst){
@@ -182,7 +184,7 @@ impl Context{
             }
 
             else{
-                
+                log::info!("Party {}'s Pre vote is not validated, adding to unvalidated votes", broadcaster);
                 // Create an entry in unvalidated votes
                 let pre_option;
                 if self.acs_state.accepted_witnesses.contains(pre){
@@ -225,6 +227,7 @@ impl Context{
     }
 
     pub async fn check_gather_start(&mut self, inst: usize){
+        log::info!("Checking if Gather can be started for instance {}", inst);
         let vaba_context = self.acs_state.vaba_states.get_mut(&inst).unwrap();
         if vaba_context.validated_pre_justify_votes.len() >= self.num_nodes - self.num_faults && 
             vaba_context.reliable_agreement.len() >= self.num_nodes-self.num_faults &&
@@ -251,6 +254,7 @@ impl Context{
     }
 
     pub async fn start_vote_phase(&mut self, instance: usize, leader: Replica){
+        log::info!("Starting Vote Phase for instance {} with leader {}", instance, leader);
         let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
         let pre_value_of_leader = vaba_context.pre_justify_votes.get(&leader).unwrap().0;
 
