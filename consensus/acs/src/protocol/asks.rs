@@ -92,32 +92,33 @@ impl Context{
         let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
 
         vaba_context.asks_reconstructed_values.insert(secret_preparer_rep, recon_result.clone());
-        
-        if vaba_context.asks_reconstruction_started{
-            let mut new_ranks_reconstructed_parties = Vec::new();
-            for (rep, set_indices) in vaba_context.asks_reconstruction_list.iter_mut(){
-                if set_indices.contains(&secret_preparer_rep){
-                    let mut agg_secret_old = vaba_context.ranks_parties.get(rep).unwrap().clone();
-                    
-                    agg_secret_old += recon_result;
-                    vaba_context.ranks_parties.insert(*rep, agg_secret_old);
-                    set_indices.remove(&secret_preparer_rep);
-
-                    if set_indices.is_empty(){
-                        new_ranks_reconstructed_parties.push(*rep);
-                    }
-                }
-            }
-
-            for rep in new_ranks_reconstructed_parties.into_iter(){
-                vaba_context.asks_reconstruction_list.remove(&rep);
-            }
-            self.check_reconstruction_phase_terminated(instance).await;
-        }
+        self.check_reconstruction_phase_terminated(instance).await;
     }
 
     pub async fn check_reconstruction_phase_terminated(&mut self, instance: usize){
         let vaba_context = self.acs_state.vaba_states.get_mut(&instance).unwrap();
+        
+        if vaba_context.asks_reconstruction_started{
+            let mut new_ranks_reconstructed_parties = Vec::new();
+            for (secret_preparer_rep, recon_result) in vaba_context.asks_reconstructed_values.iter(){
+                for (rep, set_indices) in vaba_context.asks_reconstruction_list.iter_mut(){
+                    if set_indices.contains(&secret_preparer_rep){
+                        let mut agg_secret_old = vaba_context.ranks_parties.get(rep).unwrap().clone();
+                        
+                        agg_secret_old += recon_result.clone();
+                        vaba_context.ranks_parties.insert(*rep, agg_secret_old);
+                        set_indices.remove(&secret_preparer_rep);
+    
+                        if set_indices.is_empty(){
+                            new_ranks_reconstructed_parties.push(*rep);
+                        }
+                    }
+                }
+            }
+            for rep in new_ranks_reconstructed_parties.into_iter(){
+                vaba_context.asks_reconstruction_list.remove(&rep);
+            }
+        }    
         if vaba_context.asks_reconstruction_list.is_empty() && vaba_context.asks_reconstruction_started && vaba_context.elected_leader.is_none(){
             // Compute party with maximum rank
             let mut max_rank = LargeField::from(0);

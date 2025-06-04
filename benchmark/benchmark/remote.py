@@ -356,7 +356,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 200000
+        per_batch = 500000
 
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)

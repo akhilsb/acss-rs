@@ -97,6 +97,7 @@ impl Context{
     }
 
     pub async fn process_gather_echo2(&mut self, gather_indices: Vec<Replica>, broadcaster: usize, inst: usize){
+        log::info!("Processing Gather Echo2 from {} with indices {:?}", broadcaster, gather_indices);
         if !self.acs_state.vaba_states.contains_key(&inst){
             let vaba_context = VABAState::new_without_pre_justify();
             self.acs_state.vaba_states.insert(inst, vaba_context);
