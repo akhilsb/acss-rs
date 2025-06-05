@@ -10,6 +10,7 @@ pub struct BAState{
 
     pub secrets_reconstructed: bool,
     pub shares_generated: bool,
+    pub quad_pub_rec_started: bool,
     
     pub ba_term_status: HashSet<Replica>,
     pub mvba_term_status: HashSet<Replica>,
@@ -28,6 +29,7 @@ impl BAState{
 
             secrets_reconstructed: false,
             shares_generated: false,
+            quad_pub_rec_started: false,
             
             ba_term_status: HashSet::default(),
             mvba_term_status: HashSet::default(),
@@ -91,11 +93,12 @@ impl Context{
                 self.init_binary_ba(2,instance_id).await;
             }
             else{
-                if self.ba_state.acs_output_sorted.len() > 0{
+                if self.ba_state.acs_output_sorted.len() > 0 && !self.ba_state.quad_pub_rec_started{
                     // Last t parties pubrec
                     for party in self.num_faults+1..self.num_nodes-self.num_faults{
                         let _status = self.pub_rec_req_send_channel.send((1, self.ba_state.acs_output_sorted[party].clone())).await;
                     }
+                    self.ba_state.quad_pub_rec_started = true;
                 }
             }
         }
