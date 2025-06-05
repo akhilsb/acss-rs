@@ -21,6 +21,10 @@ impl Context{
             return;
         }
 
+        if self.ba_state.shares_generated{
+            return;
+        }
+
         let mut ht_indices = Vec::new();
         let mut shares_to_be_combined = Vec::new();
         
