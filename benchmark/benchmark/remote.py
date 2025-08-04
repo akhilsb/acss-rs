@@ -246,7 +246,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 5000
+        per_batch = 50000
         exp_vals = self.exp_setup(4)
         import numpy as np
         tri = np.max(exp_vals) - np.min(exp_vals)
@@ -259,7 +259,7 @@ class Bench:
                     PathMaker.key_file(i),
                     batches,
                     per_batch,
-                    lin='true',
+                    lin='false',
                     opt='false',
                     ibft='false'
                 )
@@ -270,7 +270,7 @@ class Bench:
                 PathMaker.key_file(i),
                 batches,
                 per_batch,
-                lin='true',
+                lin='false',
                 opt='false',
                 ibft='false'
             )
@@ -358,7 +358,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 500
+        per_batch = 167_000
 
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
@@ -371,7 +371,7 @@ class Bench:
                     per_batch,
                     lin='false',
                     opt='false',
-                    ibft='true'
+                    ibft='false'
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
@@ -382,7 +382,7 @@ class Bench:
                 per_batch,
                 lin='false',
                 opt='false',
-                ibft='true'
+                ibft='false'
             )
             log_file = PathMaker.primary_log_file(i)
             self._background_run(ip, cmd, log_file)
