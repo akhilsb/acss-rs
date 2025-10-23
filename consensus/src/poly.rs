@@ -35,7 +35,7 @@ pub fn sample_polynomials_from_prf(
     evaluations
 }
 
-pub async fn generate_evaluation_points(
+pub async fn expand_sharing_to_n_evaluation_points(
     evaluations_prf: Vec<Vec<LargeField>>, 
     degree: usize,
     shares_total: usize,
@@ -66,7 +66,7 @@ pub async fn generate_evaluation_points(
     (evaluations_full,coefficients)
 }
 
-pub async fn generate_evaluation_points_opt(
+pub async fn expand_sharing_to_n_evaluation_points_opt(
     evaluations_prf: Vec<Vec<LargeField>>, 
     degree: usize,
     shares_total: usize,
@@ -89,10 +89,6 @@ pub async fn generate_evaluation_points_opt(
         let coefficients = matrix_vector_multiply(&inverse_vandermonde, &evals);
         return Polynomial::new(&coefficients);
     }).collect();
-    // Generate coefficients of polynomial and then evaluate the polynomial at n points
-    // let coefficients: Vec<Polynomial<LargeField>> = evaluations_prf.into_par_iter().map(|evals| {
-    //     return Polynomial::interpolate(evaluation_points.as_slice(), evals.as_slice()).unwrap()
-    // }).collect();
 
     // Evaluate the polynomial at n points
     let evaluations_full = coefficients.par_iter().map(|polynomial|{

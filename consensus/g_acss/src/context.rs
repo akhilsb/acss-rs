@@ -336,15 +336,6 @@ impl Context {
         loop {
             tokio::select! {
                 // Receive exit handlers
-                msg = self.net_recv.recv() => {
-                    // Received messages are processed here
-                    log::trace!("Got a consensus message from the network: {:?}", msg);
-                    if msg.is_none(){
-                        log::error!("Got none from the consensus layer, most likely it closed");
-                        break;
-                    }
-                    self.process_msg(msg.unwrap()).await;
-                },
                 exit_val = &mut self.exit_rx => {
                     exit_val.map_err(anyhow::Error::new)?;
                     log::info!("Termination signal received by the server. Exiting.");
@@ -354,37 +345,13 @@ impl Context {
                     let (id,secrets) = acss_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
-                    log::info!("Received request to start ACSS with identifiable abort for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
+                    log::info!("Received request to start ACSS with abort  for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis());
                     let secrets_field: Vec<LargeField> = secrets.clone();
                     self.acss_id = id;
                     self.init_acss_ab(secrets_field, id).await;
-                },
-                avss_msg = self.inp_pub_rec_in.recv() =>{
-                    let (instance_id, cheating_party) = avss_msg.ok_or_else(||
-                        anyhow!("Networking layer has closed")
-                    )?;
-                    if self.lin_or_quad{
-                        self.init_pubrec(instance_id, cheating_party).await;
-                    }
-                    else{
-                        self.init_pubrec_quad(instance_id, cheating_party).await;
-                    }
-                    // if sharing {
-                    //     let secrets = secrets.unwrap();
-                    //     log::info!("Received request to start AVSS for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
-                    //             .duration_since(UNIX_EPOCH)
-                    //             .unwrap()
-                    //             .as_millis());
-                    //     self.init_avss(secrets).await;
-                    // }
-                    // else{
-                    //     let recon_request = recon_request.unwrap();
-                    //     log::info!("Received request to reconstruct AVSS for secrets shared by party {} and shares sent by {}",recon_request.0, recon_request.1);
-                    //     self.share_validity_oracle(recon_request.0, recon_request.1, recon_request.2).await;
-                    // }
                 },
                 asks_msg = self.asks_recv_out.recv() => {
                     let asks_msg = asks_msg.ok_or_else(||

@@ -10,6 +10,7 @@ bincode = "1"
 config = { package = "config", path="../config"}
 
 dpss = {package = "dpss", path="../consensus/dpss"}
+g_dpss = {package = "g_dpss", path="../consensus/g_dpss"}
 
 consensus = { package = "consensus", path="../consensus"}
 util = { package = "util", path="../util"}

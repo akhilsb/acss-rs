@@ -1,7 +1,7 @@
 use crate::{Context, msg::AcssSKEShares};
 use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
-use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, generate_evaluation_points, generate_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element, VACommitment};
+use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, expand_sharing_to_n_evaluation_points, expand_sharing_to_n_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element, VACommitment};
 use rayon::prelude::{ParallelIterator, IndexedParallelIterator, IntoParallelIterator};
 use types::Replica;
 
@@ -119,7 +119,7 @@ impl Context{
             let evaluation_prf_chunks: Vec<Vec<Vec<LargeField>>> = evaluations_prf.chunks(evaluations_prf.len()/self.num_threads).map(|el| el.to_vec()).collect();
             for eval_prfs in evaluation_prf_chunks{
                 let handle = tokio::spawn(
-                    generate_evaluation_points_opt(
+                    expand_sharing_to_n_evaluation_points_opt(
                         eval_prfs,
                         self.num_faults,
                         self.num_nodes,
@@ -152,7 +152,7 @@ impl Context{
                 true, 
                 1u8
             );
-            let (nonce_evaluations_ret,_nonce_coefficients) = generate_evaluation_points(
+            let (nonce_evaluations_ret,_nonce_coefficients) = expand_sharing_to_n_evaluation_points(
                 evaluations_nonce_prf,
                 self.num_faults,
                 self.num_nodes
@@ -170,7 +170,7 @@ impl Context{
                 true, 
                 2u8
             );
-            let (blinding_poly_evaluations_vec, blinding_poly_coefficients_vec) = generate_evaluation_points(
+            let (blinding_poly_evaluations_vec, blinding_poly_coefficients_vec) = expand_sharing_to_n_evaluation_points(
                 blinding_prf,
                 self.num_faults,
                 self.num_nodes
@@ -188,7 +188,7 @@ impl Context{
                 3u8
             );
 
-            let (nonce_blinding_poly_evaluations_vec, _nonce_blinding_poly_coefficients_vec) = generate_evaluation_points(
+            let (nonce_blinding_poly_evaluations_vec, _nonce_blinding_poly_coefficients_vec) = expand_sharing_to_n_evaluation_points(
                 blinding_nonce_prf,
                 self.num_faults,
                 self.num_nodes,
@@ -399,6 +399,7 @@ impl Context{
         
         // Invoke AVID on vectors of shares
         // Use AVID to send the shares to parties
+        // Utilize a single batched AVID instance for all shares. 
         let _avid_status = self.inp_avid_channel.send(shares).await;
     }
 

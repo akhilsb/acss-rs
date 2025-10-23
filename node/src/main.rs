@@ -97,7 +97,18 @@ async fn main() -> Result<()> {
                     ibft,
                     false
                 ).unwrap();
-        }
+        },
+        "g_dpss" => {
+            exit_tx = 
+                g_dpss::Context::spawn(config, 
+                    batches, 
+                    per_batch, 
+                    opt_pess,
+                    lin_quad,
+                    ibft,
+                    false
+                ).unwrap();
+        },
         "sync" => {
             let f_str = syncer_file.to_string();
             log::info!("Logging the file f {}", f_str);
