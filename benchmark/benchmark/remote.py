@@ -269,7 +269,7 @@ class Bench:
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                'dpss',
+                'g_dpss',
                 batches,
                 per_batch,
                 lin=lin,
