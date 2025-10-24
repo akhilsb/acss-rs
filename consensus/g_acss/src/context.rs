@@ -13,7 +13,7 @@ use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
     Acknowledgement,
 };
-use consensus::{LargeField, LargeFieldSSS, FoldingDZKContext};
+use consensus::{rand_field_element, FoldingDZKContext, LargeField, LargeFieldSSS};
 
 use tokio::{sync::{
     mpsc::{Receiver, Sender, channel, unbounded_channel, UnboundedReceiver},
@@ -345,6 +345,15 @@ impl Context {
                     let (id,secrets) = acss_msg.ok_or_else(||
                         anyhow!("Networking layer has closed")
                     )?;
+
+                    // Number of secrets must be a multiple of self.num_faults+1
+                    let mut secrets = secrets;
+                    if secrets.len() % (self.num_faults + 1) != 0 {
+                        let rem_secrets = (self.num_faults+1) - (secrets.len()%(self.num_faults+1));
+                        for _ in 0..rem_secrets {
+                            secrets.push(rand_field_element());
+                        }
+                    }
                     log::info!("Received request to start ACSS with abort  for {} secrets at time: {:?}",secrets.len() , SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()

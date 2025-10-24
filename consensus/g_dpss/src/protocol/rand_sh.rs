@@ -24,15 +24,10 @@ impl Context{
         let mut ht_indices = Vec::new();
         let mut shares_to_be_combined = Vec::new();
         
-        let mut coin_shares_to_be_combined = Vec::new();
         let per_batch = self.per_batch + (self.num_faults+1) - (self.per_batch)%(self.num_faults+1);
         
         for _ in 0..self.num_batches*per_batch{
             shares_to_be_combined.push(Vec::new());
-        }
-
-        for _ in 0..self.coin_batch{
-            coin_shares_to_be_combined.push(Vec::new());
         }
         
         for rep in 0..self.num_nodes{
@@ -44,7 +39,7 @@ impl Context{
                 }
                 let share_inst_map = self.dpss_state.acss_map.get(&rep).unwrap();
                 let mut index = 0;
-                for batch in 1..self.num_batches+2{
+                for batch in 1..self.num_batches+1{
                     if !share_inst_map.contains_key(&batch){
                         log::info!("ACSS did not terminate yet, will retry later for share generation");
                         return;
@@ -54,17 +49,9 @@ impl Context{
                         log::info!("ACSS did not terminate yet, will retry later for share generation");
                         return;
                     }
-                    if batch == self.num_batches+1{
-                        // Coin shares
-                        for (coin_index,share) in batch_shares.unwrap().0.clone().into_iter().enumerate(){
-                            coin_shares_to_be_combined[coin_index].push(share);
-                        }
-                    }
-                    else{
-                        for share in batch_shares.unwrap().0.clone(){
-                            shares_to_be_combined[index].push(share);
-                            index +=1;
-                        }
+                    for share in batch_shares.unwrap().0.clone(){
+                        shares_to_be_combined[index].push(share);
+                        index +=1;
                     }
                 }
                 // Add coin shares

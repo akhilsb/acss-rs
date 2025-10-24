@@ -15,16 +15,15 @@ impl Context{
         // Each element in grouped_polynomials is a group of univariate polynomials to be converted to a bivariate polynomial
         // So here, create a Vandermonde matrix first
         let mut evaluation_points = Vec::new();
-        evaluation_points.push(LargeField::new(UnsignedInteger::from(0u64)));
-        for i in 0..y_degree{
-            evaluation_points.push(LargeField::new(UnsignedInteger::from((i+1) as u64)));
+        for i in 1..y_degree+2{
+            evaluation_points.push(LargeField::new(UnsignedInteger::from(i as u64)));
         }
         
         // Generate vandermonde matrix
         let vandermonde = vandermonde_matrix(evaluation_points.clone());
         let inverse_vandermonde = inverse_vandermonde(vandermonde);
 
-        let _ = grouped_polynomials.par_iter_mut().map(|bv_group|{
+        grouped_polynomials.par_iter_mut().for_each(|bv_group|{
             // Each group is of size degree+1
             let num_points_in_each_poly = bv_group[0].len();
             let mut horizontal_polynomials = vec![vec![]; num_points_in_each_poly];

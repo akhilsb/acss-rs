@@ -13,7 +13,7 @@ TYPE=${TYPE:="release"}
     --config $TESTDIR/nodes-0.json \
     --ip ip_file \
     --protocol sync \
-    --syncer $1 \
+    --syncer $TESTDIR/syncer \
     --batches $2 \
     --per $3 \
     --lin $4 \
@@ -24,8 +24,8 @@ for((i=0;i<4;i++)); do
 ./target/$TYPE/node \
     --config $TESTDIR/nodes-$i.json \
     --ip ip_file \
-    --protocol dpss \
-    --syncer $1 \
+    --protocol $1 \
+    --syncer $TESTDIR/syncer \
     --batches $2 \
     --per $3 \
     --lin $4 \

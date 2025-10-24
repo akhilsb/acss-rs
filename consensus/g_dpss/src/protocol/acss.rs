@@ -183,7 +183,7 @@ impl Context{
         }
         let acss_share_map = self.dpss_state.acss_map.get(&origin).unwrap();
 
-        if acss_share_map.len()< self.num_batches+1{
+        if acss_share_map.len()< self.num_batches{
             return;
         }
 
@@ -192,7 +192,7 @@ impl Context{
         }
 
         let mut all_instances_term = true;
-        for batch in 1..self.num_batches+2{
+        for batch in 1..self.num_batches+1{
             if !acss_share_map.contains_key(&batch){
                 all_instances_term = false;
                 continue;

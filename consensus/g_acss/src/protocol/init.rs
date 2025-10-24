@@ -86,14 +86,6 @@ impl Context{
             let acss_ab_state = ACSSABState::new();
             self.acss_ab_state.insert(instance_id, acss_ab_state);
         }
-        // Number of secrets must be a multiple of self.num_faults+1
-        let mut secrets = secrets;
-        if secrets.len() % (self.num_faults + 1) != 0 {
-            let rem_secrets = (self.num_faults+1) - (secrets.len()%(self.num_faults+1));
-            for _ in 0..rem_secrets {
-                secrets.push(rand_field_element());
-            }
-        }
 
         // Bivariate polynomials
         let tot_sharings = secrets.len();
@@ -145,7 +137,7 @@ impl Context{
         }
         
         // Generate Shamir secret sharings of Nonce polynomials for Commitment generation
-        let nonce_secrets:Vec<LargeField> = (0..self.num_faults).into_iter().map(|_| rand_field_element()).collect();
+        let nonce_secrets:Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| rand_field_element()).collect();
         let evaluations_nonce_prf = sample_polynomials_from_prf(
             nonce_secrets,
             self.symmetric_keys_avid.keys_from_me.clone(), 
@@ -161,7 +153,7 @@ impl Context{
         nonce_evaluations = nonce_evaluations_ret;
 
         // Sample blinding polynomials
-        let blinding_secrets: Vec<LargeField> = (0..self.num_faults).into_iter().map(|_| rand_field_element()).collect();
+        let blinding_secrets: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| rand_field_element()).collect();
         let blinding_prf = sample_polynomials_from_prf(
             blinding_secrets, 
             self.symmetric_keys_avid.keys_from_me.clone(), 
@@ -177,7 +169,7 @@ impl Context{
 
         blinding_poly_evaluations = blinding_poly_evaluations_vec;
 
-        let blinding_nonce_secrets: Vec<LargeField> = (0..self.num_faults).into_iter().map(|_| rand_field_element()).collect();
+        let blinding_nonce_secrets: Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| rand_field_element()).collect();
         let blinding_nonce_prf = sample_polynomials_from_prf(
             blinding_nonce_secrets, 
             self.symmetric_keys_avid.keys_from_me.clone(), 
@@ -198,7 +190,7 @@ impl Context{
         let mut bv_evaluations: Vec<Vec<Vec<LargeField>>> = evaluations.chunks(self.num_faults+1).map(|el|el.to_vec()).collect();
         
         // Create a bivariate polynomial from each group
-        let expansion_eval_points: Vec<LargeField> = (self.num_faults+1..self.num_nodes+1).into_iter().map(|i| LargeField::new(UnsignedInteger::from(i as u64))).collect();
+        let expansion_eval_points: Vec<LargeField> = (self.num_faults+2..self.num_nodes+1).into_iter().map(|i| LargeField::new(UnsignedInteger::from(i as u64))).collect();
         Self::gen_bivariate_polynomials(
             &mut bv_evaluations, 
             self.num_faults,
@@ -333,7 +325,9 @@ impl Context{
             return;
         }
 
-        if !acss_ab_state.commitments.contains_key(&sender) || !acss_ab_state.batch_wise_shares.len() < self.num_nodes{
+        if !acss_ab_state.commitments.contains_key(&sender) 
+        || !acss_ab_state.batch_wise_shares.contains_key(&sender) 
+        || acss_ab_state.batch_wise_shares.get(&sender).unwrap().len() < self.num_nodes{
             // AVID and CTRBC did not yet terminate
             return;
         }

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-use consensus::{expand_sharing_to_n_evaluation_points, interpolate_shares, LargeField};
+use consensus::{interpolate_shares, inverse_vandermonde, matrix_vector_multiply, vandermonde_matrix, LargeField};
 use crypto::{decrypt};
+use lambdaworks_math::{polynomial::Polynomial, unsigned_integer::element::UnsignedInteger};
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use types::Replica;
 
 use crate::{Context, msg::AcssSKEShares};
@@ -28,19 +30,29 @@ impl Context{
         if !acss_ab_state.batch_wise_shares.contains_key(&sender_rep){
             acss_ab_state.batch_wise_shares.insert(sender_rep.clone(), HashMap::default());
         }
+        
         let batch_wise_shares_map = acss_ab_state.batch_wise_shares.get_mut(&sender_rep).unwrap();
         // Interpolate shares here for first t parties
         if !self.use_fft && self.myid < self.num_faults{
             // Interpolate your shares in this case
             let secret_key = self.symmetric_keys_avid.keys_to_me.get(&sender_rep).clone().unwrap().clone();
             let shares: Vec<LargeField> = interpolate_shares(secret_key.clone(), comm_dzk_vals.tot_shares, false, 1).into_iter().map(|el| el).collect();
+
+            let mut expanded_shares = shares.chunks(self.num_faults+1).map(|chunk| chunk.to_vec()).collect::<Vec<Vec<LargeField>>>();
             
-            let shares_grouped = shares.chunks(self.num_faults+1).map(|chunk| chunk.to_vec()).collect::<Vec<Vec<LargeField>>>();
-            let expanded_shares = expand_sharing_to_n_evaluation_points(
-                shares_grouped, 
-                self.num_faults, 
-                self.num_nodes
-            ).await.0;
+            let evaluation_curr_points: Vec<LargeField> = (1..self.num_faults+2).into_iter().map(|i| LargeField::new(UnsignedInteger::from(i as u64))).collect();
+            let vdm_matrix = vandermonde_matrix(evaluation_curr_points);
+            let inv_vdm_matrix = inverse_vandermonde(vdm_matrix);
+            
+            let evaluation_new_points: Vec<LargeField> = (self.num_faults+2..self.num_nodes+1).into_iter().map(|i| LargeField::new(UnsignedInteger::from(i as u64))).collect();
+            
+            expanded_shares.par_iter_mut().for_each(|grp| {
+                let coefficients = matrix_vector_multiply(&inv_vdm_matrix, &grp);
+                let poly = Polynomial::new(&coefficients);
+                
+                let new_evaluations = evaluation_new_points.iter().map(|pt| poly.evaluate(pt)).collect::<Vec<LargeField>>();
+                grp.extend(new_evaluations);
+            });
 
             let mut batch_wise_shares = vec![vec![]; self.num_nodes];
 
@@ -50,27 +62,34 @@ impl Context{
                 }
             }
 
-            let nonce_shares = vec![interpolate_shares(secret_key.clone(),self.num_faults, true, 1u8)];
+            let mut expanded_nonce_shares = vec![interpolate_shares(secret_key.clone(),self.num_faults+1, true, 1u8)];
             
-            let expanded_nonce_shares = expand_sharing_to_n_evaluation_points(
-                nonce_shares, 
-                self.num_faults, 
-                self.num_nodes
-            ).await.0;
+            expanded_nonce_shares.par_iter_mut().for_each(|grp| {
+                let coefficients = matrix_vector_multiply(&inv_vdm_matrix, &grp);
+                let poly = Polynomial::new(&coefficients);
+                
+                let new_evaluations = evaluation_new_points.iter().map(|pt| poly.evaluate(pt)).collect::<Vec<LargeField>>();
+                grp.extend(new_evaluations);
+            });
+            
 
-            let blinding_shares = vec![interpolate_shares(secret_key.clone(), self.num_faults, true, 2u8)];
-            let expanded_blinding_shares = expand_sharing_to_n_evaluation_points(
-                blinding_shares,
-                self.num_faults,
-                self.num_nodes
-            ).await.0;
+            let mut expanded_blinding_shares = vec![interpolate_shares(secret_key.clone(), self.num_faults+1, true, 2u8)];
+            expanded_blinding_shares.par_iter_mut().for_each(|grp| {
+                let coefficients = matrix_vector_multiply(&inv_vdm_matrix, &grp);
+                let poly = Polynomial::new(&coefficients);
+                
+                let new_evaluations = evaluation_new_points.iter().map(|pt| poly.evaluate(pt)).collect::<Vec<LargeField>>();
+                grp.extend(new_evaluations);
+            });
 
-            let blinding_nonce_shares = vec![interpolate_shares(secret_key, self.num_faults, true, 3u8)];
-            let expanded_blinding_nonce_shares = expand_sharing_to_n_evaluation_points(
-                blinding_nonce_shares,
-                self.num_faults,
-                self.num_nodes
-            ).await.0;
+            let mut expanded_blinding_nonce_shares = vec![interpolate_shares(secret_key, self.num_faults+1, true, 3u8)];
+            expanded_blinding_nonce_shares.par_iter_mut().for_each(|grp| {
+                let coefficients = matrix_vector_multiply(&inv_vdm_matrix, &grp);
+                let poly = Polynomial::new(&coefficients);
+                
+                let new_evaluations = evaluation_new_points.iter().map(|pt| poly.evaluate(pt)).collect::<Vec<LargeField>>();
+                grp.extend(new_evaluations);
+            });
             
             for batch in 0..self.num_nodes{
                 let acss_ske_shares = AcssSKEShares{
