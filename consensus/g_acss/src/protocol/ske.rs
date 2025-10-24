@@ -21,7 +21,7 @@ impl Context{
         }
         if !acss_ab_state.commitments.contains_key(&sender_rep) ||
             !self.symmetric_keys_avid.keys_to_me.contains_key(&sender_rep) {
-                log::info!("No commitments or keys found for sender {} in instance_id {}", sender_rep, instance_id);
+                log::warn!("No commitments or keys found for sender {} in instance_id {}", sender_rep, instance_id);
                 return;
         }
         
@@ -135,6 +135,13 @@ impl Context{
             enc_shares.remove(&batch);
         }
         
+        if batch_wise_shares.len() % self.avid_throttling_quant == 0 && sender_rep == self.myid{
+            // Schedule next batch of AVID instances
+            let avid_status = self.throttle_avid_instances(instance_id).await;
+            if avid_status{
+                log::info!("All AVID instances completed for ACSS instance id {}", instance_id);
+            }
+        }
         self.verify_shares(sender_rep, instance_id).await;
     }
 

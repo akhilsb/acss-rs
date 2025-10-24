@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crypto::hash::Hash;
 use lambdaworks_math::polynomial::Polynomial;
@@ -17,6 +17,9 @@ pub struct ACSSABState{
 
     // Commitments to shares, commitments to blinding polynomial, and DZK polynomial
     pub commitments: HashMap<Replica, CommDZKMsg>,
+
+    // AVID Throttling for bandwidth management
+    pub avid_instances: VecDeque<Vec<(Replica,Option<Vec<u8>>)>>,
     
     // Reliable Agreement
     pub ra_outputs: HashSet<Replica>,
@@ -43,6 +46,8 @@ impl ACSSABState{
             enc_shares: HashMap::default(),
             batch_wise_shares: HashMap::default(),
             shares: HashMap::default(),
+
+            avid_instances: VecDeque::new(),
             commitments: HashMap::default(),
             ra_outputs: HashSet::default(),
             verification_status: HashMap::default(),

@@ -88,6 +88,8 @@ impl Context{
         }
 
         // Bivariate polynomials
+        let acss_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
+
         let tot_sharings = secrets.len();
         let mut handles = Vec::new();
         let mut _indices;
@@ -309,8 +311,27 @@ impl Context{
                 let ser_enc_msg = bincode::serialize(&(instance_id,batch,enc_shares)).unwrap();
                 shares.push((rep, Some(ser_enc_msg)));
             }
-            let _inp_avid_status = self.inp_avid_channel.send(shares).await;
+            acss_state.avid_instances.push_back(shares.clone());
+            //let _inp_avid_status = self.inp_avid_channel.send(shares).await;
         }
+        self.throttle_avid_instances(instance_id).await;
+    }
+
+    pub async fn throttle_avid_instances(&mut self, instance_id: usize)-> bool{
+        // Run three at once
+        log::info!("Throttling AVID instances for ACSS instance id {}, starting {} instances at once", instance_id, self.avid_throttling_quant);
+        let acss_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
+        if acss_state.avid_instances.is_empty(){
+            return true;
+        }
+        
+        for _ in 0..self.avid_throttling_quant{
+            if !acss_state.avid_instances.is_empty(){
+                let shares = acss_state.avid_instances.pop_front().unwrap();
+                let _inp_avid_status = self.inp_avid_channel.send(shares).await;
+            }
+        }
+        return false;
     }
 
     pub async fn verify_shares(&mut self, sender: Replica, instance_id: usize){

@@ -13,6 +13,6 @@
     },
     "instances": {
         "type": "c5.large",
-        "regions": ["us-west-1"]
+        "regions": ["ca-central-1"]
     }
 }

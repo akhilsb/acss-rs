@@ -92,6 +92,7 @@ pub struct Context {
     pub roots_of_unity: Vec<LargeField>,
 
     pub avss_inst_id: usize,
+    pub avid_throttling_quant: usize,
 }
 
 impl Context {
@@ -266,7 +267,7 @@ impl Context {
                 lin_or_quad: lin_or_quad,
 
                 avss_inst_id: 200,
-
+                avid_throttling_quant: config.num_nodes,
                 // Syncer related stuff
                 // sync_send: sync_net,
                 // sync_recv: rx_net_from_client,

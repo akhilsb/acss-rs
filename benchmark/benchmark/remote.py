@@ -246,7 +246,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 100000
+        per_batch = 5000
 
         lin = 'true'
         opt= 'false'
@@ -360,8 +360,11 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 167_000
+        per_batch = 100
 
+        lin = 'true'
+        opt= 'false'
+        ibft = 'true'
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
@@ -371,21 +374,21 @@ class Bench:
                     PathMaker.key_file(i),
                     batches,
                     per_batch,
-                    lin='false',
-                    opt='false',
-                    ibft='false'
+                    lin=lin,
+                    opt=opt,
+                    ibft=ibft
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                'dpss',
+                'g_dpss',
                 batches,
                 per_batch,
-                lin='false',
-                opt='false',
-                ibft='false'
+                lin=lin,
+                opt=opt,
+                ibft=ibft
             )
             log_file = PathMaker.primary_log_file(i)
             self._background_run(ip, cmd, log_file)
