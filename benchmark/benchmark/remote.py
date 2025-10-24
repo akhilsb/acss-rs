@@ -246,10 +246,11 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 50000
-        exp_vals = self.exp_setup(4)
-        import numpy as np
-        tri = np.max(exp_vals) - np.min(exp_vals)
+        per_batch = 100000
+
+        lin = 'true'
+        opt= 'false'
+        ibft = 'true'
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
@@ -259,9 +260,9 @@ class Bench:
                     PathMaker.key_file(i),
                     batches,
                     per_batch,
-                    lin='false',
-                    opt='false',
-                    ibft='false'
+                    lin=lin,
+                    opt=opt,
+                    ibft=ibft
                 )
                 print(cmd)
                 log_file = PathMaker.syncer_log_file()
@@ -271,9 +272,9 @@ class Bench:
                 'dpss',
                 batches,
                 per_batch,
-                lin='false',
-                opt='false',
-                ibft='false'
+                lin=lin,
+                opt=opt,
+                ibft=ibft
             )
             unzip_cmd = CommandMaker.unzip_tkeys('data.tar.gz')
             print(unzip_cmd)

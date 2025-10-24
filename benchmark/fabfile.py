@@ -67,7 +67,7 @@ def log_v(ctx, debug=True):
 
 
 @task
-def create(ctx, nodes=2):
+def create(ctx, nodes=16):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -85,7 +85,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=2):
+def start(ctx, max=16):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
