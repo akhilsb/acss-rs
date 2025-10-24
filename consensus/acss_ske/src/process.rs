@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{context::Context, msg::ProtMsg};
+use consensus::delay_message_processing;
 use crypto::hash::verf_mac;
 use types::{WrapperMsg};
 
@@ -26,6 +27,7 @@ impl Context {
 
     pub(crate) async fn process_msg(&mut self, wrapper_msg: WrapperMsg<ProtMsg>) {
         log::trace!("Received protocol msg: {:?}", wrapper_msg);
+        delay_message_processing().await;
         let msg = Arc::new(wrapper_msg.clone());
 
         // Verify the message's authenticity before proceeding

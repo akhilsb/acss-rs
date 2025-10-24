@@ -27,6 +27,7 @@ impl Context {
 
     pub(crate) async fn process_msg(&mut self, wrapper_msg: WrapperMsg<ProtMsg>) {
         log::debug!("Received protocol msg: {:?}", wrapper_msg);
+        delay_message_processing().await;
         let msg = Arc::new(wrapper_msg.clone());
 
         // Verify the message's authenticity before proceeding
