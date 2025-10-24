@@ -267,7 +267,7 @@ impl Context {
                 lin_or_quad: lin_or_quad,
 
                 avss_inst_id: 200,
-                avid_throttling_quant: 3,
+                avid_throttling_quant: config.num_nodes,
                 // Syncer related stuff
                 // sync_send: sync_net,
                 // sync_recv: rx_net_from_client,
