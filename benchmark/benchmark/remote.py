@@ -246,7 +246,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 5000
+        per_batch = 2800
 
         lin = 'true'
         opt= 'false'
@@ -360,7 +360,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 100
+        per_batch = 5000
 
         lin = 'true'
         opt= 'false'
