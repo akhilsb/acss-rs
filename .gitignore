@@ -28,3 +28,8 @@ testdata/
 nodes-*.json
 
 *.log
+
+.committee.json
+ip_file
+syncer.json
+client.json

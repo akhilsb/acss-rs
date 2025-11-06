@@ -246,7 +246,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 2800
+        per_batch = 17000
 
         lin = 'true'
         opt= 'false'
@@ -360,7 +360,7 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 5000
+        per_batch = 84000
 
         lin = 'true'
         opt= 'false'
@@ -383,7 +383,7 @@ class Bench:
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                'dpss',
+                'g_dpss',
                 batches,
                 per_batch,
                 lin=lin,
