@@ -1,4 +1,4 @@
-use crypto::{LargeFieldSer, aes_hash::{Proof, MerkleTree}, hash::{Hash, do_hash}, LargeField};
+use ha_crypto::{LargeFieldSer, aes_hash::{Proof, MerkleTree}, hash::Hash, LargeField};
 
 use crate::Context;
 
@@ -20,7 +20,7 @@ impl Context{
             app_share_vec.extend(nonce_vec);
         }
         // Compute Commitments
-        let commitments: Vec<Hash> = appended_share_vec.into_iter().map(|el| do_hash(el.as_slice())).collect();
+        let commitments: Vec<Hash> = appended_share_vec.into_iter().map(|el| self.hash_context.do_hash_aes(el.as_slice())).collect();
         for (comm, (proof, root)) in commitments.into_iter().zip(shares.2.into_iter().zip(roots.into_iter())){
             if !proof.validate(&self.hash_context) || 
                 proof.item() != comm || 
@@ -41,7 +41,7 @@ impl Context{
             app_val.extend(share.clone());
             app_val.extend(nonce);
 
-            let commitment = do_hash(app_val.as_slice());
+            let commitment = self.hash_context.do_hash_aes(app_val.as_slice());
             if !proof.validate(&self.hash_context) || 
                 proof.item() != commitment || 
                 proof.root() != root{
@@ -74,7 +74,7 @@ impl Context{
         }
 
         for rep in 0..self.num_nodes{
-            commitments.push(do_hash(appended_share_vec[rep+1].as_slice()));
+            commitments.push(self.hash_context.do_hash_aes(appended_share_vec[rep+1].as_slice()));
         }
         // Construct Merkle Tree
         let mt = MerkleTree::new(commitments, &self.hash_context);
@@ -91,7 +91,7 @@ impl Context{
             let mut app_share = Vec::new();
             app_share.extend(shares[rep+1].clone().to_bytes_be());
             app_share.extend(nonces[rep+1].clone().to_bytes_be());
-            commitments.push(do_hash(app_share.as_slice()));
+            commitments.push(self.hash_context.do_hash_aes(app_share.as_slice()));
         }
         // Construct Merkle Tree
         let mt = MerkleTree::new(commitments, &self.hash_context);

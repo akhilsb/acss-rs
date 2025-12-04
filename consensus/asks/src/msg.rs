@@ -1,5 +1,6 @@
-use crypto::{LargeField, hash::{Hash, do_hash}, LargeFieldSer, aes_hash::Proof};
-use ctrbc::CTRBCMsg;
+use consensus::CTRBCMsg;
+use ha_crypto::{LargeField, LargeFieldSer, aes_hash::{HashState, Proof}, hash::Hash};
+
 use lambdaworks_math::traits::ByteConversion;
 use serde::{Serialize, Deserialize};
 use types::Replica;
@@ -42,13 +43,13 @@ impl WSSMsgSer {
         }
     }
 
-    pub fn compute_commitments(&self) -> Vec<Hash>{
+    pub fn compute_commitments(&self, hc: &HashState) -> Vec<Hash>{
         let mut comm_vector = Vec::new();
         for (share,nonce) in self.shares.iter().zip(self.nonce_shares.iter()){
             let mut appended_vec = Vec::new();
             appended_vec.extend(share.clone());
             appended_vec.extend(nonce.clone());
-            comm_vector.push(do_hash(appended_vec.as_slice()));
+            comm_vector.push(hc.do_hash_aes(appended_vec.as_slice()));
         }
         comm_vector
     }
@@ -65,3 +66,4 @@ pub enum ProtMsg{
     // Reconstruct message
     Reconstruct(WSSMsgSer, usize)
 }
+

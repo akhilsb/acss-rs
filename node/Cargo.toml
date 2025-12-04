@@ -6,8 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
 bincode = "1"
-config = { package = "config", path="../config"}
+
+types = { package = "types", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+config = { package = "config", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
 
 dpss = {package = "dpss", path="../consensus/dpss"}
 g_dpss = {package = "g_dpss", path="../consensus/g_dpss"}
@@ -15,7 +21,7 @@ g_dpss = {package = "g_dpss", path="../consensus/g_dpss"}
 consensus = { package = "consensus", path="../consensus"}
 util = { package = "util", path="../util"}
 anyhow = "1"
-types = { package = "types", path="../types"}
+
 clap = {version = "2", features = ["yaml"]}
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3.8"

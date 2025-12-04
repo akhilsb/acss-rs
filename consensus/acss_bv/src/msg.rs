@@ -1,6 +1,6 @@
 use consensus::{LargeFieldSSS};
-use crypto::{LargeField, aes_hash::{Proof, HashState, MerkleTree}, LargeFieldSer, hash::{Hash, do_hash}};
-use ctrbc::CTRBCMsg;
+use ha_crypto::{LargeField, aes_hash::{Proof, HashState, MerkleTree}, LargeFieldSer, hash::Hash};
+use ctrbc::msg::CTRBCMsg;
 use lambdaworks_math::traits::ByteConversion;
 use serde::{Serialize, Deserialize};
 use types::Replica;
@@ -72,7 +72,7 @@ impl RowPolynomialsBatch{
             appended_vec_vecs[rep].extend(nonce_eval);
         }
 
-        let commitments: Vec<Hash> = appended_vec_vecs.into_iter().map(|el| do_hash(el.as_slice())).collect();
+        let commitments: Vec<Hash> = appended_vec_vecs.into_iter().map(|el| hc.do_hash_aes(el.as_slice())).collect();
         let mut vector_roots = Vec::new();
         for (proof,item) in self.proofs.iter().zip(commitments.into_iter()){
             vector_roots.push(proof.root());
@@ -86,7 +86,7 @@ impl RowPolynomialsBatch{
         appended_vec.extend(self.blinding_evaluation.clone().to_bytes_be());
         appended_vec.extend(self.blinding_nonce_evaluation.clone().to_bytes_be());
 
-        let blinding_commitment = do_hash(appended_vec.as_slice());
+        let blinding_commitment = hc.do_hash_aes(appended_vec.as_slice());
         if !self.blinding_poly_proof.validate(hc) || self.blinding_poly_proof.item() != blinding_commitment{
             log::error!("Merkle proof verification for blinding polynomial failed because of mismatched proof MP Item: {:?} Generated Commitment{:?}", self.blinding_poly_proof.item(), blinding_commitment);
             return false;
@@ -217,7 +217,7 @@ pub struct PointsBVSer{
 
 impl PointsBV{
     pub fn verify_points(&self, roots: Vec<Hash>, hc: &HashState)->Option<Vec<Hash>>{
-        let commitments = self.gen_commitment();
+        let commitments = self.gen_commitment(hc);
         for (commitment, (proof, root)) in commitments.clone().into_iter().zip(self.proof.iter().zip(roots.into_iter())){
             if !proof.validate(hc) || proof.item() != commitment || proof.root() != root{
                 log::error!("Error verifying point on column because {:?} {:?} {:?} {:?}", proof.item(), commitment, proof.root(), root);
@@ -227,7 +227,7 @@ impl PointsBV{
         Some(commitments)
     }
 
-    pub fn gen_commitment(&self)-> Vec<Hash>{
+    pub fn gen_commitment(&self, hc:&HashState)-> Vec<Hash>{
         let mut vec_hashes = Vec::new();
         for (evaluations, nonce) in self.evaluations.iter().zip(self.nonce_evaluation.iter()){
             let mut appended_vec = Vec::new();
@@ -235,7 +235,7 @@ impl PointsBV{
                 appended_vec.extend(eval.to_bytes_be());
             }
             appended_vec.extend(nonce.to_bytes_be());
-            let hash = do_hash(appended_vec.as_slice());
+            let hash = hc.do_hash_aes(appended_vec.as_slice());
             vec_hashes.push(hash);
         }
         vec_hashes

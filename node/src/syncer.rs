@@ -3,8 +3,9 @@ use std::{collections::{HashSet, HashMap}, net::{SocketAddr,SocketAddrV4}, time:
 use anyhow::{Result, anyhow};
 use fnv::FnvHashMap;
 use network::{plaintcp::{TcpReceiver, TcpReliableSender, CancelHandler}, Acknowledgement};
+use serde::{Deserialize, Serialize};
 use tokio::{sync::{oneshot, mpsc::{unbounded_channel, UnboundedReceiver}}, time};
-use types::{Replica, SyncMsg, SyncState, RBCSyncMsg};
+use types::{Replica, SyncMsg, SyncState};
 //use std::fs::read_to_string;
 
 use crate::SyncHandler;
@@ -202,6 +203,12 @@ impl Syncer{
         self.cancel_handlers
             .push(canc);
     }
+}
+
+#[derive(Debug,Serialize,Deserialize,Clone)]
+pub struct RBCSyncMsg {
+    pub id: usize,
+    pub msg: String,
 }
 
 // fn read_lines(filename: &str) -> Vec<String> {

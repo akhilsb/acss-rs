@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crypto::{aes_hash::{MerkleTree, Proof, HashState}, LargeField, hash::{Hash, do_hash}, LargeFieldSer};
+use ha_crypto::{aes_hash::{MerkleTree, Proof, HashState}, LargeField, hash::Hash, LargeFieldSer};
 use lambdaworks_math::{traits::ByteConversion, unsigned_integer::element::UnsignedInteger};
 use types::Replica;
 
@@ -31,7 +31,7 @@ impl FoldingDZKContext{
         
         // 1. Create a Merkle Tree if the polynomial is big enough
         let evaluations: Vec<LargeField> = self.evaluation_points.clone().into_iter().map(|x| self.large_field_uv_sss.mod_evaluate_at(&coefficients, x)).collect();
-        let hashes: Vec<Hash> = evaluations.iter().map(|x| do_hash(x.to_bytes_be().as_slice())).collect();
+        let hashes: Vec<Hash> = evaluations.iter().map(|x| self.hash_context.do_hash_aes(x.to_bytes_be().as_slice())).collect();
         let merkle_tree = MerkleTree::new(hashes, &self.hash_context);
         let next_root = merkle_tree.root();
         let aggregated_root_hash = self.hash_context.hash_two(root, merkle_tree.root().clone());
@@ -211,11 +211,11 @@ impl FoldingDZKContext{
             let merkle_proof = &proofs[index];
             if !merkle_proof.validate(
                 &self.hash_context) || 
-                    do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                    self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                     rev_roots[index] != merkle_proof.root(){
                 log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                 log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_roots[index].clone(),merkle_proof.root());
-                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
+                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()));
                 return false; 
             }
         }
@@ -295,11 +295,11 @@ impl FoldingDZKContext{
             let merkle_proof = &proofs[index];
             if !merkle_proof.validate(
                 &self.hash_context) || 
-                    do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                    self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                     rev_roots[index] != merkle_proof.root(){
                 log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                 log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_roots[index].clone(),merkle_proof.root());
-                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
+                log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()));
                 return false; 
             }
         }
@@ -391,11 +391,11 @@ impl FoldingDZKContext{
                 let merkle_proof = &proofs[index];
                 if !merkle_proof.validate(
                     &self.hash_context) || 
-                        do_hash(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
+                        self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()) !=  merkle_proof.item()|| 
                         rev_root_vec[index] != merkle_proof.root(){
                     log::error!("DZK Proof verification failed while verifying Merkle Proof validity at iteration {}", index);
                     log::error!("Merkle root matching: computed: {:?}  given: {:?}",rev_root_vec[index].clone(),merkle_proof.root());
-                    log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),do_hash(point.to_bytes_be().as_slice()));
+                    log::error!("Items: {:?}  given: {:?}",merkle_proof.item(),self.hash_context.do_hash_aes(point.to_bytes_be().as_slice()));
                     return false; 
                 }
             }

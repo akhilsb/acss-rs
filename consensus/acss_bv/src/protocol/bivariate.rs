@@ -1,7 +1,7 @@
 use std::collections::{HashSet, HashMap};
 
 use consensus::LargeFieldSSS;
-use crypto::{LargeField, pseudorandom_lf, hash::Hash, rand_field_element};
+use ha_crypto::{LargeField, pseudorandom_lf, hash::Hash, rand_field_element};
 use types::Replica;
 
 use crate::{Context, msg::{Commitment, PointsBV}};

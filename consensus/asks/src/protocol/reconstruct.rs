@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::{do_hash, Hash}, aes_hash::MerkleTree};
+use ha_crypto::{LargeField, hash::Hash, aes_hash::MerkleTree};
 use lambdaworks_math::polynomial::Polynomial;
 use types::WrapperMsg;
 
@@ -126,7 +126,7 @@ impl Context{
                     let mut appended_vec = Vec::new();
                     appended_vec.extend(share.to_bytes_be());
                     appended_vec.extend(nonce.to_bytes_be());
-                    return do_hash(appended_vec.as_slice());
+                    return self.hash_context.do_hash_aes(appended_vec.as_slice());
                 }).collect();
                 
                 let root_comm = MerkleTree::new(all_commitments, &self.hash_context).root();

@@ -1,5 +1,5 @@
 use consensus::{reconstruct_data, VACommitment};
-use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
+use ha_crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::MerkleTree, LargeField};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{Replica, WrapperMsg};

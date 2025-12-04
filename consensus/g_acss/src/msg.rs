@@ -1,5 +1,5 @@
 use consensus::{LargeFieldSer};
-use crypto::{hash::Hash};
+use ha_crypto::hash::Hash;
 use serde::{Serialize, Deserialize};
 use types::Replica;
 

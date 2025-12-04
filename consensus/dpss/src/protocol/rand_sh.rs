@@ -1,8 +1,8 @@
-use consensus::{LargeFieldSSS, vandermonde_matrix, inverse_vandermonde, matrix_vector_multiply};
+use consensus::{LargeFieldSSS, RBCSyncMsg, inverse_vandermonde, matrix_vector_multiply, vandermonde_matrix};
 use crypto::{LargeField, LargeFieldSer};
 use lambdaworks_math::{traits::ByteConversion, polynomial::Polynomial};
 use rayon::prelude::IntoParallelIterator;
-use types::{WrapperMsg, Replica, RBCSyncMsg, SyncMsg, SyncState};
+use types::{WrapperMsg, Replica, SyncMsg, SyncState};
 use rayon::prelude::{ParallelIterator};
 
 use crate::{Context, msg::ProtMsg};

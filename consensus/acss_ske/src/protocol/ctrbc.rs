@@ -1,5 +1,5 @@
 use consensus::VACommitment;
-use crypto::hash::{Hash, do_hash};
+use ha_crypto::{aes_hash::HashState, hash::Hash};
 
 use crate::{Context, protocol::ACSSABState};
 
@@ -17,7 +17,11 @@ impl Context{
         }
         let acss_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
         // Compute root commitment
-        let root_commitment = Self::compute_root_commitment(va_comm.column_roots.clone(), va_comm.blinding_column_roots.clone());
+        let root_commitment = Self::compute_root_commitment(
+            va_comm.column_roots.clone(), 
+            va_comm.blinding_column_roots.clone(),
+            &self.hash_context
+        );
         acss_state.commitments.insert(sender_rep, va_comm);
 
         acss_state.commitment_root_fe.insert(sender_rep, root_commitment);
@@ -26,7 +30,11 @@ impl Context{
         self.verify_shares(sender_rep,instance_id).await;
     }
 
-    pub fn compute_root_commitment(comm_vector: Vec<Hash>, nonce_vector: Vec<Hash>)-> Hash{
+    pub fn compute_root_commitment(
+        comm_vector: Vec<Hash>, 
+        nonce_vector: Vec<Hash>,
+        hc: &HashState
+    )-> Hash{
         let mut agg_vector = Vec::new();
         for hash in comm_vector{
             agg_vector.extend(hash);
@@ -34,6 +42,6 @@ impl Context{
         for nonce in nonce_vector{
             agg_vector.extend(nonce);
         }
-        return do_hash(agg_vector.as_slice());
+        return hc.do_hash_aes(agg_vector.as_slice());
     }
 }

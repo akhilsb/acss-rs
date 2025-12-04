@@ -19,7 +19,7 @@ use types::{Replica, WrapperMsg};
 
 use consensus::{LargeFieldSSS};
 
-use crypto::{aes_hash::HashState, LargeField};
+use ha_crypto::{aes_hash::HashState, LargeField};
 
 use crate::{protocol::ASKSState, msg::ProtMsg, handlers::Handler};
 

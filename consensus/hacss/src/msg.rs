@@ -1,5 +1,5 @@
 use consensus::{VACommitment};
-use crypto::{hash::Hash, LargeFieldSer};
+use ha_crypto::{hash::Hash, LargeFieldSer};
 use ctrbc::CTRBCMsg;
 use serde::{Serialize, Deserialize};
 use types::Replica;

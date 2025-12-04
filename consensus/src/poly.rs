@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::{Mul, Sub, Add}};
 
-use crypto::hash::do_hash;
+use ha_crypto::hash::do_hash;
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, polynomial::Polynomial, field::fields::{montgomery_backed_prime_fields::MontgomeryBackendPrimeField, fft_friendly::stark_252_prime_field::MontgomeryConfigStark252PrimeField}};
 use rand::random;
 use rand_chacha::ChaCha20Rng;
@@ -35,7 +35,7 @@ pub fn sample_polynomials_from_prf(
     evaluations
 }
 
-pub async fn expand_sharing_to_n_evaluation_points(
+pub fn expand_sharing_to_n_evaluation_points(
     evaluations_prf: Vec<Vec<LargeField>>, 
     degree: usize,
     shares_total: usize,
@@ -66,7 +66,7 @@ pub async fn expand_sharing_to_n_evaluation_points(
     (evaluations_full,coefficients)
 }
 
-pub async fn expand_sharing_to_n_evaluation_points_opt(
+pub fn expand_sharing_to_n_evaluation_points_opt(
     evaluations_prf: Vec<Vec<LargeField>>, 
     degree: usize,
     shares_total: usize,

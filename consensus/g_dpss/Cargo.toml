@@ -6,10 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crypto = { package = "crypto", path="../../crypto"}
 consensus = { package = "consensus", path="../"}
-types = { package = "types", path="../../types"}
-config = { package = "config", path="../../config"}
+
+types = { package = "types", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+config = { package = "config", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+ctrbc = { package = "ctrbc", git="https://github.com/SohamJog/reliable-broadcast-protocols.git"}
+ccbrb = { package = "ccbrb", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
 
 g_acss = {package = "g_acss", path = "../g_acss"}
 

@@ -1,6 +1,6 @@
 // Verifiable Abort
 
-use crypto::{LargeFieldSer, aes_hash::Proof};
+use ha_crypto::{LargeFieldSer, aes_hash::Proof};
 use serde::{Deserialize, Serialize};
 
 pub type PointBV = ((Vec<LargeFieldSer>, LargeFieldSer, Proof), (LargeFieldSer,LargeFieldSer, Proof), DZKProof);

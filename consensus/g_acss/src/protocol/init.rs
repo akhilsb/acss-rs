@@ -1,5 +1,7 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::{msg::AcssSKEShares, CommDZKMsg, Context};
-use crypto::{encrypt, hash::{do_hash}};
+use ha_crypto::encrypt;
 use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
 use consensus::{LargeField, LargeFieldSer, expand_sharing_to_n_evaluation_points, expand_sharing_to_n_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element};
 use types::Replica;
@@ -87,15 +89,17 @@ impl Context{
             self.acss_ab_state.insert(instance_id, acss_ab_state);
         }
 
+        let consensus_start_time = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+        log::info!("Starting sharing preparation");
         // Bivariate polynomials
         let acss_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
 
         let tot_sharings = secrets.len();
-        let mut handles = Vec::new();
-        let mut _indices;
-        let mut evaluations;
+        let evaluations;
         let nonce_evaluations;
-        let mut coefficients;
         
         let blinding_poly_evaluations;
         let nonce_blinding_poly_evaluations;
@@ -111,32 +115,38 @@ impl Context{
         );
 
         // Expand sampled degree-t univariate polynomials to all n points
-        let evaluation_prf_chunks: Vec<Vec<Vec<LargeField>>> = evaluations_prf.chunks(evaluations_prf.len()/self.num_threads).map(|el| el.to_vec()).collect();
-        for eval_prfs in evaluation_prf_chunks{
-            let handle = tokio::spawn(
-                expand_sharing_to_n_evaluation_points_opt(
-                    eval_prfs,
-                    self.num_faults,
-                    self.num_nodes,
-                )
-            );
-            handles.push(handle);
-        }
+        (evaluations, _) = expand_sharing_to_n_evaluation_points_opt(
+                evaluations_prf,
+                self.num_faults,
+                self.num_nodes,
+        );
 
-        evaluations = Vec::new();
-        coefficients = Vec::new();
-        _indices = Vec::new();
-        for party in 0..self.num_nodes{
-            _indices.push(LargeField::new(UnsignedInteger::from((party+1) as u64)));
-        }
+        // let evaluation_prf_chunks: Vec<Vec<Vec<LargeField>>> = evaluations_prf.chunks(evaluations_prf.len()/self.num_threads).map(|el| el.to_vec()).collect();
+        // for eval_prfs in evaluation_prf_chunks{
+        //     let handle = tokio::spawn(
+        //         expand_sharing_to_n_evaluation_points_opt(
+        //             eval_prfs,
+        //             self.num_faults,
+        //             self.num_nodes,
+        //         )
+        //     );
+        //     handles.push(handle);
+        // }
 
-        for handle in handles{
-            let (
-                evaluations_batch, 
-                coefficients_batch) = handle.await.unwrap();
-            evaluations.extend(evaluations_batch);
-            coefficients.extend(coefficients_batch);
-        }
+        // evaluations = Vec::new();
+        // coefficients = Vec::new();
+        // _indices = Vec::new();
+        // for party in 0..self.num_nodes{
+        //     _indices.push(LargeField::new(UnsignedInteger::from((party+1) as u64)));
+        // }
+
+        // for handle in handles{
+        //     let (
+        //         evaluations_batch, 
+        //         coefficients_batch) = handle.await.unwrap();
+        //     evaluations.extend(evaluations_batch);
+        //     coefficients.extend(coefficients_batch);
+        // }
         
         // Generate Shamir secret sharings of Nonce polynomials for Commitment generation
         let nonce_secrets:Vec<LargeField> = (0..self.num_faults+1).into_iter().map(|_| rand_field_element()).collect();
@@ -151,7 +161,7 @@ impl Context{
             evaluations_nonce_prf,
             self.num_faults,
             self.num_nodes
-        ).await;
+        );
         nonce_evaluations = nonce_evaluations_ret;
 
         // Sample blinding polynomials
@@ -167,7 +177,7 @@ impl Context{
             blinding_prf,
             self.num_faults,
             self.num_nodes
-        ).await;
+        );
 
         blinding_poly_evaluations = blinding_poly_evaluations_vec;
 
@@ -184,7 +194,7 @@ impl Context{
             blinding_nonce_prf,
             self.num_faults,
             self.num_nodes,
-        ).await;
+        );
         nonce_blinding_poly_evaluations = nonce_blinding_poly_evaluations_vec;
 
         // Group polynomials into bivariate polynomials
@@ -220,23 +230,31 @@ impl Context{
             expansion_eval_points.clone()
         );
 
+        log::info!("Finished generating evaluations at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         // Now evaluations_grouped contains the bivariate polynomial evaluations
         // Generate commitments
 
         let commitments = Self::gen_commitments(
             &bv_evaluations,
             &nonce_poly_evaluations[0],
-            self.num_nodes
+            self.num_nodes,
+            &self.hash_context
         );
 
         let blinding_commitments = Self::gen_commitments(
             &blinding_poly_evaluations, 
             &nonce_blinding_poly_evaluations[0], 
-            self.num_nodes
+            self.num_nodes,
+            &self.hash_context
         );
 
-        let root_comm = Self::root_commitment(&commitments);
-        let blinding_root_comm = Self::root_commitment(&blinding_commitments);
+        let root_comm = Self::root_commitment(&commitments, &self.hash_context);
+        let blinding_root_comm = Self::root_commitment(&blinding_commitments, &self.hash_context);
 
         let fiat_shamir_root_comm = self.hash_context.hash_two(root_comm.clone(), blinding_root_comm.clone());
         let fiat_shamir_root_fe = LargeField::from_bytes_be(fiat_shamir_root_comm.as_slice()).unwrap();
@@ -272,6 +290,12 @@ impl Context{
             }
         }
         
+        log::info!("Finished preparing shares at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         // Send shares in n batches through n independent AVID instances
         let _rbc_status = self.inp_ctrbc.send(ser_comm_msg).await;
         for batch in 0..self.num_nodes{
@@ -368,7 +392,7 @@ impl Context{
             }
             appended_share.extend(acss_ske_shares.evaluations.1.clone());
 
-            let commitment = do_hash(appended_share.as_slice());
+            let commitment = self.hash_context.do_hash_aes(appended_share.as_slice());
             if commitment != va_commitment.comm[batch][self.myid] {
                 log::error!("Share commitment mismatch for instance {} from sender {} in batch {}", instance_id, sender, batch);
                 return;
@@ -378,7 +402,7 @@ impl Context{
             appended_share.extend(acss_ske_shares.blinding_evaluations.0.clone());
             appended_share.extend(acss_ske_shares.blinding_evaluations.1.clone());
 
-            let blinding_commitment = do_hash(appended_share.as_slice());
+            let blinding_commitment = self.hash_context.do_hash_aes(appended_share.as_slice());
             if blinding_commitment != va_commitment.blinding_comm[batch][self.myid] {
                 log::error!("Blinding share commitment mismatch for instance {} from sender {} in batch {}", instance_id, sender, batch);
                 return;
@@ -386,8 +410,8 @@ impl Context{
         }
 
         // Commitment matching complete, compute DZK proofs and verify
-        let root_commitment = Self::root_commitment(&va_commitment.comm);
-        let blinding_root_commitment = Self::root_commitment(&va_commitment.blinding_comm);
+        let root_commitment = Self::root_commitment(&va_commitment.comm, &self.hash_context);
+        let blinding_root_commitment = Self::root_commitment(&va_commitment.blinding_comm, &self.hash_context);
 
         let fiat_shamir_root_comm = self.hash_context.hash_two(root_commitment.clone(), blinding_root_commitment.clone());
         let fiat_shamir_root_fe = LargeField::from_bytes_be(fiat_shamir_root_comm.as_slice()).unwrap();

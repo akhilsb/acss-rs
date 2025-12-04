@@ -1,7 +1,7 @@
 use std::{collections::HashMap};
 
 use consensus::{LargeField, vandermonde_matrix, inverse_vandermonde, matrix_vector_multiply};
-use crypto::hash::Hash;
+use ha_crypto::hash::Hash;
 use lambdaworks_math::{traits::ByteConversion, polynomial::Polynomial};
 use types::Replica;
 

@@ -2,10 +2,6 @@
 # This should only list projects that are not
 # in the dependency tree in any other way
 members = [
-    "types",
-    "config",
-    "crypto",
-    "tools/genconfig",
     "consensus",
     # "comm", (WIP: Do not enable unless testing)
     # RBC module

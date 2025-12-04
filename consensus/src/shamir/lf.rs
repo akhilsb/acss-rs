@@ -1,12 +1,12 @@
 use std::ops::{Sub, Add};
 use std::{ops::Mul};
 
-use crypto::{rand_field_element};
+use ha_crypto::{rand_field_element};
 use lambdaworks_math::{ polynomial::Polynomial, unsigned_integer::element::UnsignedInteger};
 
 use rayon::prelude::{ParallelIterator, IntoParallelRefIterator, IntoParallelIterator};
 
-use crypto::LargeField;
+use ha_crypto::LargeField;
 
 /// The `ShamirSecretSharing` stores threshold, share_amount and the prime of finite field.
 #[derive(Clone, Debug)]

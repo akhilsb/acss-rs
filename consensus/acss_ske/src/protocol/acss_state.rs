@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crypto::hash::Hash;
+use ha_crypto::hash::Hash;
 use lambdaworks_math::polynomial::Polynomial;
 use consensus::{LargeField, VACommitment};
 use types::Replica;

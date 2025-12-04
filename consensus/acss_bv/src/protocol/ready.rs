@@ -1,5 +1,5 @@
 use consensus::reconstruct_data;
-use crypto::{decrypt, hash::{Hash, do_hash}, aes_hash::{MerkleTree, Proof}, encrypt, LargeField};
+use ha_crypto::{decrypt, hash::{Hash}, aes_hash::{MerkleTree, Proof}, encrypt, LargeField};
 use ctrbc::CTRBCMsg;
 use lambdaworks_math::traits::ByteConversion;
 use network::{plaintcp::CancelHandler, Acknowledgement};
@@ -88,7 +88,7 @@ impl Context{
                 }
 
                 // Reconstruct Merkle Root
-                let shard_hashes: Vec<Hash> = shards.clone().into_iter().map(|v| do_hash(v.as_slice())).collect();
+                let shard_hashes: Vec<Hash> = shards.clone().into_iter().map(|v| self.hash_context.do_hash_aes(v.as_slice())).collect();
                 let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
 
                 if merkle_tree.root() == root{
@@ -199,7 +199,7 @@ impl Context{
                     let mut appended_poly = Vec::new();
                     appended_poly.extend(sub_point.to_bytes_be());
                     appended_poly.extend(blinding_nonces[self.myid].clone());
-                    let hash_blinding = do_hash(&appended_poly);
+                    let hash_blinding = self.hash_context.do_hash_aes(&appended_poly);
 
                     if hash_blinding != blinding_commitment{
                         log::error!("Error verifying DZK proof of polynomial, start blame process for ACSS instance {}",instance_id);

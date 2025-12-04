@@ -1,5 +1,5 @@
 use consensus::{LargeFieldSer, DZKProof};
-use crypto::aes_hash::Proof;
+use ha_crypto::aes_hash::Proof;
 use serde::{Serialize, Deserialize};
 use types::Replica;
 

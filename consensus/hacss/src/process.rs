@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::{ProtMsg};
 use crate::{context::Context};
 use consensus::delay_message_processing;
-use crypto::hash::verf_mac;
+use ha_crypto::hash::verf_mac;
 //use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{WrapperMsg};
 

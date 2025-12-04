@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash, aes_hash::Proof};
-use ctrbc::RBCState;
+use consensus::RBCState;
+use ha_crypto::{LargeField, hash::Hash, aes_hash::Proof};
+
 use types::Replica;
 
 pub struct ASKSState {

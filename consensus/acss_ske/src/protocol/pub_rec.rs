@@ -1,10 +1,10 @@
 use std::{ops::{Add, Mul, Div}, collections::HashMap};
 
 use consensus::{LargeField, LargeFieldSer, DZKProof, vandermonde_matrix, inverse_vandermonde, matrix_vector_multiply};
-use crypto::{aes_hash::{MerkleTree, HashState, Proof}, hash::{Hash, do_hash}};
 use lambdaworks_math::{polynomial::Polynomial, traits::ByteConversion};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator, IntoParallelRefIterator, IndexedParallelIterator};
 use types::{Replica, WrapperMsg};
+use ha_crypto::{aes_hash::{HashState, MerkleTree, Proof}, hash::Hash};
 
 use crate::{Context, msg::{AcssSKEShares, ProtMsg}, protocol::ACSSABState};
 
@@ -88,8 +88,8 @@ impl Context{
                 appended_shares[index].extend(nonce_share.to_bytes_be());
             }
             // Build Merkle tree on these appended shares
-            let hashes: Vec<Hash> = appended_shares.into_iter().map(|share|{
-                do_hash(share.as_slice())
+            let hashes: Vec<Hash> = appended_shares.into_par_iter().map(|share|{
+                hash_context.do_hash_aes(share.as_slice())
             }).collect();
 
             MerkleTree::new(hashes, hash_context)
@@ -116,7 +116,7 @@ impl Context{
                 appended_share.extend(share.to_bytes_be());
             }
             appended_share.extend(nonce.to_bytes_be());
-            return do_hash(appended_share.as_slice());
+            return hc.do_hash_aes(appended_share.as_slice());
         }).collect();
 
         let mut proof_flag = true;
@@ -136,7 +136,7 @@ impl Context{
             let mut appended_share = vec![];
             appended_share.extend(share.to_bytes_be());
             appended_share.extend(nonce.to_bytes_be());
-            return do_hash(appended_share.as_slice());
+            return hc.do_hash_aes(appended_share.as_slice());
         }).collect();
 
         let mut proof_flag = true;
@@ -361,7 +361,11 @@ impl Context{
 
     }
 
-    pub async fn process_pub_rec_l1_msg(&mut self, instance_id: usize, acss_msg: AcssSKEShares, share_sender: Replica){
+    pub async fn process_pub_rec_l1_msg(&mut self, 
+        instance_id: usize, 
+        acss_msg: AcssSKEShares, 
+        share_sender: Replica,
+    ){
         log::info!("Received PubRecL1 message for instance {} of party {}, shares received from party {}", instance_id, acss_msg.rep, share_sender);
         if !self.acss_ab_state.contains_key(&instance_id){
             let acss_ab_state = ACSSABState::new();
@@ -391,7 +395,7 @@ impl Context{
         }
         appended_vec.extend(nonce_share);
         
-        let commitment = do_hash(appended_vec.as_slice());
+        let commitment = self.hash_context.do_hash_aes(appended_vec.as_slice());
         if !share_mp.validate(&self.hash_context) ||
             share_mp.item() != commitment || 
             share_mp.root() != va_commitment.column_roots[self.myid].clone(){
@@ -416,7 +420,7 @@ impl Context{
         appended_vec.extend(blinding_share);
         appended_vec.extend(blinding_nonce_share);
 
-        let blinding_commitment = do_hash(appended_vec.as_slice());
+        let blinding_commitment = self.hash_context.do_hash_aes(appended_vec.as_slice());
 
         if !blinding_mp.validate(&self.hash_context) ||
             blinding_mp.item() != blinding_commitment || 

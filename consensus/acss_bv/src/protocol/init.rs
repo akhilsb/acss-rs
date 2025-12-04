@@ -1,7 +1,7 @@
 use std::{time::{SystemTime, UNIX_EPOCH}, collections::HashMap};
 
 use consensus::{get_shards, LargeFieldSSS};
-use crypto::{LargeField, hash::{Hash, do_hash}, aes_hash::{MerkleTree}, encrypt, decrypt, pseudorandom_lf, rand_field_element};
+use ha_crypto::{LargeField, aes_hash::{HashState, MerkleTree}, decrypt, encrypt, hash::Hash, pseudorandom_lf, rand_field_element};
 use ctrbc::CTRBCMsg;
 use lambdaworks_math::traits::ByteConversion;
 use network::{plaintcp::CancelHandler, Acknowledgement};
@@ -156,7 +156,7 @@ impl Context{
             }
             let comms: Vec<Vec<Hash>> = col_wise_grouped_polys.clone().into_iter().zip(nonce_col_evals.into_iter()).map(
                 |(shares,nonces)|
-                Self::generate_poly_commitments(shares, nonces)
+                Self::generate_poly_commitments(shares, nonces, &self.hash_context)
             ).collect();
             
             let merkle_trees: Vec<MerkleTree> = comms.into_iter().map(|el| MerkleTree::new(el,&self.hash_context)).collect();
@@ -178,7 +178,7 @@ impl Context{
             let mut blinding_poly_evals_vec = Vec::new();
             blinding_poly_evals_vec.push(blinding_eval_points_comm.clone());
 
-            let blinding_commitment_vec = Self::generate_poly_commitments(blinding_poly_evals_vec, blinding_nonce_eval_points.clone());
+            let blinding_commitment_vec = Self::generate_poly_commitments(blinding_poly_evals_vec, blinding_nonce_eval_points.clone(), &self.hash_context);
             let blinding_mt = MerkleTree::new(blinding_commitment_vec.clone(), &self.hash_context);
             let blinding_root = blinding_mt.root();
 
@@ -579,7 +579,7 @@ impl Context{
         // Broadcast commitment
         let comm_ser = bincode::serialize(&commitment_copy).unwrap();
         let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
-        let shard_hashes = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
+        let shard_hashes = shards.iter().map(|shard| self.hash_context.do_hash_aes(shard.as_slice())).collect();
 
         let mt = MerkleTree::new(shard_hashes, &self.hash_context);
 
@@ -609,7 +609,11 @@ impl Context{
         }
     }
 
-    pub fn generate_poly_commitments(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{
+    pub fn generate_poly_commitments(
+        shares: Vec<Vec<LargeField>>, 
+        nonces: Vec<LargeField>,
+        hc: &HashState
+    )-> Vec<Hash>{
         let mut hashes = Vec::new();
         let mut appended_msgs = Vec::new();
         for _ in 0..nonces.len(){
@@ -623,12 +627,16 @@ impl Context{
         for (mut msg,nonce) in appended_msgs.into_iter().zip(nonces.into_iter()){
             let nonce_ser = nonce.to_bytes_be();
             msg.extend(nonce_ser);
-            hashes.push(do_hash(msg.as_slice()));
+            hashes.push(hc.do_hash_aes(msg.as_slice()));
         }
         hashes
     }
 
-    pub fn generate_commitments_element(shares: Vec<Vec<LargeField>>, nonces: Vec<LargeField>)-> Vec<Hash>{
+    pub fn generate_commitments_element(
+        shares: Vec<Vec<LargeField>>, 
+        nonces: Vec<LargeField>,
+        hc: &HashState
+    )-> Vec<Hash>{
         let mut hashes = Vec::new();
         let mut appended_msgs = Vec::new();
         for _ in 0..nonces.len(){
@@ -641,7 +649,7 @@ impl Context{
             appended_msgs[batch_index].extend(nonce.to_bytes_be());
         }
         for msg in appended_msgs.into_iter(){
-            hashes.push(do_hash(msg.as_slice()));
+            hashes.push(hc.do_hash_aes(msg.as_slice()));
         }
         hashes
     }

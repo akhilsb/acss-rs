@@ -13,9 +13,9 @@ impl Context{
         }
         let acss_state = self.acss_ab_state.get_mut(&instance_id).unwrap();
         // Compute root commitment
-        let root_commitment = Self::root_commitment(&commitment_msg.comm);
-        let blinding_root_commitment = Self::root_commitment(&commitment_msg.blinding_comm);
-        
+        let root_commitment = Self::root_commitment(&commitment_msg.comm, &self.hash_context);
+        let blinding_root_commitment = Self::root_commitment(&commitment_msg.blinding_comm, &self.hash_context);
+
         let root_commitment = self.hash_context.hash_two(root_commitment.clone(), blinding_root_commitment.clone());
 
         acss_state.commitments.insert(sender_rep, commitment_msg);

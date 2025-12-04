@@ -5,7 +5,7 @@ use std::{
 
 use config::Node;
 
-use ctrbc::RBCState;
+use consensus::RBCState;
 use fnv::FnvHashMap;
 use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},

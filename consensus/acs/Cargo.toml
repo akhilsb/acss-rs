@@ -6,13 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crypto = { package = "crypto", path="../../crypto"}
+config = { package = "config", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+types = { package = "types", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+# ctrbc = { package = "ctrbc", git="https://github.com/SohamJog/reliable-broadcast-protocols.git"}
+ctrbc = { package = "ctrbc", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+ccbrb = { package = "ccbrb", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+
 consensus = { package = "consensus", path="../"}
-types = { package = "types", path="../../types"}
-config = { package = "config", path="../../config"}
-acss_bv = {package = "acss_bv", path= "../acss_bv"}
-hacss = {package = "hacss", path = "../hacss"}
-ctrbc = { package = "ctrbc", path="../ctrbc"}
+
+# acss_bv = {package = "acss_bv", path= "../acss_bv"}
+# hacss = {package = "hacss", path = "../hacss"}
 asks = { package = "asks", path="../asks"}
 ra = {package = "ra", path = "../ra"}
 

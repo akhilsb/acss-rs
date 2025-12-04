@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use consensus::{interpolate_shares, inverse_vandermonde, matrix_vector_multiply, vandermonde_matrix, LargeField};
-use crypto::{decrypt};
+use ha_crypto::{decrypt};
 use lambdaworks_math::{polynomial::Polynomial, unsigned_integer::element::UnsignedInteger};
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use types::Replica;

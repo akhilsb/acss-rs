@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crypto::{LargeField, hash::Hash, aes_hash::MerkleTree};
+use ha_crypto::{LargeField, hash::Hash, aes_hash::MerkleTree};
 use ctrbc::RBCState;
 use types::Replica;
 

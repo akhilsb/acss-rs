@@ -1,6 +1,6 @@
-use consensus::get_shards;
-use crypto::{LargeField, hash::{do_hash, Hash}, encrypt, decrypt, aes_hash::{MerkleTree, Proof}, rand_field_element};
-use ctrbc::CTRBCMsg;
+use consensus::{CTRBCMsg, get_shards};
+use ha_crypto::{LargeField, hash::Hash, encrypt, decrypt, aes_hash::{MerkleTree, Proof}, rand_field_element};
+
 use network::{plaintcp::CancelHandler, Acknowledgement};
 use types::{WrapperMsg, Replica};
 
@@ -52,7 +52,7 @@ impl Context{
                 let mut appended_vec = Vec::new();
                 appended_vec.extend(share.to_bytes_be());
                 appended_vec.extend(nonce.to_bytes_be());
-                return do_hash(appended_vec.as_slice());
+                return self.hash_context.do_hash_aes(appended_vec.as_slice());
             }).collect();
 
             let merkle_tree = MerkleTree::new(commitments,&self.hash_context);
@@ -99,7 +99,7 @@ impl Context{
         let deser_msg: WSSMsgSer = bincode::deserialize(dec_msg.as_slice()).unwrap();
         
         // Verify commitment
-        let share_comm = deser_msg.compute_commitments();
+        let share_comm = deser_msg.compute_commitments(&self.hash_context);
         let share_msg = deser_msg.to_unser();
         let mut bool_flag = true;
         for (proof,item) in share_msg.merkle_proofs.iter().zip(share_comm.iter()){
@@ -127,7 +127,7 @@ impl Context{
         // Broadcast commitment
         let comm_ser = bincode::serialize(&roots).unwrap();
         let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
-        let shard_hashes = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
+        let shard_hashes = shards.iter().map(|shard| self.hash_context.do_hash_aes(shard.as_slice())).collect();
 
         let mt = MerkleTree::new(shard_hashes, &self.hash_context);
 

@@ -1,4 +1,4 @@
-use crypto::{hash::Hash, aes_hash::Proof};
+use ha_crypto::{hash::Hash, aes_hash::Proof};
 use serde::{Serialize, Deserialize};
 use types::Replica;
 

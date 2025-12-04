@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{context::Context, msg::ProtMsg};
 use consensus::delay_message_processing;
-use crypto::hash::verf_mac;
+use ha_crypto::hash::verf_mac;
 use types::{WrapperMsg};
 
 impl Context {

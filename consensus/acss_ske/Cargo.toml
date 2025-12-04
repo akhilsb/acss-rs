@@ -6,14 +6,21 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-consensus = {package = "consensus", path="../../consensus"}
+consensus = {package = "consensus", path="../"}
 
 asks = {package = "asks", path = "../asks"}
-ctrbc  = {package = "ctrbc", path = "../ctrbc"}
 ra = {package = "ra", path= "../ra"}
-config = { package = "config", path = "../../config"}
-types = { package = "types", path="../../types"}
-crypto = { package = "crypto", path = "../../crypto"}
+
+types = { package = "types", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+config = { package = "config", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+ctrbc = { package = "ctrbc", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+ccbrb = { package = "ccbrb", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+
+# crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
+ha_crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
 
 avid = {package = "avid", path = "../avid"}
 

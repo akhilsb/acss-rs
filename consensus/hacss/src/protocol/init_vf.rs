@@ -1,9 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use consensus::{get_shards, LargeFieldSSS, VACommitment, VAShare};
-use crypto::aes_hash::{MerkleTree, Proof};
-use crypto::hash::{do_hash, Hash};
-use crypto::{LargeField, LargeFieldSer, encrypt, decrypt, rand_field_element};
+use ha_crypto::aes_hash::{MerkleTree, Proof};
+use ha_crypto::hash::Hash;
+use ha_crypto::{LargeField, LargeFieldSer, encrypt, decrypt, rand_field_element};
 use ctrbc::CTRBCMsg;
 use lambdaworks_math::polynomial::Polynomial;
 use lambdaworks_math::traits::ByteConversion;
@@ -140,12 +140,12 @@ impl Context{
                 let mut appended = Vec::new();
                 appended.extend(share_eval_val);
                 appended.extend(nonce_y_deg_t[rep].clone().to_bytes_be());
-                comm_y_deg_t.push(do_hash(appended.as_slice()));
+                comm_y_deg_t.push(self.hash_context.do_hash_aes(appended.as_slice()));
 
                 let mut appended = Vec::new();
                 appended.extend(blinding_y_deg_t[rep].clone().to_bytes_be());
                 appended.extend(bnonce_y_deg_t[rep].clone().to_bytes_be());
-                bcomm_y_deg_t.push(do_hash(appended.as_slice()));
+                bcomm_y_deg_t.push(self.hash_context.do_hash_aes(appended.as_slice()));
             }
             comm_y_deg_t.remove(0);
             bcomm_y_deg_t.remove(0);
@@ -576,7 +576,7 @@ impl Context{
         // Use erasure codes to split tree
 
         let shards = get_shards(comm_ser, self.num_faults+1, 2*self.num_faults);
-        let shard_hashes: Vec<Hash> = shards.iter().map(|shard| do_hash(shard.as_slice())).collect();
+        let shard_hashes: Vec<Hash> = shards.iter().map(|shard| self.hash_context.do_hash_aes(shard.as_slice())).collect();
         let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
 
         // Track the root hash to ensure speedy termination and redundant ECHO checks

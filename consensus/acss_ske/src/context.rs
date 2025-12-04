@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use config::Node;
 
 use fnv::FnvHashMap;
+use ha_crypto::aes_hash::HashState;
 use lambdaworks_math::{ fft::cpu::roots_of_unity::get_powers_of_primitive_root, field::traits::RootsConfig};
 use network::{
     plaintcp::{CancelHandler, TcpReceiver, TcpReliableSender},
@@ -22,7 +23,7 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, WrapperMsg};
 
-use crypto::{aes_hash::HashState, hash::Hash};
+use ha_crypto::hash::Hash;
 
 use crate::{protocol::{ACSSABState, SymmetricKeyState}, msg::ProtMsg};
 
@@ -292,7 +293,7 @@ impl Context {
         );
         vector_statuses.push(_status);
         
-        let _status =  ctrbc::Context::spawn(
+        let _status =  ccbrb::Context::spawn(
             ctrbc_config, 
             ctrbc_req_recv_channel, 
             ctrbc_out_send_channel, 

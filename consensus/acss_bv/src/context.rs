@@ -22,7 +22,7 @@ use types::{Replica,WrapperMsg};
 
 use consensus::{LargeFieldSSS, FoldingDZKContext};
 
-use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
+use ha_crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
 
 use crate::{msg::ProtMsg, handlers::Handler, protocol::BatchACSSState};
 

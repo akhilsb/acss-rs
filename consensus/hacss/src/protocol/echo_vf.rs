@@ -1,5 +1,5 @@
 use consensus::{reconstruct_data, VACommitment};
-use crypto::{hash::{do_hash, Hash}, aes_hash::MerkleTree, decrypt};
+use ha_crypto::{hash::Hash, aes_hash::MerkleTree, decrypt};
 use ctrbc::CTRBCMsg;
 use network::{plaintcp::CancelHandler, Acknowledgement};
 
@@ -75,7 +75,7 @@ impl Context{
             let shards:Vec<Vec<u8>> = shards.into_iter().map(| opt | opt.unwrap()).collect();
 
             // Reconstruct Merkle Root
-            let shard_hashes: Vec<Hash> = shards.clone().into_iter().map(|v| do_hash(v.as_slice())).collect();
+            let shard_hashes: Vec<Hash> = shards.clone().into_iter().map(|v| self.hash_context.do_hash_aes(v.as_slice())).collect();
             let merkle_tree = MerkleTree::new(shard_hashes, &self.hash_context);
 
             //let mut send_ready = false;

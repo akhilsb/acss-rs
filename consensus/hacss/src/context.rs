@@ -24,7 +24,7 @@ use crate::{Handler, ACSSVAState};
 use consensus::{LargeFieldSSS,FoldingDZKContext};
 
 use super::{ProtMsg};
-use crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
+use ha_crypto::{aes_hash::HashState, LargeField, LargeFieldSer, hash::Hash};
 
 pub struct Context {
     /// Networking context

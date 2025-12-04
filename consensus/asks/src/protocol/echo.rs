@@ -1,6 +1,6 @@
-use consensus::reconstruct_data;
-use crypto::{hash::{Hash, do_hash}, aes_hash::MerkleTree};
-use ctrbc::CTRBCMsg;
+use consensus::{reconstruct_data, CTRBCMsg};
+use ha_crypto::{hash::Hash, aes_hash::MerkleTree};
+
 use types::Replica;
 
 use crate::{context::Context, msg::ProtMsg};
@@ -77,7 +77,7 @@ impl Context{
             // Reconstruct Merkle Root
             let hashes_rbc: Vec<Hash> = shards
                 .into_iter()
-                .map(|x| do_hash(x.as_slice()))
+                .map(|x| self.hash_context.do_hash_aes(x.as_slice()))
                 .collect();
 
             let merkle_tree = MerkleTree::new(hashes_rbc, &self.hash_context);

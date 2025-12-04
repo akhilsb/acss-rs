@@ -1,5 +1,5 @@
 use consensus::{interpolate_shares};
-use crypto::{decrypt};
+use ha_crypto::{decrypt};
 use types::Replica;
 
 use crate::{Context, msg::AcssSKEShares};

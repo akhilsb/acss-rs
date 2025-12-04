@@ -169,7 +169,7 @@ impl Context {
 
         let mut statuses = Vec::new();
 
-        let _rbc_serv_status = ctrbc::Context::spawn(
+        let _rbc_serv_status = ccbrb::Context::spawn(
             rbc_config,
             ctrbc_req_recv_channel, 
             ctrbc_out_send_channel, 

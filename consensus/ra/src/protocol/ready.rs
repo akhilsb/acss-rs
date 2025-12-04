@@ -1,5 +1,6 @@
+use consensus::RBCState;
 use crypto::hash::do_hash;
-use ctrbc::RBCState;
+
 use types::Replica;
 
 use crate::{context::Context, msg::ProtMsg};

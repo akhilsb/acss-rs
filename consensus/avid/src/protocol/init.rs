@@ -109,7 +109,7 @@ impl Context {
             let wrapper_msg = WrapperMsg::new(protocol_msg.clone(), self.myid, &sec_key.as_slice());
             let cancel_handler: CancelHandler<Acknowledgement> = self.net_send.send(recipient, wrapper_msg).await;
             self.add_cancel_handler(cancel_handler);
-        }        
+        }
     }
 }
 

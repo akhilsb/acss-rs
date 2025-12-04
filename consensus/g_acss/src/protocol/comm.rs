@@ -1,5 +1,5 @@
 use consensus::LargeField;
-use crypto::hash::{do_hash, Hash};
+use ha_crypto::{aes_hash::HashState, hash::Hash};
 
 use crate::Context;
 
@@ -7,7 +7,8 @@ impl Context{
     pub fn gen_commitments(
         bv_polys: &Vec<Vec<Vec<LargeField>>>, 
         nonce_poly: &Vec<Vec<LargeField>>,
-        num_nodes: usize
+        num_nodes: usize,
+        hc:&HashState
     )-> Vec<Vec<Hash>>{
         let mut app_vectors: Vec<Vec<Vec<u8>>> = vec![vec![vec![];num_nodes]; num_nodes];
         for poly_group in bv_polys.iter(){
@@ -23,14 +24,15 @@ impl Context{
             }
         }
         let commitments: Vec<Vec<Hash>> = app_vectors.into_iter().map(|vecs|{
-            return vecs.into_iter().map(|v| do_hash(&v)).collect();
+            return vecs.into_iter().map(|v| hc.do_hash_aes(&v)).collect();
         }).collect();
 
         return commitments;
     }
 
     pub fn root_commitment(
-        commitments: &Vec<Vec<Hash>>
+        commitments: &Vec<Vec<Hash>>,
+        hc: &HashState
     )-> Hash{
         let mut agg_vector = Vec::new();
         for comm_row in commitments{
@@ -38,6 +40,6 @@ impl Context{
                 agg_vector.extend(hash);
             }
         }
-        return do_hash(agg_vector.as_slice());
+        return hc.do_hash_aes(agg_vector.as_slice());
     }
 }

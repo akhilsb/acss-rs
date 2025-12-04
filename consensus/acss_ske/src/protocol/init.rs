@@ -1,6 +1,8 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::{Context, msg::AcssSKEShares};
-use crypto::{hash::{do_hash, Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
-use lambdaworks_math::{unsigned_integer::element::UnsignedInteger, traits::ByteConversion};
+use ha_crypto::{hash::{Hash}, aes_hash::{MerkleTree, Proof}, encrypt};
+use lambdaworks_math::{traits::ByteConversion};
 use consensus::{LargeField, LargeFieldSer, generate_evaluation_points_fft, expand_sharing_to_n_evaluation_points, expand_sharing_to_n_evaluation_points_opt, sample_polynomials_from_prf, rand_field_element, VACommitment};
 use rayon::prelude::{ParallelIterator, IndexedParallelIterator, IntoParallelIterator};
 use types::Replica;
@@ -96,6 +98,12 @@ impl Context{
             }
         }
 
+        let consensus_start_time = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+        
+        log::info!("Starting sharing preparation");
         let tot_sharings = secrets.len();
         let mut handles = Vec::new();
         let mut _indices;
@@ -116,32 +124,34 @@ impl Context{
                 false, 
                 1u8
             );
-            let evaluation_prf_chunks: Vec<Vec<Vec<LargeField>>> = evaluations_prf.chunks(evaluations_prf.len()/self.num_threads).map(|el| el.to_vec()).collect();
-            for eval_prfs in evaluation_prf_chunks{
-                let handle = tokio::spawn(
-                    expand_sharing_to_n_evaluation_points_opt(
-                        eval_prfs,
-                        self.num_faults,
-                        self.num_nodes,
-                    )
-                );
-                handles.push(handle);
-            }
+            (evaluations, coefficients) = expand_sharing_to_n_evaluation_points_opt(
+                evaluations_prf,
+                self.num_faults,
+                self.num_nodes,
+            );
 
-            evaluations = Vec::new();
-            coefficients = Vec::new();
-            _indices = Vec::new();
-            for party in 0..self.num_nodes{
-                _indices.push(LargeField::new(UnsignedInteger::from((party+1) as u64)));
-            }
+            //let evaluation_prf_chunks: Vec<Vec<Vec<LargeField>>> = evaluations_prf.chunks(evaluations_prf.len()/self.num_threads).map(|el| el.to_vec()).collect();
+            // for eval_prfs in evaluation_prf_chunks{
+            //     let handle = tokio::spawn(
                     
-            for handle in handles{
-                let (
-                    evaluations_batch, 
-                    coefficients_batch) = handle.await.unwrap();
-                evaluations.extend(evaluations_batch);
-                coefficients.extend(coefficients_batch);
-            }
+            //     );
+            //     handles.push(handle);
+            // }
+
+            // evaluations = Vec::new();
+            // coefficients = Vec::new();
+            // _indices = Vec::new();
+            // for party in 0..self.num_nodes{
+            //     _indices.push(LargeField::new(UnsignedInteger::from((party+1) as u64)));
+            // }
+                    
+            // for handle in handles{
+            //     let (
+            //         evaluations_batch, 
+            //         coefficients_batch) = handle.await.unwrap();
+            //     evaluations.extend(evaluations_batch);
+            //     coefficients.extend(coefficients_batch);
+            // }
             
             // Generate nonce evaluations
             let nonce_secrets:Vec<LargeField> = (0..self.num_nodes).into_iter().map(|_| rand_field_element()).collect();
@@ -156,7 +166,7 @@ impl Context{
                 evaluations_nonce_prf,
                 self.num_faults,
                 self.num_nodes
-            ).await;
+            );
             nonce_evaluations = nonce_evaluations_ret;
 
             // Generate the DZK proofs and commitments and utilize RBC to broadcast these proofs
@@ -174,7 +184,7 @@ impl Context{
                 blinding_prf,
                 self.num_faults,
                 self.num_nodes
-            ).await;
+            );
 
             blinding_poly_evaluations = blinding_poly_evaluations_vec;
             blinding_poly_coefficients = blinding_poly_coefficients_vec;
@@ -192,7 +202,7 @@ impl Context{
                 blinding_nonce_prf,
                 self.num_faults,
                 self.num_nodes,
-            ).await;
+            );
             nonce_blinding_poly_evaluations = nonce_blinding_poly_evaluations_vec;
         }
         else{
@@ -249,6 +259,13 @@ impl Context{
             nonce_blinding_poly_evaluations = nonce_blinding_evaluations_vec;
         }
         
+        log::info!("Finished generating evaluations at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
+
         let evaluation_points = self.gen_evaluation_points();
         // Group polynomials into groups of t+1
         let grouped_polynomials_dzk_proofs = Self::group_polynomials_for_public_reconstruction(
@@ -257,6 +274,12 @@ impl Context{
             self.num_faults+1,
         );
 
+        log::info!("Starting commitment generation at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         // Generate commitments
         let merkle_tree_vector: Vec<MerkleTree> = Self::compute_commitments(
             grouped_polynomials_dzk_proofs.clone(), 
@@ -275,7 +298,7 @@ impl Context{
                 let mut appended_vec = vec![];
                 appended_vec.extend(b_poly_eval);
                 appended_vec.extend(b_nonce_eval.to_bytes_be());
-                return do_hash(appended_vec.as_slice());
+                return self.hash_context.do_hash_aes(appended_vec.as_slice());
             }).collect();
             MerkleTree::new(b_hashes, &self.hash_context)
         }).collect();
@@ -288,6 +311,12 @@ impl Context{
             return LargeField::from_bytes_be(root_combined.as_slice()).unwrap();
         }).collect();
 
+        log::info!("Finished commitment generation at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         // Aggregated polynomials
         let agg_polys = Self::aggregate_polynomials_for_dzk(
             grouped_polynomials_dzk_proofs, 
@@ -301,7 +330,12 @@ impl Context{
             root_comm_fe
         );
 
-        
+        log::info!("Finished generating DZK proofs at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         let va_comm: VACommitment = VACommitment{
             instance_id: instance_id,
             column_roots: roots.clone(),
@@ -353,7 +387,12 @@ impl Context{
             blinding_merkle_proofs_party_wise.push(party_blinding_merkle_proofs);
         }
 
-
+        log::info!("Finished preparing shares at time: {}", 
+            SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()-consensus_start_time
+        );
         let mut shares: Vec<(Replica,Option<Vec<u8>>)> = Vec::new();
         for rep in 0..self.num_nodes{
             // prepare shares
