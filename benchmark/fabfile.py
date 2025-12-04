@@ -9,6 +9,14 @@ from benchmark.instance import InstanceManager
 from benchmark.remote import Bench, BenchError
 from benchmark.utils import PathMaker
 
+n = 64
+num_machines = int(n/8)
+protocol = 'g_dpss'
+num_secrets = 2300
+linear = 'true'
+optimistic = 'false'
+ACS_enabled = 'true'
+
 @task
 def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
@@ -67,7 +75,7 @@ def log_v(ctx, debug=True):
 
 
 @task
-def create(ctx, nodes=1):
+def create(ctx, nodes=num_machines):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -85,7 +93,7 @@ def destroy(ctx):
 
 
 @task
-def start(ctx, max=1):
+def start(ctx, max=num_machines):
     ''' Start at most `max` machines per data center '''
     try:
         InstanceManager.make().start_instances(max)
@@ -125,7 +133,12 @@ def remote(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [64],
+        'nodes': [n],
+        'secrets': num_secrets,
+        'linear': linear,
+        'optimistic': optimistic,
+        'ACS_enabled': ACS_enabled,
+        'protocol': protocol,
         'workers': 1,
         'collocate': True,
         'rate': [10_000, 110_000],
@@ -152,7 +165,12 @@ def rerun(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [64],
+        'nodes': [n],
+        'secrets': num_secrets,
+        'linear': linear,
+        'optimistic': optimistic,
+        'ACS_enabled': ACS_enabled,
+        'protocol': protocol,
         'workers': 1,
         'collocate': True,
         'rate': [10_000, 110_000],
@@ -207,7 +225,11 @@ def logs(ctx):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [64],
+        'nodes': [n],
+        'secrets': num_secrets,
+        'linear': linear,
+        'optimistic': optimistic,
+        'ACS_enabled': ACS_enabled,
         'workers': 1,
         'collocate': True,
         'rate': [10_000, 110_000],

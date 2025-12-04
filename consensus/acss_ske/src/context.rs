@@ -293,7 +293,7 @@ impl Context {
         );
         vector_statuses.push(_status);
         
-        let _status =  ccbrb::Context::spawn(
+        let _status =  ctrbc::Context::spawn(
             ctrbc_config, 
             ctrbc_req_recv_channel, 
             ctrbc_out_send_channel, 

@@ -206,6 +206,13 @@ class BenchParameters:
             
             self.workers = int(json['workers'])
 
+            self.protocol = str(json['protocol']) if 'protocol' in json else 'dpss'
+            self.secrets = int(json['secrets']) if 'secrets' in json else 1000
+
+            self.linear = str(json['linear']) if 'linear' in json else 'true'
+            self.optimistic = str(json['optimistic']) if 'optimistic' in json else 'false'
+            self.ACS_enabled = str(json['ACS_enabled']) if 'ACS_enabled' in json else 'true'
+
             if 'collocate' in json:
                 self.collocate = bool(json['collocate'])
             else:

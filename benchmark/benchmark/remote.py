@@ -246,11 +246,14 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 4600
+        per_batch = bench_parameters.secrets
 
-        lin = 'true'
-        opt= 'false'
-        ibft = 'true'
+        lin = bench_parameters.linear
+        opt= bench_parameters.optimistic
+        ibft = bench_parameters.ACS_enabled
+
+        protocol = bench_parameters.protocol
+
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
@@ -269,7 +272,7 @@ class Bench:
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                'g_dpss',
+                protocol,
                 batches,
                 per_batch,
                 lin=lin,
@@ -360,11 +363,13 @@ class Bench:
         Print.info('Booting primaries...')
         st_time = round(time.time() * 1000) + 60000
         batches = 1
-        per_batch = 6900
+        per_batch = bench_parameters.secrets
 
-        lin = 'true'
-        opt= 'false'
-        ibft = 'true'
+        protocol = bench_parameters.protocol
+        lin = bench_parameters.linear
+        opt= bench_parameters.optimistic
+        ibft = bench_parameters.ACS_enabled
+
         for i,ip in enumerate(hosts):
             #host = Committee.ip(address)
             if i == 0:
@@ -383,7 +388,7 @@ class Bench:
                 self._background_run(ip, cmd, log_file)
             cmd = CommandMaker.run_primary(
                 PathMaker.key_file(i),
-                'g_dpss',
+                protocol,
                 batches,
                 per_batch,
                 lin=lin,
@@ -566,4 +571,5 @@ class Bench:
 
         # Select which hosts to use.
         selected_hosts = self._select_hosts(bench_parameters)
+        print(selected_hosts)
         return self._logs(selected_hosts,0)
