@@ -11,7 +11,7 @@ from benchmark.utils import PathMaker
 
 n = 64
 num_machines = int(n/8)
-protocol = 'g_dpss'
+protocol = 'dpss'
 num_secrets = 2300
 linear = 'true'
 optimistic = 'false'

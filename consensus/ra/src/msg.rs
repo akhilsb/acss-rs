@@ -8,3 +8,4 @@ pub enum ProtMsg {
     // Example type is a ping message, which takes a Message and the sender replica
     // Ping(Msg, Replica),
 }
+
