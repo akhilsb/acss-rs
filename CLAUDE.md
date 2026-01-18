@@ -70,9 +70,9 @@ fab destroy           # Terminate instances
 
 | Module | Description |
 |--------|-------------|
-| `dpss` | Distributed Polyvalent Secret Sharing (primary) |
+| `dpss` | Dynamic Proactive Secret Sharing (primary) |
 | `g_dpss` | Optimized DPSS with linear communication |
-| `acss_ske` | ACSS with Symmetric Key Encapsulation |
+| `acss_ske` | ACSS with Symmetric Key Encryption |
 | `avid` | Asynchronous Verifiable Information Dispersal |
 | `acs` | Asynchronous Common Subset |
 | `binary_ba` | Binary Byzantine Agreement |
