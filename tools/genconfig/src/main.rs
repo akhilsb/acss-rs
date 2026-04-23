@@ -4,7 +4,6 @@
 use config::{Node, Client};
 use clap::{load_yaml, App};
 use rand::Rng;
-use types::Replica;
 use crypto::{Algorithm, SecretKey};
 use std::{error::Error, io::{BufWriter, Write}, fs::File};
 use util::io::*;
@@ -91,7 +90,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         node.push(Node::new());
 
         node[i].delta = delay;
-        node[i].id = i as Replica;
+        node[i].id = i as usize;
         node[i].num_nodes = num_nodes;
         node[i].num_faults = num_faults;
         node[i].block_size = blocksize;
@@ -108,10 +107,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         };
-        ip.insert(i as Replica, 
+        ip.insert(i as usize, 
         format!("{}:{}", "127.0.0.1", base_port+(i as u16))
         );
-        client.net_map.insert(i as Replica, 
+        client.net_map.insert(i as usize, 
         format!("127.0.0.1:{}", client_base_port+(i as u16))
         );
 

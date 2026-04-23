@@ -2,10 +2,10 @@
 
 # --- Configuration ---
 # Define the array of secrets to loop through
-SECRETS_ARRAY=(2300 4600 6820)
+SECRETS_ARRAY=(480 960 1900)
 
 # Output file for the final averages
-RESULTS_FILE="results_64_dpss.csv"
+RESULTS_FILE="results_160_dpss.csv"
 
 # Ensure the logs directory exists
 mkdir -p logs

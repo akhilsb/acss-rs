@@ -8,10 +8,11 @@ edition = "2018"
 
 [dependencies]
 clap = {version = "2", features = ["yaml"]}
-config = { package = "config", path="../../config"}
-types = { package = "types", path="../../types"}
-crypto = { package = "crypto", path="../../crypto"}
-util = { package = "util", path="../../util"}
+config = { package = "config", git = "https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+types = { package = "types", git = "https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+crypto = { package = "crypto", git = "https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+util = { package = "util", git = "https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
+
 rustls = "*"
 fnv = "1"
 rand = "0.6"

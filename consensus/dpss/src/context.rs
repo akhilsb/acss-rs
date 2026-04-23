@@ -121,11 +121,17 @@ impl Context {
         let mut mvba_config = config.clone();
         let mut ra_config = config.clone();
 
-        let port_acss: u16 = 150;
-        let port_acs: u16 = 900;
-        let port_bba: u16 = 1800;
-        let port_mvba: u16 = 2100;
-        let port_ra: u16 = 2700;
+        // let port_acss: u16 = 150;
+        // let port_acs: u16 = 900;
+        // let port_bba: u16 = 1800;
+        // let port_mvba: u16 = 2100;
+        // let port_ra: u16 = 2700;
+
+        let port_acss: u16 = 200;
+        let port_acs: u16 = 1200;
+        let port_bba: u16 = 2000;
+        let port_mvba: u16 = 2200;
+        let port_ra: u16 = 3000;
         
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");

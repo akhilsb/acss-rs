@@ -111,10 +111,10 @@ impl Context {
         let mut avid_config = config.clone();
         let mut ra_config = config.clone();
 
-        let port_asks: u16 = 150;
-        let port_rbc: u16 = 300;
-        let port_avid: u16 = 450;
-        let port_ra: u16 = 600;
+        let port_asks: u16 = 200;
+        let port_rbc: u16 = 400;
+        let port_avid: u16 = 600;
+        let port_ra: u16 = 800;
 
         let mut consensus_addrs: FnvHashMap<Replica, SocketAddr> = FnvHashMap::default();
         for (replica, address) in config.net_map.iter() {

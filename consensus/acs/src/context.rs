@@ -111,9 +111,9 @@ impl Context {
         let mut asks_config = config.clone();
 
         //let port_acss: u16 = 150;
-        let port_rbc: u16 = 150;
-        let port_ra: u16 = 300;
-        let port_asks: u16 = 450;
+        let port_rbc: u16 = 200;
+        let port_ra: u16 = 400;
+        let port_asks: u16 = 600;
         for (replica, address) in config.net_map.iter() {
             let address: SocketAddr = address.parse().expect("Unable to parse address");
             
