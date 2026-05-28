@@ -28,15 +28,10 @@ impl Context{
         let mut ht_indices = Vec::new();
         let mut shares_to_be_combined = Vec::new();
         
-        let mut coin_shares_to_be_combined = Vec::new();
         let per_batch = self.per_batch + (self.num_faults+1) - (self.per_batch)%(self.num_faults+1);
         
         for _ in 0..self.num_batches*per_batch{
             shares_to_be_combined.push(Vec::new());
-        }
-
-        for _ in 0..self.coin_batch{
-            coin_shares_to_be_combined.push(Vec::new());
         }
         
         for rep in 0..self.num_nodes{
@@ -58,13 +53,8 @@ impl Context{
                         log::info!("ACSS did not terminate yet, will retry later for share generation");
                         return;
                     }
-                    if batch == self.num_batches+1{
+                    if batch != self.num_batches+1{
                         // Coin shares
-                        for (coin_index,share) in batch_shares.unwrap().0.clone().into_iter().enumerate(){
-                            coin_shares_to_be_combined[coin_index].push(share);
-                        }
-                    }
-                    else{
                         for share in batch_shares.unwrap().0.clone(){
                             shares_to_be_combined[index].push(share);
                             index +=1;
@@ -81,12 +71,6 @@ impl Context{
             mult_shares.truncate(self.num_faults+1);
             mult_shares
         }).collect();
-
-        let coin_shares: Vec<LargeField> = coin_shares_to_be_combined.into_par_iter().map(|vec| {
-            let mut mult_shares = LargeFieldSSS::matrix_vector_multiply(&vandermonde, &vec);
-            mult_shares.truncate(self.num_faults+1);
-            mult_shares
-        }).flatten().collect();
 
         
         // Encode and reconstruct these combined shares
@@ -110,8 +94,6 @@ impl Context{
             let cancel_handler = self.net_send.send(rep, wrapper).await;
             self.add_cancel_handler(cancel_handler);
         }
-        log::info!("Prepared {} coin shares", coin_shares.len());
-        self.coin_shares.extend(coin_shares);
         
         self.ba_state.shares_generated = true;
         self.verify_start_binary_ba().await;

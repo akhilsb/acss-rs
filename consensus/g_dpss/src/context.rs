@@ -19,7 +19,7 @@ use tokio::{sync::{
 // use tokio_util::time::DelayQueue;
 use types::{Replica, SyncMsg, SyncState, WrapperMsg};
 
-use consensus::{SyncHandler, LargeFieldSSS, LargeField, LargeFieldSer};
+use consensus::{LargeField, LargeFieldSSS, LargeFieldSer, SyncHandler};
 use crypto::{aes_hash::HashState, hash::Hash};
 
 use crate::{msg::ProtMsg, Handler, protocol::{DPSSState, BAState}};
@@ -276,7 +276,7 @@ impl Context {
 
         let _acs_serv_status; 
         if ibft_or_acs{
-            _acs_serv_status = acs::Context::spawn(
+            _acs_serv_status = fin_mvba::Context::spawn(
                 acs_config,
                 acs_req_recv_channel, 
                 acs_out_send_channel, 
@@ -335,6 +335,10 @@ impl Context {
 
     pub fn add_cancel_handler(&mut self, canc: CancelHandler<Acknowledgement>) {
         self.cancel_handlers.entry(0).or_default().push(canc);
+    }
+
+    pub fn sample_and_share_from_prf(&self, k: usize, _seed: &[u8]) -> Vec<LargeField> {
+        (0..k).into_iter().map(|_|LargeField::one()).collect()
     }
 
     pub async fn send(&mut self, replica: Replica, wrapper_msg: WrapperMsg<ProtMsg>) {

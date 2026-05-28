@@ -67,8 +67,8 @@ class Bench:
             # Install rust (non-interactive).
             'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
             'source $HOME/.cargo/env',
-            'rustup install 1.83.0',
-            'rustup override set 1.83.0',
+            'rustup install 1.88.0',
+            'rustup override set 1.88.0',
 
             # This is missing from the Rocksdb installer (needed for Rocksdb).
             'sudo apt-get install -y clang',
@@ -237,7 +237,6 @@ class Bench:
                 print('Node 0: writing syncer')
                 c.put(PathMaker.syncer(),'.')
             c.put(PathMaker.key_file(i), '.')
-            c.put(PathMaker.t_key_file(),'.')
             #for j in range(len(hosts)):
             #    print('Writing public key of tpubkey {}',PathMaker.t_key_pubfile(j+1))
             #    c.put(PathMaker.t_key_pubfile(j+1),'.')

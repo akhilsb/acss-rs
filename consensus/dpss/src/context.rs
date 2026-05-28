@@ -300,7 +300,7 @@ impl Context {
 
         let _acs_serv_status; 
         if ibft_or_acs{
-            _acs_serv_status = acs::Context::spawn(
+            _acs_serv_status = fin_mvba::Context::spawn(
                 acs_config,
                 acs_req_recv_channel, 
                 acs_out_send_channel, 
@@ -399,6 +399,10 @@ impl Context {
         let cancel_handler: CancelHandler<Acknowledgement> =
             self.net_send.send(replica, wrapper_msg).await;
         self.add_cancel_handler(cancel_handler);
+    }
+
+    pub fn sample_and_share_from_prf(&self, k: usize, _seed: &[u8]) -> Vec<LargeField> {
+        (0..k).into_iter().map(|_|LargeField::one()).collect()
     }
 
     pub async fn run(&mut self) -> Result<()>{

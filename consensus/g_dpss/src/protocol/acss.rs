@@ -9,6 +9,11 @@ use crate::{Context, msg::{ProtMsg}};
 
 impl Context{
     pub async fn start_acss(&mut self, num_points: usize){
+        // First, sample coins and add them to self.
+        let coin_seed = "BA_COIN_SEED";
+        let coin_shares = self.sample_and_share_from_prf(1000, coin_seed.as_bytes());
+        self.coin_shares.extend(coin_shares);
+        
         // Sample num_points random points
         let mut random_points = Vec::new();
         for _ in 0..num_points{
@@ -209,7 +214,11 @@ impl Context{
         if all_instances_term && self.completed_batches.get_mut(&origin).unwrap().len() >= self.num_batches && !self.acs_input_set.contains(&origin){
             self.acs_input_set.insert(origin);
             log::info!("Sending instance {} to ACS for consensus", origin);
-            let _status = self.acs_term_event.send((1,origin, vec![])).await;
+            let mut coin_vals = Vec::new();
+            for _ in 0..30{
+                coin_vals.push(self.coin_shares.pop_front().unwrap().to_bytes_be());
+            }
+            let _status = self.acs_term_event.send((1,origin, coin_vals)).await;
             // Check if ACS already output shares
             self.gen_rand_shares().await;
         }

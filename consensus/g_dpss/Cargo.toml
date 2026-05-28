@@ -16,6 +16,8 @@ ccbrb = { package = "ccbrb", git="https://github.com/akhilsb/Secure-Distributed-
 crypto = { package = "crypto", git="https://github.com/akhilsb/Secure-Distributed-Computing-Protocols.git"}
 
 g_acss = {package = "g_acss", path = "../g_acss"}
+fin_mvba = {package = "fin_mvba", path = "../fin_mvba"}
+
 
 acs = {package = "acs", path = "../acs"}
 ibft = {package = "ibft", path = "../ibft"}
