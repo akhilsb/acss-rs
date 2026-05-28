@@ -2,10 +2,10 @@
 
 # --- Configuration ---
 # Define the array of secrets to loop through
-SECRETS_ARRAY=(17000 33800 50000)
+SECRETS_ARRAY=(4300 8600 13700)
 
 # Output file for the final averages
-RESULTS_FILE="results_16_dpss.csv"
+RESULTS_FILE="results_64_dpss.csv"
 
 # Ensure the logs directory exists
 mkdir -p logs
@@ -66,7 +66,7 @@ for secret in "${SECRETS_ARRAY[@]}"; do
 
             # 2.b. Wait for 3 minutes and execute fab kill
             echo "Waiting for 3 minutes..."
-            sleep 30
+            sleep 75
             echo "Executing: fab kill"
             fab kill
 

@@ -9,10 +9,10 @@ from benchmark.instance import InstanceManager
 from benchmark.remote import Bench, BenchError
 from benchmark.utils import PathMaker
 
-n = 16
+n = 64
 num_machines = int(n/8)
 protocol = 'g_dpss'
-num_secrets = 33800
+num_secrets = 8600
 linear = 'true'
 optimistic = 'false'
 ACS_enabled = 'true'
