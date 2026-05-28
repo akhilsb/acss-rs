@@ -216,7 +216,7 @@ impl Context{
             log::info!("Sending instance {} to ACS for consensus", origin);
             let mut coin_vals = Vec::new();
             for _ in 0..30{
-                coin_vals.push(self.coin_shares.pop_front().unwrap().to_bytes_be());
+                coin_vals.push(LargeField::one().to_bytes_be());
             }
             let _status = self.acs_term_event.send((1,origin, coin_vals)).await;
             // Check if ACS already output shares
